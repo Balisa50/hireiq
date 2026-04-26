@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Wand2, Grip, Trash2, Copy, Check, AlertCircle, CheckCircle2, Plus } from "lucide-react";
 import { jobsAPI } from "@/lib/api";
 import type { GeneratedQuestion } from "@/lib/types";
