@@ -99,7 +99,7 @@ function Hero() {
         </div>
 
         <p className="text-[13px] text-muted mt-6">
-          No credit card required · Setup in under 5 minutes
+          Free to start · No credit card required
         </p>
       </div>
     </section>

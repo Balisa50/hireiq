@@ -60,13 +60,23 @@ app.add_middleware(SlowAPIMiddleware)
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
 settings = get_settings()
-allowed_origins = [settings.frontend_url]
+
+# Build allowed origins list — strip trailing slashes to avoid mismatches
+_origins: list[str] = []
+if settings.frontend_url:
+    _origins.append(settings.frontend_url.rstrip("/"))
+if settings.allowed_origins:
+    for o in settings.allowed_origins.split(","):
+        o = o.strip().rstrip("/")
+        if o and o not in _origins:
+            _origins.append(o)
 if settings.environment == "development":
-    allowed_origins.extend([
+    _origins.extend([
         "http://localhost:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3000",
     ])
+allowed_origins = _origins or ["*"]
 
 app.add_middleware(
     CORSMiddleware,
