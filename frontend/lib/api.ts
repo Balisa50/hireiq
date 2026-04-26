@@ -32,7 +32,7 @@ function storeAccessToken(token: string): void {
   localStorage.setItem("hireiq_token", token);
 }
 
-function clearStoredToken(): void {
+export function clearStoredToken(): void {
   localStorage.removeItem("hireiq_token");
 }
 
@@ -117,8 +117,20 @@ export const authAPI = {
       method: "POST",
       body: JSON.stringify({ email, password, company_name: companyName }),
     }, false);
-    storeAccessToken(response.access_token);
-    return response;
+
+    if (response.access_token) {
+      storeAccessToken(response.access_token);
+      return response;
+    }
+
+    // Supabase returned no session (email confirmation setting).
+    // Immediately sign in to obtain a real token.
+    const loginResponse = await apiFetch<AuthResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }, false);
+    storeAccessToken(loginResponse.access_token);
+    return loginResponse;
   },
 
   async login(email: string, password: string): Promise<AuthResponse> {
@@ -132,9 +144,6 @@ export const authAPI = {
 
   logout(): void {
     clearStoredToken();
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
   },
 
   isAuthenticated(): boolean {
