@@ -100,7 +100,7 @@ export default function NotificationsPage() {
         </NotifRow>
         <NotifRow
           label="Weekly hiring summary"
-          description="Every Monday: a summary of all interviews from the past week — scores, statuses, top candidates."
+          description="Every Monday: a summary of all interviews from the past week, scores, statuses, top candidates."
           checked={weeklySummary}
           onChange={setWeeklySummary}
         />

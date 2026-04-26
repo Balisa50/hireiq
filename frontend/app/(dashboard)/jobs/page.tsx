@@ -50,7 +50,7 @@ function JobRow({ job }: { job: JobSummary }) {
       </div>
 
       {/* Department (hidden on small) */}
-      <p className="text-[13px] text-sub truncate hidden sm:block">{job.department ?? "—"}</p>
+      <p className="text-[13px] text-sub truncate hidden sm:block">{job.department ?? "-"}</p>
 
       {/* Candidates */}
       <p className="text-[13px] text-sub text-center">{job.interview_count}</p>
@@ -63,7 +63,7 @@ function JobRow({ job }: { job: JobSummary }) {
             <span className="text-[13px] text-sub">{job.average_score}</span>
           </>
         ) : (
-          <span className="text-[13px] text-muted">—</span>
+          <span className="text-[13px] text-muted">-</span>
         )}
       </div>
 

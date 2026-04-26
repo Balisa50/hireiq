@@ -295,7 +295,7 @@ export default function CandidateReportPage() {
               <p className="text-[15px] text-ink leading-[1.8]">{interview.executive_summary}</p>
               {interview.hiring_recommendation && (
                 <div className="mt-4 pt-4 border-t border-border">
-                  <span className="text-[11px] font-semibold text-muted uppercase tracking-widest">Recommendation — </span>
+                  <span className="text-[11px] font-semibold text-muted uppercase tracking-widest">Recommendation: </span>
                   <span className="text-[13px] font-semibold text-ink">{interview.hiring_recommendation}</span>
                 </div>
               )}

@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Terms of Service | HireIQ",
-  description: "HireIQ terms of service — your rights and obligations when using the platform.",
+  description: "HireIQ terms of service. Your rights and obligations when using the platform.",
 };
 
 const EFFECTIVE_DATE  = "1 April 2025";
@@ -253,7 +253,7 @@ export default function TermsPage() {
             </p>
           </Section>
 
-          <Section id="ai-limitations" title="8. AI Features — Limitations and Disclaimers">
+          <Section id="ai-limitations" title="8. AI Features, Limitations and Disclaimers">
             <p>
               HireIQ&apos;s AI Features are designed to assist human decision-making. You acknowledge
               that:

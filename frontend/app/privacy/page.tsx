@@ -88,7 +88,7 @@ export default function PrivacyPage() {
               <p className="font-semibold text-white mb-2">1.1 Company Account Data</p>
               <p>When a company creates a HireIQ account, we collect:</p>
               <ul className="space-y-1 mt-2">
-                <Li>Business email address and password (hashed — never stored in plain text)</Li>
+                <Li>Business email address and password (hashed, never stored in plain text)</Li>
                 <Li>Company name, industry, company size, and website URL</Li>
                 <Li>Billing information (processed and stored by our payment provider; we do not store raw card numbers)</Li>
                 <Li>Usage data: jobs created, interview settings, platform interactions</Li>
@@ -121,7 +121,7 @@ export default function PrivacyPage() {
               <ul className="space-y-1 mt-2">
                 <Li>Video or audio recordings of candidates</Li>
                 <Li>Facial recognition or biometric data</Li>
-                <Li>Information about race, ethnicity, religion, sexual orientation, or disability — unless a candidate voluntarily discloses such information in a free-text answer</Li>
+                <Li>Information about race, ethnicity, religion, sexual orientation, or disability. Unless a candidate voluntarily discloses such information in a free-text answer</Li>
                 <Li>Candidate social media profiles or third-party background check data</Li>
               </ul>
             </div>
@@ -189,7 +189,7 @@ export default function PrivacyPage() {
               The AI-generated score and hiring recommendation are <strong className="text-white">
               advisory only</strong>. They are tools to assist human hiring managers, not automated
               decisions with legal or similarly significant effect on candidates. No offer of
-              employment or rejection decision is made by HireIQ or its AI — all final decisions
+              employment or rejection decision is made by HireIQ or its AI. All final decisions
               rest with the hiring company.
             </p>
             <p>
