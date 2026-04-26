@@ -21,37 +21,37 @@ export default function Button({
   disabled,
   ...props
 }: ButtonProps) {
-  const baseClasses =
-    "inline-flex items-center justify-center gap-2 font-semibold rounded-xl transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-50 disabled:cursor-not-allowed";
+  const base =
+    "inline-flex items-center justify-center gap-2 font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink focus-visible:outline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed";
 
-  const variantClasses = {
+  const variants = {
     primary:
-      "bg-brand-500 text-white hover:bg-brand-600 active:scale-[0.98] shadow-lg shadow-brand-500/20",
+      "bg-ink text-white hover:bg-ink-2 rounded-[4px]",
     secondary:
-      "bg-[var(--bg-elevated)] text-[var(--text)] border border-[var(--border)] hover:bg-white/5 active:scale-[0.98]",
+      "bg-white text-ink border border-border hover:border-sub rounded-[4px]",
     ghost:
-      "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/5 active:scale-[0.98]",
+      "text-sub hover:text-ink hover:bg-canvas rounded-[4px]",
     danger:
-      "bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 active:scale-[0.98]",
+      "bg-white text-danger border border-danger hover:bg-red-50 rounded-[4px]",
     outline:
-      "border border-[var(--border)] text-[var(--text)] hover:border-brand-500/50 hover:text-brand-400 active:scale-[0.98]",
+      "bg-white text-ink border border-border hover:border-ink rounded-[4px]",
   };
 
-  const sizeClasses = {
-    sm: "text-xs px-3 py-1.5 h-8",
-    md: "text-sm px-4 py-2.5 h-10",
-    lg: "text-base px-6 py-3 h-12",
+  const sizes = {
+    sm:  "text-[13px] px-3 py-1.5 h-8",
+    md:  "text-sm px-4 py-2 h-9",
+    lg:  "text-sm px-5 py-2.5 h-10",
   };
 
   return (
     <button
-      className={clsx(baseClasses, variantClasses[variant], sizeClasses[size], className)}
+      className={clsx(base, variants[variant], sizes[size], className)}
       disabled={disabled || isLoading}
       {...props}
     >
       {isLoading ? (
         <>
-          <Loader2 className="w-4 h-4 animate-spin" />
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
           <span>{loadingText ?? children}</span>
         </>
       ) : (

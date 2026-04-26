@@ -4,25 +4,24 @@ import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   title: {
-    default: "HireIQ — AI-Powered Hiring Platform",
+    default: "HireIQ — AI-Powered Hiring",
     template: "%s | HireIQ",
   },
   description:
-    "HireIQ conducts intelligent AI interviews with every candidate and delivers ranked, scored summaries to your hiring team. Stop reading applications — start hiring people.",
+    "HireIQ interviews every candidate with adaptive AI and delivers ranked, scored reports to your team. You only meet the people worth your time.",
   keywords: ["AI hiring", "recruitment AI", "candidate screening", "interview automation"],
   openGraph: {
-    title: "HireIQ — AI-Powered Hiring Platform",
-    description:
-      "Intelligent AI interviews. Ranked candidates. Faster hiring.",
+    title: "HireIQ — AI-Powered Hiring",
+    description: "Intelligent AI interviews. Ranked candidates. Faster hiring.",
     type: "website",
+  },
+  icons: {
+    icon: "/icon.svg",
+    apple: "/apple-icon.png",
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
