@@ -414,6 +414,8 @@ async def generate_conversation_response(
     candidate_name: str,
     collected_requirement_ids: list[str],
     candidate_context: dict | None = None,
+    experience_level: str = "any",
+    skills: list[str] | None = None,
 ) -> dict | None:
     """
     Generate the next AI message in a conversational interview.
@@ -457,7 +459,9 @@ async def generate_conversation_response(
         f"You are a senior talent acquisition specialist conducting a job application conversation "
         f"on behalf of {company_name}. You are warm, professional, genuinely curious.\n\n"
         f"ROLE: {job_title} at {company_name}\n"
-        f"JOB DESCRIPTION:\n{job_description[:2500]}\n\n"
+        f"SENIORITY: {experience_level.replace('_', ' ').title()}\n"
+        + (f"REQUIRED SKILLS: {', '.join(skills)}\n" if skills else "")
+        + f"JOB DESCRIPTION:\n{job_description[:2500]}\n\n"
         f"FOCUS AREAS TO ASSESS: {', '.join(focus_areas)}\n\n"
         f"INTERVIEW QUESTION GUIDES (these are guides — adapt them naturally, do NOT read verbatim):\n{q_guides}\n\n"
         f"CANDIDATE: {candidate_name}. Use ONLY this name. Never infer any other name. "

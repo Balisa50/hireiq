@@ -112,6 +112,12 @@ class CreateJobRequest(BaseModel):
         return reqs
 
 
+VALID_EXPERIENCE_LEVELS = {"any", "entry", "mid", "senior", "lead", "executive"}
+VALID_WORK_ARRANGEMENTS = {"remote", "hybrid", "on_site"}
+VALID_SALARY_CURRENCIES  = {"USD", "EUR", "GBP", "CAD", "AUD", "GHS", "GMD", "NGN", "KES", "ZAR"}
+VALID_SALARY_PERIODS     = {"hour", "month", "year"}
+
+
 class PublishJobRequest(BaseModel):
     title: str
     department: str
@@ -120,17 +126,62 @@ class PublishJobRequest(BaseModel):
     job_description: str
     question_count: int
     focus_areas: list[str]
-    questions: list[GeneratedQuestion]
+    questions: list[GeneratedQuestion] = []
     candidate_requirements: list[CandidateRequirement] = []
 
-    @field_validator("questions")
+    # ── New fields ──────────────────────────────────────────────────────────
+    experience_level: str = "any"
+    work_arrangement: str = "on_site"
+    openings: int = 1
+    skills: list[str] = []
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    salary_currency: str = "USD"
+    salary_period: str = "year"
+    salary_disclosed: bool = True
+
+    @field_validator("experience_level")
     @classmethod
-    def validate_questions(cls, questions: list[GeneratedQuestion]) -> list[GeneratedQuestion]:
-        if not questions:
-            raise ValueError("At least one question is required to publish a job.")
-        if len(questions) > 20:
-            raise ValueError("Maximum 20 questions allowed.")
-        return questions
+    def validate_experience_level(cls, v: str) -> str:
+        if v not in VALID_EXPERIENCE_LEVELS:
+            raise ValueError(f"experience_level must be one of: {VALID_EXPERIENCE_LEVELS}")
+        return v
+
+    @field_validator("work_arrangement")
+    @classmethod
+    def validate_work_arrangement(cls, v: str) -> str:
+        if v not in VALID_WORK_ARRANGEMENTS:
+            raise ValueError(f"work_arrangement must be one of: {VALID_WORK_ARRANGEMENTS}")
+        return v
+
+    @field_validator("openings")
+    @classmethod
+    def validate_openings(cls, v: int) -> int:
+        if v < 1 or v > 99:
+            raise ValueError("openings must be between 1 and 99.")
+        return v
+
+    @field_validator("skills")
+    @classmethod
+    def validate_skills(cls, v: list[str]) -> list[str]:
+        cleaned = [s.strip() for s in v if s.strip()]
+        if len(cleaned) > 30:
+            raise ValueError("Maximum 30 skills allowed.")
+        return cleaned
+
+    @field_validator("salary_currency")
+    @classmethod
+    def validate_salary_currency(cls, v: str) -> str:
+        if v not in VALID_SALARY_CURRENCIES:
+            raise ValueError(f"Unsupported currency: {v}")
+        return v
+
+    @field_validator("salary_period")
+    @classmethod
+    def validate_salary_period(cls, v: str) -> str:
+        if v not in VALID_SALARY_PERIODS:
+            raise ValueError(f"salary_period must be one of: {VALID_SALARY_PERIODS}")
+        return v
 
 
 class JobResponse(BaseModel):
@@ -151,6 +202,16 @@ class JobResponse(BaseModel):
     updated_at: Optional[datetime] = None
     interview_count: int = 0
     average_score: Optional[float] = None
+    # Extended fields
+    experience_level: str = "any"
+    work_arrangement: str = "on_site"
+    openings: int = 1
+    skills: list[str] = []
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    salary_currency: str = "USD"
+    salary_period: str = "year"
+    salary_disclosed: bool = True
 
 
 class JobSummary(BaseModel):

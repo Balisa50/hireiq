@@ -84,6 +84,16 @@ export interface Job {
   updated_at: string | null;
   interview_count: number;
   average_score: number | null;
+  // Extended fields
+  experience_level: string;
+  work_arrangement: string;
+  openings: number;
+  skills: string[];
+  salary_min: number | null;
+  salary_max: number | null;
+  salary_currency: string;
+  salary_period: string;
+  salary_disclosed: boolean;
 }
 
 export interface JobSummary {
@@ -209,6 +219,40 @@ export const EMPLOYMENT_TYPES = [
   { value: "part_time",  label: "Part Time" },
   { value: "contract",   label: "Contract" },
   { value: "internship", label: "Internship" },
+] as const;
+
+export const EXPERIENCE_LEVELS = [
+  { value: "any",       label: "Any Level" },
+  { value: "entry",     label: "Entry Level" },
+  { value: "mid",       label: "Mid Level" },
+  { value: "senior",    label: "Senior" },
+  { value: "lead",      label: "Lead / Principal" },
+  { value: "executive", label: "Executive / Director" },
+] as const;
+
+export const WORK_ARRANGEMENTS = [
+  { value: "on_site", label: "On-site" },
+  { value: "hybrid",  label: "Hybrid" },
+  { value: "remote",  label: "Remote" },
+] as const;
+
+export const SALARY_CURRENCIES = [
+  { value: "USD", label: "USD — US Dollar" },
+  { value: "EUR", label: "EUR — Euro" },
+  { value: "GBP", label: "GBP — British Pound" },
+  { value: "CAD", label: "CAD — Canadian Dollar" },
+  { value: "AUD", label: "AUD — Australian Dollar" },
+  { value: "GHS", label: "GHS — Ghanaian Cedi" },
+  { value: "GMD", label: "GMD — Gambian Dalasi" },
+  { value: "NGN", label: "NGN — Nigerian Naira" },
+  { value: "KES", label: "KES — Kenyan Shilling" },
+  { value: "ZAR", label: "ZAR — South African Rand" },
+] as const;
+
+export const SALARY_PERIODS = [
+  { value: "hour",  label: "per hour" },
+  { value: "month", label: "per month" },
+  { value: "year",  label: "per year" },
 ] as const;
 
 export const HIRING_RECOMMENDATIONS = [
