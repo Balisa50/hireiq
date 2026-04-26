@@ -29,7 +29,7 @@ function JobRow({ job }: { job: JobSummary }) {
   }, [job.interview_link_token]);
 
   return (
-    <div className="grid grid-cols-[1fr_auto] md:grid-cols-[2fr_1fr_80px_80px_100px_auto] items-center gap-4 px-5 py-4 border-b border-border last:border-b-0 hover:bg-[var(--bg)] transition-colors group">
+    <div className="grid grid-cols-[1fr_auto] md:grid-cols-[2fr_80px_80px_100px_auto] items-center gap-4 px-5 py-4 border-b border-border last:border-b-0 hover:bg-[var(--bg)] transition-colors group">
       {/* Title + department */}
       <div className="min-w-0">
         <p className="text-sm font-medium text-ink truncate">{job.title}</p>
@@ -37,9 +37,6 @@ function JobRow({ job }: { job: JobSummary }) {
           <p className="text-[13px] text-muted mt-0.5 truncate">{job.department}</p>
         )}
       </div>
-
-      {/* Location — desktop only */}
-      <p className="hidden md:block text-sm text-sub truncate">{job.location ?? "—"}</p>
 
       {/* Interviews — desktop only */}
       <p className="hidden md:block text-sm text-sub text-center">
@@ -135,8 +132,8 @@ export default function JobsPage() {
       {/* Table */}
       <div className="bg-white border border-border rounded-[4px] overflow-hidden">
         {/* Column headers */}
-        <div className="hidden md:grid grid-cols-[2fr_1fr_80px_80px_100px_auto] gap-4 px-5 py-3 border-b border-border bg-[var(--bg)]">
-          {["Position", "Location", "Interviews", "Avg. Score", "Status", ""].map((h, i) => (
+        <div className="hidden md:grid grid-cols-[2fr_80px_80px_100px_auto] gap-4 px-5 py-3 border-b border-border bg-[var(--bg)]">
+          {["Position", "Interviews", "Avg. Score", "Status", ""].map((h, i) => (
             <span key={i} className="text-[11px] font-semibold text-muted uppercase tracking-wide">
               {h}
             </span>
