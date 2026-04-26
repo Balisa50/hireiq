@@ -609,17 +609,20 @@ export default function InterviewPage() {
 
       // Load existing conversation if resuming
       if (r.resumed && r.transcript?.length) {
-        // Re-hydrate messages from stored conversation
-        const hydrated: ConversationMessage[] = r.transcript.map((entry: Record<string, unknown>) => ({
-          id:               nanoid(),
-          role:             entry.role as "ai" | "candidate",
-          content:          entry.content as string ?? "",
-          timestamp:        entry.timestamp as string ?? new Date().toISOString(),
-          action:           entry.action as ConversationMessage["action"],
-          requirement_id:   entry.requirement_id as string | null,
-          requirement_label: entry.requirement_label as string | null,
-          cardStatus:       (entry.action === "request_file" || entry.action === "request_link") ? "complete" : undefined,
-        }));
+        // Re-hydrate messages from stored conversation (new conversation format)
+        const hydrated: ConversationMessage[] = (r.transcript as unknown[]).map((raw) => {
+          const entry = raw as Record<string, unknown>;
+          return {
+            id:                nanoid(),
+            role:              entry.role as "ai" | "candidate",
+            content:           (entry.content as string) ?? "",
+            timestamp:         (entry.timestamp as string) ?? new Date().toISOString(),
+            action:            entry.action as ConversationMessage["action"],
+            requirement_id:    (entry.requirement_id as string | null) ?? null,
+            requirement_label: (entry.requirement_label as string | null) ?? null,
+            cardStatus:        (entry.action === "request_file" || entry.action === "request_link") ? "complete" as const : undefined,
+          };
+        });
         setMessages(hydrated);
       }
 
