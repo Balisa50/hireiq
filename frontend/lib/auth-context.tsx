@@ -13,7 +13,7 @@ import React, {
   useCallback,
 } from "react";
 import { useRouter } from "next/navigation";
-import { authAPI, companyAPI } from "./api";
+import { authAPI, companyAPI, clearStoredToken } from "./api";
 import type { Company } from "./types";
 
 interface AuthContextValue {
