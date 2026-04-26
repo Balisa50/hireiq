@@ -1,14 +1,13 @@
 """
 HireIQ authentication utilities.
-Verifies Supabase JWT tokens and extracts the authenticated company ID.
+Verifies Supabase JWT tokens by calling supabase.auth.get_user(),
+which validates server-side without needing the raw JWT secret.
 """
 
+import logging
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
-from app.config import get_settings
 from app.database import supabase
-import logging
 
 logger = logging.getLogger("hireiq.auth")
 security = HTTPBearer()
@@ -18,34 +17,24 @@ async def get_authenticated_company_id(
     credentials: HTTPAuthorizationCredentials = Security(security),
 ) -> str:
     """
-    Extract and verify the company ID from the JWT Bearer token.
+    Validate the Bearer token via Supabase and return the authenticated company ID (user UUID).
     Raises HTTP 401 if the token is missing, expired, or invalid.
     """
     token = credentials.credentials
-    settings = get_settings()
 
     try:
-        # Verify the Supabase JWT using the project's JWT secret
-        # Supabase signs tokens with the JWT_SECRET from project settings
-        payload = jwt.decode(
-            token,
-            settings.supabase_anon_key,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
-        company_id: str | None = payload.get("sub")
-        if not company_id:
+        user_response = supabase.auth.get_user(token)
+        if not user_response or not user_response.user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication token.",
             )
-        return company_id
+        return str(user_response.user.id)
 
-    except JWTError as error:
-        logger.warning(
-            "JWT verification failed",
-            extra={"error": str(error)},
-        )
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.warning("Auth verification failed: %s", str(error))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired authentication token. Please log in again.",
@@ -59,17 +48,14 @@ def verify_company_owns_resource(
 ) -> None:
     """
     Verify the authenticated company owns the requested resource.
-    Raises HTTP 403 if the company does not own the resource.
-    This enforces data isolation at the application layer in addition to RLS.
+    Raises HTTP 403 if ownership doesn't match.
     """
     if resource_company_id != authenticated_company_id:
         logger.warning(
-            "Unauthorised resource access attempt",
-            extra={
-                "authenticated_company": authenticated_company_id,
-                "resource_company": resource_company_id,
-                "resource": resource_name,
-            },
+            "Unauthorised access: company %s tried to access %s owned by %s",
+            authenticated_company_id,
+            resource_name,
+            resource_company_id,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
