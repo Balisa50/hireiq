@@ -426,6 +426,33 @@ export const interviewAPI = {
       false,
     );
   },
+
+  /**
+   * Conversational interview driver — send a candidate message, receive AI response.
+   * Pass empty string as candidateMessage for the first call (AI greets first)
+   * or for resuming an existing session.
+   */
+  async sendMessage(
+    interviewId: string,
+    candidateMessage: string,
+  ): Promise<{
+    message: string;
+    action: "continue" | "request_file" | "request_link" | "complete";
+    requirement_id: string | null;
+    requirement_label: string | null;
+  }> {
+    return apiFetch(
+      "/api/interviews/public/message",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          interview_id:      interviewId,
+          candidate_message: candidateMessage,
+        }),
+      },
+      false,
+    );
+  },
 };
 
 // ── Health check ──────────────────────────────────────────────────────────────

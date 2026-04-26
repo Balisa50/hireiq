@@ -8,6 +8,36 @@ import type { Interview } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Skeleton from "@/components/ui/Skeleton";
 
+// ── Transcript normaliser — handles both old Q&A format and new conversation format ──
+
+interface TranscriptPair { question: string; answer: string }
+
+function normaliseTranscript(raw: unknown[]): TranscriptPair[] {
+  if (!raw?.length) return [];
+  const first = raw[0] as Record<string, unknown>;
+
+  if (first.role) {
+    // New conversation format: [{role: 'ai'|'candidate', content, action?}]
+    const pairs: TranscriptPair[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const msg = raw[i] as Record<string, unknown>;
+      if (msg.role === "ai" && msg.action !== "request_file" && msg.action !== "request_link") {
+        const next = raw[i + 1] as Record<string, unknown> | undefined;
+        if (next?.role === "candidate") {
+          pairs.push({ question: String(msg.content ?? ""), answer: String(next.content ?? "") });
+        }
+      }
+    }
+    return pairs;
+  }
+
+  // Old Q&A format: [{question_index, question, answer}]
+  return (raw as Record<string, unknown>[]).map((e) => ({
+    question: String(e.question ?? ""),
+    answer:   String(e.answer ?? ""),
+  }));
+}
+
 // ── Markdown stripper for transcript answers ──────────────────────────────────
 
 function stripMarkdown(text: string): string {
@@ -315,29 +345,32 @@ export default function CandidateReportPage() {
           ) : null}
 
           {/* Transcript */}
-          {interview.transcript?.length > 0 && (
-            <div className="bg-white border border-border rounded-[4px] overflow-hidden">
-              <button
-                onClick={() => setTranscriptOpen((v) => !v)}
-                className="w-full px-6 py-4 flex items-center justify-between text-sm font-medium text-ink hover:bg-[var(--bg)] transition-colors"
-              >
-                <span>View full interview transcript</span>
-                {transcriptOpen ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
-              </button>
-              {transcriptOpen && (
-                <div className="px-6 pb-6 space-y-5 border-t border-border pt-5">
-                  {interview.transcript.map((entry, i) => (
-                    <div key={i}>
-                      <p className="text-[13px] font-semibold text-muted mb-1.5">Q{i + 1}. {entry.question}</p>
-                      <p className="text-sm text-ink leading-relaxed bg-[var(--bg)] border border-border rounded-[4px] px-4 py-3 whitespace-pre-wrap">
-                        {stripMarkdown(entry.answer)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {interview.transcript?.length > 0 && (() => {
+            const pairs = normaliseTranscript(interview.transcript as unknown[]);
+            return pairs.length > 0 ? (
+              <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+                <button
+                  onClick={() => setTranscriptOpen((v) => !v)}
+                  className="w-full px-6 py-4 flex items-center justify-between text-sm font-medium text-ink hover:bg-[var(--bg)] transition-colors"
+                >
+                  <span>View full interview transcript</span>
+                  {transcriptOpen ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
+                </button>
+                {transcriptOpen && (
+                  <div className="px-6 pb-6 space-y-5 border-t border-border pt-5">
+                    {pairs.map((pair, i) => (
+                      <div key={i}>
+                        <p className="text-[13px] font-semibold text-muted mb-1.5">Q{i + 1}. {pair.question}</p>
+                        <p className="text-sm text-ink leading-relaxed bg-[var(--bg)] border border-border rounded-[4px] px-4 py-3 whitespace-pre-wrap">
+                          {stripMarkdown(pair.answer)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null;
+          })()}
 
           {/* Bottom actions */}
           <div className="flex items-center gap-3">
