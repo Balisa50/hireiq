@@ -1,326 +1,329 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import {
-  ArrowLeft, Download, CheckCircle2, XCircle,
-  User, Mail, Clock, Calendar, TrendingUp,
-  MessageSquare, AlertTriangle, Star,
-} from "lucide-react";
+import { Download, CheckCircle2, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Mail } from "lucide-react";
 import { candidatesAPI } from "@/lib/api";
 import type { Interview } from "@/lib/types";
 import Button from "@/components/ui/Button";
-import ScoreBadge from "@/components/ui/ScoreBadge";
+import Skeleton from "@/components/ui/Skeleton";
 
-function ScoreBar({
-  label, score, max = 100,
-}: {
-  label: string; score: number; max?: number;
-}) {
-  const pct = Math.round((score / max) * 100);
-  const barColor =
-    pct >= 80 ? "bg-green-400" : pct >= 60 ? "bg-amber-400" : "bg-red-400";
-  const textColor =
-    pct >= 80 ? "text-green-400" : pct >= 60 ? "text-amber-400" : "text-red-400";
+// ── Score ring (SVG animated) ─────────────────────────────────────────────────
+
+function ScoreRing({ score }: { score: number }) {
+  const r   = 52;
+  const circ = 2 * Math.PI * r;
+  const [displayed, setDisplayed] = useState(0);
+
+  useEffect(() => {
+    const start = performance.now();
+    const dur   = 1000;
+    function tick(now: number) {
+      const t   = Math.min((now - start) / dur, 1);
+      const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      setDisplayed(Math.round(score * ease));
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }, [score]);
+
+  const offset = circ * (1 - displayed / 100);
+  const color  = score >= 70 ? "#16A34A" : score >= 50 ? "#D97706" : "#DC2626";
+  const label  = score >= 70 ? "Strong candidate" : score >= 50 ? "Good candidate" : score >= 35 ? "Average candidate" : "Weak candidate";
+
+  return (
+    <div className="flex flex-col items-center">
+      <svg width="140" height="140" viewBox="0 0 140 140" className="-rotate-90">
+        <circle cx="70" cy="70" r={r} fill="none" stroke="#E8E4DF" strokeWidth="10" />
+        <circle cx="70" cy="70" r={r} fill="none" stroke={color} strokeWidth="10"
+          strokeDasharray={circ} strokeDashoffset={offset}
+          strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.016s linear" }} />
+      </svg>
+      <div className="-mt-[100px] mb-[60px] flex flex-col items-center">
+        <span className="text-[48px] font-bold text-ink leading-none">{displayed}</span>
+        <span className="text-[13px] text-muted mt-1">Overall Fit Score</span>
+      </div>
+      <p className="text-[13px] font-medium" style={{ color }}>{label}</p>
+    </div>
+  );
+}
+
+// ── Score bar (animated) ──────────────────────────────────────────────────────
+
+function ScoreBar({ label, score, delay }: { label: string; score: number; delay: number }) {
+  const [width, setWidth] = useState(0);
+  const color = score >= 70 ? "#16A34A" : score >= 50 ? "#D97706" : "#DC2626";
+
+  useEffect(() => {
+    const t = setTimeout(() => setWidth(score), delay);
+    return () => clearTimeout(t);
+  }, [score, delay]);
+
   return (
     <div>
-      <div className="flex items-center justify-between text-sm mb-2">
-        <span className="text-[var(--text-muted)]">{label}</span>
-        <span className={`font-bold ${textColor}`}>{score}/100</span>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[13px] text-sub">{label}</span>
+        <span className="text-[13px] font-semibold text-ink">{score}/100</span>
       </div>
-      <div className="h-2 rounded-full bg-white/8 overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${barColor}`}
-          style={{ width: `${pct}%` }}
-        />
+      <div className="h-2 rounded-full bg-border overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${width}%`, backgroundColor: color }} />
       </div>
     </div>
   );
 }
 
-const REC_COLORS: Record<string, string> = {
-  "Strong Yes": "text-green-400 bg-green-400/10 border-green-400/20",
-  "Yes":        "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-  "Maybe":      "text-amber-400 bg-amber-400/10 border-amber-400/20",
-  "No":         "text-red-400 bg-red-400/10 border-red-400/20",
-  "Strong No":  "text-red-500 bg-red-500/10 border-red-500/20",
-};
+// ── Section card ──────────────────────────────────────────────────────────────
+
+function Card({ title, label, children }: { title: string; label?: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-border rounded-[4px] p-6">
+      <p className={`text-[11px] font-semibold uppercase tracking-widest mb-4 ${label === "amber" ? "text-warn" : label === "green" ? "text-success" : "text-muted"}`}>
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; color: string; bg: string }> = {
+    shortlisted: { label: "Shortlisted", color: "text-success", bg: "bg-green-50 border-success/20" },
+    rejected:    { label: "Rejected",    color: "text-danger",  bg: "bg-red-50 border-danger/20" },
+    scored:      { label: "Scored",      color: "text-sub",     bg: "bg-[var(--bg)] border-border" },
+    completed:   { label: "Completed",   color: "text-sub",     bg: "bg-[var(--bg)] border-border" },
+    in_progress: { label: "In Progress", color: "text-warn",    bg: "bg-amber-50 border-amber-200" },
+  };
+  const cfg = map[status] ?? { label: status, color: "text-muted", bg: "bg-[var(--bg)] border-border" };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-[4px] text-[12px] font-semibold border ${cfg.color} ${cfg.bg}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CandidateReportPage() {
-  const { id } = useParams<{ id: string }>();
-  const router = useRouter();
-  const [interview, setInterview] = useState<Interview | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { id }     = useParams<{ id: string }>();
+  const router     = useRouter();
+  const [interview, setInterview]       = useState<Interview | null>(null);
+  const [isLoading, setIsLoading]       = useState(true);
+  const [error, setError]               = useState("");
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   useEffect(() => {
-    candidatesAPI
-      .getInterview(id)
+    candidatesAPI.getInterview(id)
       .then(setInterview)
-      .catch(() => setError("Failed to load candidate report."))
+      .catch(() => setError("Report not found or couldn't be loaded."))
       .finally(() => setIsLoading(false));
   }, [id]);
 
-  const updateStatus = useCallback(
-    async (newStatus: "shortlisted" | "rejected") => {
-      if (!interview) return;
-      setStatusUpdating(true);
-      try {
-        await candidatesAPI.updateCandidateStatus(interview.id, newStatus);
-        setInterview((prev) => (prev ? { ...prev, status: newStatus } : prev));
-      } catch {
-        alert("Failed to update status. Please try again.");
-      } finally {
-        setStatusUpdating(false);
-      }
-    },
-    [interview],
-  );
+  const updateStatus = useCallback(async (newStatus: "shortlisted" | "rejected") => {
+    if (!interview) return;
+    setStatusUpdating(true);
+    try {
+      await candidatesAPI.updateCandidateStatus(interview.id, newStatus);
+      setInterview((p) => p ? { ...p, status: newStatus } : p);
+    } catch { /* silent */ }
+    finally { setStatusUpdating(false); }
+  }, [interview]);
 
   const downloadPdf = useCallback(() => {
     if (!interview) return;
-    const url = candidatesAPI.getPdfReportUrl(interview.id);
-    window.open(url, "_blank");
+    window.open(candidatesAPI.getPdfReportUrl(interview.id), "_blank");
   }, [interview]);
 
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      <div className="max-w-[720px] mx-auto space-y-5 pb-12">
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-4 w-32" />
+        <div className="bg-white border border-border rounded-[4px] p-6 space-y-4">
+          <Skeleton className="h-32 w-32 rounded-full mx-auto" />
+          <Skeleton className="h-4 w-24 mx-auto" />
+        </div>
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="bg-white border border-border rounded-[4px] p-6 space-y-3">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
+        ))}
       </div>
     );
   }
 
   if (error || !interview) {
     return (
-      <div className="max-w-xl mx-auto py-12 text-center">
-        <p className="text-red-400">{error || "Report not found."}</p>
-        <Button variant="ghost" className="mt-4" onClick={() => router.back()}>
-          Go Back
-        </Button>
+      <div className="max-w-[720px] mx-auto py-20 text-center">
+        <p className="text-sub mb-4">{error || "Report not found."}</p>
+        <button onClick={() => router.back()} className="text-[13px] text-sub hover:text-ink underline transition-colors">
+          ← Back to Candidates
+        </button>
       </div>
     );
   }
 
   const isScored = interview.status !== "in_progress" && interview.overall_score !== null;
-  const recColor = REC_COLORS[interview.hiring_recommendation ?? ""] ?? "text-[var(--text-muted)] bg-white/5 border-[var(--border)]";
-
-  const duration =
-    interview.completed_at && interview.started_at
-      ? Math.max(
-          1,
-          Math.round(
-            (new Date(interview.completed_at).getTime() -
-              new Date(interview.started_at).getTime()) /
-              60_000,
-          ),
-        )
-      : null;
+  const duration = interview.completed_at && interview.started_at
+    ? Math.max(1, Math.round((new Date(interview.completed_at).getTime() - new Date(interview.started_at).getTime()) / 60_000))
+    : null;
+  const completedDate = interview.completed_at
+    ? new Date(interview.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+    : null;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-fade-in pb-12">
-      {/* Back + Actions */}
-      <div className="flex items-center justify-between gap-4">
-        <button
-          onClick={() => router.back()}
-          className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to Candidates
-        </button>
-        <div className="flex items-center gap-2">
+    <div className="max-w-[720px] mx-auto space-y-5 pb-12">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-ink" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+            {interview.candidate_name}
+          </h1>
+          <div className="flex flex-wrap items-center gap-4 mt-1.5">
+            <span className="flex items-center gap-1.5 text-[13px] text-sub"><Mail className="w-3.5 h-3.5" />{interview.candidate_email}</span>
+            {duration && <span className="flex items-center gap-1.5 text-[13px] text-sub"><Clock className="w-3.5 h-3.5" />{duration} minutes</span>}
+            {completedDate && <span className="flex items-center gap-1.5 text-[13px] text-sub"><Calendar className="w-3.5 h-3.5" />{completedDate}</span>}
+          </div>
+          <div className="mt-2"><StatusBadge status={interview.status} /></div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           {isScored && (
             <Button variant="secondary" size="sm" onClick={downloadPdf}>
               <Download className="w-3.5 h-3.5" /> PDF Report
             </Button>
           )}
           {interview.status !== "shortlisted" && (
-            <Button
-              variant="primary"
-              size="sm"
-              isLoading={statusUpdating}
-              onClick={() => updateStatus("shortlisted")}
-            >
+            <Button size="sm" isLoading={statusUpdating} onClick={() => updateStatus("shortlisted")}>
               <CheckCircle2 className="w-3.5 h-3.5" /> Shortlist
             </Button>
           )}
           {interview.status !== "rejected" && (
-            <Button
-              variant="danger"
-              size="sm"
-              isLoading={statusUpdating}
-              onClick={() => updateStatus("rejected")}
-            >
+            <Button variant="danger" size="sm" isLoading={statusUpdating} onClick={() => updateStatus("rejected")}>
               <XCircle className="w-3.5 h-3.5" /> Reject
             </Button>
           )}
         </div>
       </div>
 
-      {/* Hero */}
-      <div className="glass rounded-2xl p-6 flex flex-col sm:flex-row items-start gap-5">
-        <div className="w-20 h-20 rounded-2xl bg-brand-500/10 border-2 border-brand-500/20 flex flex-col items-center justify-center shrink-0">
-          <span
-            className={`text-2xl font-extrabold ${
-              (interview.overall_score ?? 0) >= 80
-                ? "text-green-400"
-                : (interview.overall_score ?? 0) >= 60
-                ? "text-amber-400"
-                : "text-red-400"
-            }`}
-          >
-            {interview.overall_score ?? "—"}
-          </span>
-          <span className="text-[10px] text-[var(--text-dim)] mt-0.5">/ 100</span>
+      {/* Not scored yet */}
+      {!isScored && (
+        <div className="bg-white border border-border rounded-[4px] p-8 text-center">
+          <p className="text-sub text-sm">This interview is still in progress. The AI assessment will appear once the candidate submits.</p>
         </div>
-        <div className="flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-bold text-white">{interview.candidate_name}</h1>
-              <div className="flex items-center gap-3 mt-1 flex-wrap">
-                <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-                  <Mail className="w-3.5 h-3.5" />
-                  {interview.candidate_email}
-                </span>
-                {duration !== null && (
-                  <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-                    <Clock className="w-3.5 h-3.5" />
-                    {duration} minutes
-                  </span>
-                )}
-                {interview.completed_at && (
-                  <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {new Date(interview.completed_at).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          {interview.hiring_recommendation && (
-            <span className={`inline-flex items-center mt-3 px-3 py-1 rounded-full text-xs font-semibold border ${recColor}`}>
-              Recommendation: {interview.hiring_recommendation}
-            </span>
-          )}
-        </div>
-      </div>
+      )}
 
-      {!isScored ? (
-        <div className="glass rounded-2xl p-8 text-center">
-          <TrendingUp className="w-10 h-10 text-[var(--text-dim)] mx-auto mb-3" />
-          <p className="text-[var(--text-muted)] text-sm">
-            This interview is still in progress. The AI assessment will appear once the candidate
-            submits.
-          </p>
-        </div>
-      ) : (
+      {isScored && (
         <>
-          {/* Executive Summary */}
-          {interview.executive_summary && (
-            <div className="glass rounded-2xl p-6">
-              <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-3">
-                AI Executive Summary
-              </h2>
-              <p className="text-sm text-[var(--text)] leading-relaxed">
-                {interview.executive_summary}
-              </p>
-            </div>
-          )}
+          {/* Score ring */}
+          <div className="bg-white border border-border rounded-[4px] p-8 flex flex-col items-center">
+            <ScoreRing score={interview.overall_score!} />
+          </div>
 
           {/* Score breakdown */}
           {interview.score_breakdown && Object.keys(interview.score_breakdown).length > 0 && (
-            <div className="glass rounded-2xl p-6 space-y-4">
-              <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider">
-                Score Breakdown
-              </h2>
-              {Object.entries(interview.score_breakdown).map(([area, score]) => (
-                <ScoreBar key={area} label={area} score={score} />
-              ))}
-            </div>
+            <Card title="Score Breakdown">
+              <div className="space-y-4">
+                {Object.entries(interview.score_breakdown).map(([area, score], i) => (
+                  <ScoreBar key={area} label={area} score={score} delay={i * 100} />
+                ))}
+              </div>
+            </Card>
           )}
 
-          {/* Strengths & Concerns */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {interview.key_strengths && (
-              <div className="glass rounded-2xl p-5">
-                <h2 className="text-xs font-bold text-green-400 uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                  <Star className="w-3.5 h-3.5" /> Key Strengths
-                </h2>
-                <ul className="space-y-2">
+          {/* AI Assessment */}
+          {interview.executive_summary && (
+            <Card title="AI Assessment">
+              <p className="text-[15px] text-ink leading-[1.8]">{interview.executive_summary}</p>
+              {interview.hiring_recommendation && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <span className="text-[11px] font-semibold text-muted uppercase tracking-widest">Recommendation — </span>
+                  <span className="text-[13px] font-semibold text-ink">{interview.hiring_recommendation}</span>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Strengths + Concerns */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {interview.key_strengths?.length ? (
+              <Card title="Key Strengths" label="green">
+                <ul className="space-y-2.5">
                   {interview.key_strengths.map((s, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-[var(--text)]">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0 mt-0.5" />
+                    <li key={i} className="flex items-start gap-2.5 text-sm text-ink">
+                      <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0 mt-1.5" />
                       {s}
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
-            {interview.areas_of_concern && (
-              <div className="glass rounded-2xl p-5">
-                <h2 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                  <AlertTriangle className="w-3.5 h-3.5" /> Areas of Concern
-                </h2>
-                <ul className="space-y-2">
+              </Card>
+            ) : null}
+            {interview.areas_of_concern?.length ? (
+              <Card title="Areas of Concern" label="amber">
+                <ul className="space-y-2.5">
                   {interview.areas_of_concern.map((c, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-[var(--text)]">
-                      <XCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                    <li key={i} className="flex items-start gap-2.5 text-sm text-ink">
+                      <span className="w-1.5 h-1.5 rounded-full bg-warn shrink-0 mt-1.5" />
                       {c}
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
+              </Card>
+            ) : null}
           </div>
 
           {/* Follow-up questions */}
           {interview.recommended_follow_up_questions?.length ? (
-            <div className="glass rounded-2xl p-5">
-              <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                <MessageSquare className="w-3.5 h-3.5" />
-                Recommended Human Interview Questions
-              </h2>
-              <div className="space-y-2">
+            <Card title="Recommended Human Interview Questions">
+              <ol className="space-y-3">
                 {interview.recommended_follow_up_questions.map((q, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 rounded-xl bg-brand-500/5 border border-brand-500/15 px-4 py-3"
-                  >
-                    <span className="w-5 h-5 rounded-full bg-brand-500/20 text-brand-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
-                      {i + 1}
-                    </span>
-                    <p className="text-sm text-[var(--text)]">{q}</p>
-                  </div>
+                  <li key={i} className="flex items-start gap-3 text-sm text-ink">
+                    <span className="w-5 h-5 rounded-full border border-border flex items-center justify-center text-[11px] text-muted font-medium shrink-0 mt-0.5">{i + 1}</span>
+                    {q}
+                  </li>
                 ))}
-              </div>
-            </div>
+              </ol>
+            </Card>
           ) : null}
-        </>
-      )}
 
-      {/* Full transcript */}
-      {interview.transcript?.length > 0 && (
-        <div className="glass rounded-2xl p-5">
-          <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-4">
-            Full Interview Transcript
-          </h2>
-          <div className="space-y-5">
-            {interview.transcript.map((entry, i) => (
-              <div key={i}>
-                <p className="text-xs font-semibold text-brand-400 mb-1.5">
-                  Q{i + 1}. {entry.question}
-                </p>
-                <p className="text-sm text-[var(--text)] leading-relaxed bg-white/3 rounded-xl px-4 py-3 border border-[var(--border)]">
-                  {entry.answer}
-                </p>
-              </div>
-            ))}
+          {/* Transcript */}
+          {interview.transcript?.length > 0 && (
+            <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+              <button
+                onClick={() => setTranscriptOpen((v) => !v)}
+                className="w-full px-6 py-4 flex items-center justify-between text-sm font-medium text-ink hover:bg-[var(--bg)] transition-colors"
+              >
+                <span>View full interview transcript</span>
+                {transcriptOpen ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
+              </button>
+              {transcriptOpen && (
+                <div className="px-6 pb-6 space-y-5 border-t border-border pt-5">
+                  {interview.transcript.map((entry, i) => (
+                    <div key={i}>
+                      <p className="text-[13px] font-semibold text-muted mb-1.5">Q{i + 1}. {entry.question}</p>
+                      <p className="text-sm text-ink leading-relaxed bg-[var(--bg)] border border-border rounded-[4px] px-4 py-3">
+                        {entry.answer}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bottom actions */}
+          <div className="flex items-center gap-3">
+            {isScored && (
+              <Button variant="secondary" onClick={downloadPdf}>
+                <Download className="w-4 h-4" /> Download PDF Report
+              </Button>
+            )}
           </div>
-        </div>
+        </>
       )}
     </div>
   );
