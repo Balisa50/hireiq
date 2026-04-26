@@ -11,7 +11,7 @@ import Input from "@/components/ui/Input";
 
 const PASSWORD_REQUIREMENTS = [
   { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
-  { label: "At least one number", test: (p: string) => /\d/.test(p) },
+  { label: "At least one number",   test: (p: string) => /\d/.test(p) },
 ];
 
 export default function SignupPage() {
@@ -24,24 +24,16 @@ export default function SignupPage() {
   const [error, setError]             = useState("");
   const [isLoading, setIsLoading]     = useState(false);
 
-  const passwordMeta = PASSWORD_REQUIREMENTS.map((req) => ({
-    ...req,
-    passed: req.test(password),
-  }));
+  const passwordMeta  = PASSWORD_REQUIREMENTS.map((req) => ({ ...req, passed: req.test(password) }));
   const passwordValid = passwordMeta.every((r) => r.passed);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!companyName.trim() || !email.trim() || !password) return;
-      if (!passwordValid) {
-        setError("Password does not meet requirements.");
-        return;
-      }
-
+      if (!passwordValid) { setError("Password does not meet requirements."); return; }
       setIsLoading(true);
       setError("");
-
       try {
         await authAPI.signUp(email.trim().toLowerCase(), password, companyName.trim());
         await refreshProfile();
@@ -57,16 +49,14 @@ export default function SignupPage() {
 
   return (
     <div className="w-full max-w-sm animate-slide-up">
-      <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-white">Start hiring smarter</h1>
-        <p className="text-[var(--text-muted)] text-sm mt-1">
-          Free to try. No credit card required.
-        </p>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-ink">Start hiring smarter</h1>
+        <p className="text-sub text-sm mt-1">Free to try. No credit card required.</p>
       </div>
 
-      <div className="glass rounded-2xl p-6">
+      <div className="bg-white border border-border rounded-[4px] p-6">
         {error && (
-          <div className="flex items-start gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400 mb-5">
+          <div className="flex items-start gap-2 rounded-[4px] bg-red-50 border border-danger/20 px-4 py-3 text-sm text-danger mb-5">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             {error}
           </div>
@@ -74,7 +64,7 @@ export default function SignupPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Company Name"
+            label="Company name"
             type="text"
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
@@ -83,7 +73,7 @@ export default function SignupPage() {
             required
           />
           <Input
-            label="Work Email"
+            label="Work email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -102,17 +92,11 @@ export default function SignupPage() {
               required
             />
             {password.length > 0 && (
-              <div className="space-y-1.5 pt-1">
+              <div className="space-y-1 pt-1">
                 {passwordMeta.map((req) => (
-                  <div key={req.label} className="flex items-center gap-2 text-xs">
-                    <CheckCircle2
-                      className={`w-3.5 h-3.5 shrink-0 ${
-                        req.passed ? "text-green-400" : "text-[var(--text-dim)]"
-                      }`}
-                    />
-                    <span className={req.passed ? "text-green-400" : "text-[var(--text-dim)]"}>
-                      {req.label}
-                    </span>
+                  <div key={req.label} className="flex items-center gap-2 text-[13px]">
+                    <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${req.passed ? "text-success" : "text-muted"}`} />
+                    <span className={req.passed ? "text-success" : "text-muted"}>{req.label}</span>
                   </div>
                 ))}
               </div>
@@ -127,29 +111,21 @@ export default function SignupPage() {
             loadingText="Creating account..."
             disabled={!passwordValid && password.length > 0}
           >
-            Create Free Account
+            Create free account
           </Button>
         </form>
 
-        <p className="text-center text-xs text-[var(--text-dim)] mt-4">
-          By creating an account you agree to our{" "}
-          <Link href="/terms" className="underline hover:text-[var(--text-muted)]">
-            Terms
-          </Link>{" "}
-          and{" "}
-          <Link href="/privacy" className="underline hover:text-[var(--text-muted)]">
-            Privacy Policy
-          </Link>
-          .
+        <p className="text-center text-[13px] text-muted mt-4">
+          By signing up you agree to our{" "}
+          <Link href="/terms" className="underline hover:text-sub">Terms</Link>
+          {" "}and{" "}
+          <Link href="/privacy" className="underline hover:text-sub">Privacy Policy</Link>.
         </p>
       </div>
 
-      <p className="text-center text-sm text-[var(--text-muted)] mt-6">
+      <p className="text-center text-sm text-sub mt-6">
         Already have an account?{" "}
-        <Link
-          href="/login"
-          className="text-brand-400 font-semibold hover:text-brand-300 transition-colors"
-        >
+        <Link href="/login" className="text-ink font-medium underline underline-offset-2 hover:text-ink-2 transition-colors">
           Sign in
         </Link>
       </p>
