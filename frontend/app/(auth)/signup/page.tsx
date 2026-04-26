@@ -51,7 +51,7 @@ export default function SignupPage() {
     <div className="w-full max-w-sm animate-slide-up">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-ink">Start hiring smarter</h1>
-        <p className="text-sub text-sm mt-1">Free to try. No credit card required.</p>
+        <p className="text-sub text-sm mt-1">Set up in minutes. Cancel any time.</p>
       </div>
 
       <div className="bg-white border border-border rounded-[4px] p-6">

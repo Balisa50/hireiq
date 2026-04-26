@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     # Application
     environment: str = "development"
     frontend_url: str = "http://localhost:3000"
+    # Comma-separated list of extra allowed origins (optional)
+    allowed_origins: str = ""
     secret_key: str
 
     # Supabase
