@@ -511,8 +511,8 @@ export default function InterviewPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLTextAreaElement>(null);
   const lastShownTime  = useRef<number>(0); // for timestamp display logic
-  // Holds Google session that arrived before the auth screen was ready
-  const pendingOAuthRef = useRef<{ name: string; email: string } | null>(null);
+  // Holds Google session — state so changes re-trigger the drain effect
+  const [pendingOAuth, setPendingOAuth] = useState<{ name: string; email: string } | null>(null);
 
   // ── Load job info ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -555,13 +555,10 @@ export default function InterviewPage() {
           const email = session.user.email ?? "";
           if (!fullName || !email) return;
           setGoogleLoading(false);
-          // If auth screen is already visible, start immediately
-          if (screen === "auth") {
-            handleStartWithCredentials(fullName, email);
-          } else {
-            // Park it — will be picked up when auth screen mounts
-            pendingOAuthRef.current = { name: fullName, email };
-          }
+          // Always park in state — the drain effect below handles both
+          // cases: auth screen already visible, or not yet.
+          // (Can't check `screen` here — closure captures initial value.)
+          setPendingOAuth({ name: fullName, email });
         }
       }
     );
@@ -569,15 +566,17 @@ export default function InterviewPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Drain pending OAuth session when auth screen becomes ready ────────────
+  // ── Drain pending OAuth session whenever auth screen is ready OR session arrives ──
+  // Runs when screen becomes "auth" OR when pendingOAuth is set — whichever
+  // happens last. This fixes both race directions.
   useEffect(() => {
-    if (screen === "auth" && pendingOAuthRef.current && !interviewId) {
-      const { name, email } = pendingOAuthRef.current;
-      pendingOAuthRef.current = null;
+    if (screen === "auth" && pendingOAuth && !interviewId) {
+      const { name, email } = pendingOAuth;
+      setPendingOAuth(null);
       handleStartWithCredentials(name, email);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen]);
+  }, [screen, pendingOAuth]);
 
   // ── Scroll to bottom on new messages ──────────────────────────────────────
   useEffect(() => {
