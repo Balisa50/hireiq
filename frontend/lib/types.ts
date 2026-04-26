@@ -32,6 +32,40 @@ export interface GeneratedQuestion {
   what_it_reveals: string;
 }
 
+// ── Candidate requirements ────────────────────────────────────────────────────
+
+export interface CandidateRequirement {
+  id: string;
+  label: string;
+  type: "file" | "link";
+  preset_key?: string;  // e.g. "cv", "linkedin", "github"
+  required: boolean;
+}
+
+// ── Submitted materials ───────────────────────────────────────────────────────
+
+export interface SubmittedFile {
+  requirement_id: string;
+  label: string;
+  preset_key?: string;
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  submitted_at: string;
+  signed_url?: string | null;   // populated by backend on report fetch
+  extracted_text?: string | null;
+}
+
+export interface SubmittedLink {
+  requirement_id: string;
+  label: string;
+  preset_key?: string;
+  url: string;
+  submitted_at: string;
+}
+
+// ── Jobs ──────────────────────────────────────────────────────────────────────
+
 export interface Job {
   id: string;
   company_id: string;
@@ -43,6 +77,7 @@ export interface Job {
   question_count: number;
   focus_areas: string[];
   questions: GeneratedQuestion[];
+  candidate_requirements: CandidateRequirement[];
   interview_link_token: string;
   status: "active" | "closed";
   created_at: string;
@@ -62,6 +97,8 @@ export interface JobSummary {
   interview_link_token: string;
 }
 
+// ── Interviews ────────────────────────────────────────────────────────────────
+
 export interface TranscriptEntry {
   question_index: number;
   question: string;
@@ -72,6 +109,13 @@ export interface TranscriptEntry {
 export interface ScoreBreakdown {
   [focusArea: string]: number;
 }
+
+export type DocumentAlignment =
+  | "Strong alignment"
+  | "Moderate alignment"
+  | "Weak alignment"
+  | "Discrepancies found"
+  | "No documents submitted";
 
 export interface Interview {
   id: string;
@@ -87,6 +131,9 @@ export interface Interview {
   areas_of_concern: string[] | null;
   recommended_follow_up_questions: string[] | null;
   hiring_recommendation: string | null;
+  document_interview_alignment: DocumentAlignment | null;
+  submitted_files: SubmittedFile[];
+  submitted_links: SubmittedLink[];
   status: InterviewStatus;
   started_at: string;
   completed_at: string | null;
@@ -139,7 +186,10 @@ export interface JobPublicInfo {
   employment_type: string | null;
   question_count: number;
   custom_intro_message: string | null;
+  candidate_requirements: CandidateRequirement[];
 }
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 export const FOCUS_AREAS = [
   "Technical Skills",
@@ -155,9 +205,9 @@ export const FOCUS_AREAS = [
 export type FocusArea = (typeof FOCUS_AREAS)[number];
 
 export const EMPLOYMENT_TYPES = [
-  { value: "full_time", label: "Full Time" },
-  { value: "part_time", label: "Part Time" },
-  { value: "contract", label: "Contract" },
+  { value: "full_time",  label: "Full Time" },
+  { value: "part_time",  label: "Part Time" },
+  { value: "contract",   label: "Contract" },
   { value: "internship", label: "Internship" },
 ] as const;
 
@@ -168,3 +218,15 @@ export const HIRING_RECOMMENDATIONS = [
   "No",
   "Strong No",
 ] as const;
+
+// Preset candidate requirement options shown in the job creation form
+export const PRESET_REQUIREMENTS: Omit<CandidateRequirement, "required">[] = [
+  { id: "cv",         label: "CV / Resume",              type: "file", preset_key: "cv" },
+  { id: "cover_letter", label: "Cover Letter",           type: "file", preset_key: "cover_letter" },
+  { id: "certificates", label: "Certificates / Qualifications", type: "file", preset_key: "certificates" },
+  { id: "portfolio",  label: "Portfolio",                type: "file", preset_key: "portfolio" },
+  { id: "linkedin",   label: "LinkedIn Profile URL",     type: "link", preset_key: "linkedin" },
+  { id: "github",     label: "GitHub Profile URL",       type: "link", preset_key: "github" },
+  { id: "dribbble",   label: "Dribbble or Behance URL",  type: "link", preset_key: "dribbble" },
+  { id: "website",    label: "Personal Website URL",     type: "link", preset_key: "website" },
+];

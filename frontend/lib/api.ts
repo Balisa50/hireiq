@@ -7,6 +7,7 @@
 
 import type {
   AuthResponse,
+  CandidateRequirement,
   Company,
   DashboardStats,
   GeneratedQuestion,
@@ -15,10 +16,11 @@ import type {
   JobSummary,
   Job,
   CandidateSummary,
+  SubmittedFile,
   TranscriptEntry,
 } from "./types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE_URL  = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const API_TIMEOUT_MS = 60_000; // Render free tier needs up to 50s to cold-start
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -42,7 +44,7 @@ async function apiFetch<T>(
   requireAuth = true,
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeoutId  = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -51,9 +53,7 @@ async function apiFetch<T>(
 
   if (requireAuth) {
     const token = getStoredAccessToken();
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
+    if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
   try {
@@ -68,45 +68,78 @@ async function apiFetch<T>(
     if (!response.ok) {
       let errorMessage = "Something went wrong. Please try again.";
       try {
-        const errorBody = await response.json() as { error?: string; detail?: string | Array<{ msg: string }> };
+        const errorBody = await response.json() as {
+          error?: string;
+          detail?: string | Array<{ msg: string }>;
+        };
         if (typeof errorBody.detail === "string") {
           errorMessage = errorBody.detail;
         } else if (Array.isArray(errorBody.detail) && errorBody.detail.length > 0) {
-          // FastAPI 422 validation errors return an array
           errorMessage = errorBody.detail[0].msg ?? errorMessage;
         } else if (typeof errorBody.error === "string") {
           errorMessage = errorBody.error;
         }
-      } catch {
-        // JSON parse failed — use default message
-      }
+      } catch { /* JSON parse failed — use default */ }
 
       if (response.status === 401) {
         clearStoredToken();
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
+        if (typeof window !== "undefined") window.location.href = "/login";
       }
 
       throw new Error(errorMessage);
     }
 
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
+    if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   } catch (error) {
     clearTimeout(timeoutId);
-
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        "The request timed out. Please check your connection and try again.",
-      );
+      throw new Error("The request timed out. Please check your connection and try again.");
     }
-
     throw error;
   }
+}
+
+/**
+ * Upload a file via multipart form — does NOT set Content-Type so the browser
+ * can inject the correct multipart boundary automatically.
+ */
+async function apiUploadFile<T>(
+  path: string,
+  formData: FormData,
+  onProgress?: (pct: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE_URL}${path}`);
+    // No Content-Type header — XHR sets it with the boundary
+
+    if (onProgress) {
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      });
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { resolve(undefined as T); }
+      } else {
+        let msg = "Upload failed. Please try again.";
+        try {
+          const body = JSON.parse(xhr.responseText) as { detail?: string };
+          if (typeof body.detail === "string") msg = body.detail;
+        } catch { /* noop */ }
+        reject(new Error(msg));
+      }
+    };
+
+    xhr.onerror  = () => reject(new Error("Network error during upload."));
+    xhr.ontimeout = () => reject(new Error("Upload timed out."));
+    xhr.timeout  = API_TIMEOUT_MS;
+
+    xhr.send(formData);
+  });
 }
 
 // ── Auth API ──────────────────────────────────────────────────────────────────
@@ -123,8 +156,7 @@ export const authAPI = {
       return response;
     }
 
-    // Supabase returned no session (email confirmation setting).
-    // Immediately sign in to obtain a real token.
+    // Supabase returned no session — immediately sign in to obtain a real token.
     const loginResponse = await apiFetch<AuthResponse>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
@@ -142,17 +174,11 @@ export const authAPI = {
     return response;
   },
 
-  logout(): void {
-    clearStoredToken();
-  },
+  logout(): void { clearStoredToken(); },
 
-  isAuthenticated(): boolean {
-    return !!getStoredAccessToken();
-  },
+  isAuthenticated(): boolean { return !!getStoredAccessToken(); },
 
-  getToken(): string | null {
-    return getStoredAccessToken();
-  },
+  getToken(): string | null { return getStoredAccessToken(); },
 };
 
 // ── Company API ───────────────────────────────────────────────────────────────
@@ -193,6 +219,7 @@ export const jobsAPI = {
     job_description: string;
     question_count: number;
     focus_areas: string[];
+    candidate_requirements?: CandidateRequirement[];
   }): Promise<{ questions: GeneratedQuestion[] }> {
     return apiFetch<{ questions: GeneratedQuestion[] }>("/api/jobs/generate-questions", {
       method: "POST",
@@ -209,6 +236,7 @@ export const jobsAPI = {
     question_count: number;
     focus_areas: string[];
     questions: GeneratedQuestion[];
+    candidate_requirements?: CandidateRequirement[];
   }): Promise<Job> {
     return apiFetch<Job>("/api/jobs/", {
       method: "POST",
@@ -220,10 +248,10 @@ export const jobsAPI = {
     return apiFetch<void>(`/api/jobs/${jobId}/close`, { method: "PATCH" });
   },
 
-  async updateJobStatus(jobId: string, status: "active" | "closed"): Promise<void> {
+  async updateJobStatus(jobId: string, newStatus: "active" | "closed"): Promise<void> {
     return apiFetch<void>(`/api/jobs/${jobId}/status`, {
       method: "PATCH",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status: newStatus }),
     });
   },
 
@@ -246,10 +274,10 @@ export const candidatesAPI = {
     max_score?: number;
   }): Promise<CandidateSummary[]> {
     const params = new URLSearchParams();
-    if (filters?.job_id) params.set("job_id", filters.job_id);
-    if (filters?.status) params.set("status_filter", filters.status);
-    if (filters?.min_score !== undefined) params.set("min_score", String(filters.min_score));
-    if (filters?.max_score !== undefined) params.set("max_score", String(filters.max_score));
+    if (filters?.job_id)                     params.set("job_id",        filters.job_id);
+    if (filters?.status)                     params.set("status_filter", filters.status);
+    if (filters?.min_score !== undefined)    params.set("min_score",     String(filters.min_score));
+    if (filters?.max_score !== undefined)    params.set("max_score",     String(filters.max_score));
     const query = params.toString() ? `?${params.toString()}` : "";
     return apiFetch<CandidateSummary[]>(`/api/interviews/${query}`);
   },
@@ -258,10 +286,7 @@ export const candidatesAPI = {
     return apiFetch<Interview>(`/api/interviews/${interviewId}`);
   },
 
-  async updateCandidateStatus(
-    interviewId: string,
-    newStatus: string,
-  ): Promise<void> {
+  async updateCandidateStatus(interviewId: string, newStatus: string): Promise<void> {
     return apiFetch<void>(`/api/interviews/${interviewId}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status: newStatus }),
@@ -289,14 +314,59 @@ export const interviewAPI = {
     linkToken: string,
     candidateName: string,
     candidateEmail: string,
-  ): Promise<{ interview_id: string; transcript: TranscriptEntry[]; resumed: boolean }> {
-    return apiFetch<{ interview_id: string; transcript: TranscriptEntry[]; resumed: boolean }>(
+  ): Promise<{
+    interview_id: string;
+    transcript: TranscriptEntry[];
+    submitted_files: SubmittedFile[];
+    submitted_links: Array<{ requirement_id: string; label: string; url: string; submitted_at: string }>;
+    resumed: boolean;
+  }> {
+    return apiFetch(
       `/api/interviews/public/start?link_token=${linkToken}`,
       {
         method: "POST",
+        body: JSON.stringify({ candidate_name: candidateName, candidate_email: candidateEmail }),
+      },
+      false,
+    );
+  },
+
+  /**
+   * Upload a file on behalf of the candidate.
+   * Uses XHR so we get real upload progress events.
+   */
+  async uploadFile(
+    interviewId: string,
+    requirementId: string,
+    requirementLabel: string,
+    presetKey: string,
+    file: File,
+    onProgress?: (pct: number) => void,
+  ): Promise<{ requirement_id: string; file_name: string; file_size: number; file_path: string }> {
+    const fd = new FormData();
+    fd.append("interview_id",      interviewId);
+    fd.append("requirement_id",    requirementId);
+    fd.append("requirement_label", requirementLabel);
+    fd.append("preset_key",        presetKey);
+    fd.append("file",              file, file.name);
+    return apiUploadFile("/api/interviews/public/upload-file", fd, onProgress);
+  },
+
+  async submitLink(
+    interviewId: string,
+    requirementId: string,
+    requirementLabel: string,
+    url: string,
+  ): Promise<void> {
+    return apiFetch<void>(
+      "/api/interviews/public/submit-link",
+      {
+        method: "POST",
         body: JSON.stringify({
-          candidate_name: candidateName,
-          candidate_email: candidateEmail,
+          interview_id:      interviewId,
+          requirement_id:    requirementId,
+          requirement_label: requirementLabel,
+          url,
         }),
       },
       false,
@@ -314,7 +384,7 @@ export const interviewAPI = {
       {
         method: "POST",
         body: JSON.stringify({
-          interview_id: interviewId,
+          interview_id:   interviewId,
           question_index: questionIndex,
           question,
           answer,
@@ -336,9 +406,9 @@ export const interviewAPI = {
         method: "POST",
         body: JSON.stringify({
           interview_id: interviewId,
-          job_id: jobId,
+          job_id:       jobId,
           transcript,
-          last_answer: lastAnswer,
+          last_answer:  lastAnswer,
         }),
       },
       false,
@@ -346,10 +416,7 @@ export const interviewAPI = {
     return response.question;
   },
 
-  async submitInterview(
-    interviewId: string,
-    transcript: TranscriptEntry[],
-  ): Promise<void> {
+  async submitInterview(interviewId: string, transcript: TranscriptEntry[]): Promise<void> {
     return apiFetch<void>(
       "/api/interviews/public/submit",
       {
