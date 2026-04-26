@@ -42,11 +42,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen bg-[var(--bg)]">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar — gives the fixed hamburger a proper home so it never overlaps page titles */}
-        <div className="md:hidden sticky top-0 z-30 flex items-center h-14 px-5 bg-white border-b border-border shrink-0">
-          <div className="w-9 shrink-0" />
-          <span className="ml-2 text-[15px] font-semibold tracking-tight text-ink">HireIQ</span>
-        </div>
+        {/* Mobile top bar — clears the fixed hamburger so page titles are never clipped */}
+        <div className="md:hidden sticky top-0 z-30 h-14 bg-white border-b border-border shrink-0" />
         <main className="flex-1 px-6 sm:px-8 lg:px-10 py-8 md:py-10 max-w-5xl w-full mx-auto">
           {children}
         </main>
