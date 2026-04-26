@@ -511,6 +511,8 @@ export default function InterviewPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLTextAreaElement>(null);
   const lastShownTime  = useRef<number>(0); // for timestamp display logic
+  // Holds Google session that arrived before the auth screen was ready
+  const pendingOAuthRef = useRef<{ name: string; email: string } | null>(null);
 
   // ── Load job info ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -537,25 +539,43 @@ export default function InterviewPage() {
     if ((screen as string) === "welcome" && jobInfo) setScreen("auth");
   }, [screen, jobInfo]);
 
-  // ── Supabase OAuth state change ────────────────────────────────────────────
+  // ── Supabase OAuth state change ───────────────────────────────────────────
+  // Run once. Supabase v2 PKCE flow fires SIGNED_IN during code-exchange on
+  // page load — often before screen reaches "auth". We park the session in a
+  // ref and process it as soon as the auth screen is ready.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session && screen === "auth") {
+      (event, session) => {
+        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session && !interviewId) {
           const fullName = (
             session.user.user_metadata?.full_name
             ?? session.user.user_metadata?.name
             ?? ""
           ) as string;
           const email = session.user.email ?? "";
-          if (fullName && email) {
-            setGoogleLoading(false);
-            await handleStartWithCredentials(fullName, email);
+          if (!fullName || !email) return;
+          setGoogleLoading(false);
+          // If auth screen is already visible, start immediately
+          if (screen === "auth") {
+            handleStartWithCredentials(fullName, email);
+          } else {
+            // Park it — will be picked up when auth screen mounts
+            pendingOAuthRef.current = { name: fullName, email };
           }
         }
       }
     );
     return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Drain pending OAuth session when auth screen becomes ready ────────────
+  useEffect(() => {
+    if (screen === "auth" && pendingOAuthRef.current && !interviewId) {
+      const { name, email } = pendingOAuthRef.current;
+      pendingOAuthRef.current = null;
+      handleStartWithCredentials(name, email);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
 
