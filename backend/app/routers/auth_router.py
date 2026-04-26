@@ -66,13 +66,11 @@ async def sign_up_company(request: CompanySignupRequest) -> AuthResponse:
     except HTTPException:
         raise
     except Exception as error:
-        logger.error(
-            "Signup error",
-            extra={"email": request.email[:3] + "***", "error": str(error)},
-        )
+        error_str = str(error)
+        logger.error("Signup error for %s***: %s", request.email[:3], error_str)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Sign up failed. This email address may already be registered.",
+            detail=f"Sign up failed: {error_str}",
         ) from error
 
 
@@ -113,13 +111,11 @@ async def log_in_company(request: CompanyLoginRequest) -> AuthResponse:
     except HTTPException:
         raise
     except Exception as error:
-        logger.error(
-            "Login error",
-            extra={"email": request.email[:3] + "***", "error": str(error)},
-        )
+        error_str = str(error)
+        logger.error("Login error for %s***: %s", request.email[:3], error_str)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Login failed. Please check your credentials.",
+            detail=f"Login failed: {error_str}",
         ) from error
 
 
