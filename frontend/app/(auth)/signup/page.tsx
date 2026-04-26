@@ -16,7 +16,7 @@ const PASSWORD_REQUIREMENTS = [
   { label: "One uppercase letter",          test: (p: string) => /[A-Z]/.test(p) },
   { label: "One lowercase letter",          test: (p: string) => /[a-z]/.test(p) },
   { label: "One number",                   test: (p: string) => /\d/.test(p) },
-  { label: "One special character",         test: (p: string) => [...p].some((c) => SPECIAL.has(c)) },
+  { label: "One special character",         test: (p: string) => p.split("").some((c) => SPECIAL.has(c)) },
 ];
 
 export default function SignupPage() {
