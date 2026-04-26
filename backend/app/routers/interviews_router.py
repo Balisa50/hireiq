@@ -340,7 +340,7 @@ async def list_candidates(
         supabase.table("interviews")
         .select("*, jobs(title)")
         .eq("company_id", company_id)
-        .order("overall_score", desc=True, nulls_first=False)
+        .order("overall_score", desc=True)
     )
 
     if job_id:
