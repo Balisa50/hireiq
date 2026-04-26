@@ -57,11 +57,38 @@ class GetNextQuestionRequest(BaseModel):
     @classmethod
     def validate_last_answer(cls, answer: str) -> str:
         answer = answer.strip()
-        if len(answer) < 50:
+        # Empty last_answer is valid for the first question (no prior answer yet)
+        if answer and len(answer) < 50:
             raise ValueError("Answer must be at least 50 characters.")
         if len(answer) > 5_000:
             raise ValueError("Answer must be 5,000 characters or fewer.")
         return answer
+
+
+class SubmitLinkRequest(BaseModel):
+    """Candidate submitting a URL (LinkedIn, GitHub, portfolio, etc.)."""
+    interview_id: UUID
+    requirement_id: str
+    requirement_label: str
+    url: str
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, url: str) -> str:
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            raise ValueError("URL must start with http:// or https://")
+        if len(url) > 2048:
+            raise ValueError("URL is too long.")
+        return url
+
+    @field_validator("requirement_id", "requirement_label")
+    @classmethod
+    def validate_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Field is required.")
+        return v
 
 
 class SubmitInterviewRequest(BaseModel):
@@ -77,6 +104,7 @@ class CandidateAssessment(BaseModel):
     areas_of_concern: list[str]
     recommended_follow_up_questions: list[str]
     hiring_recommendation: str
+    document_interview_alignment: Optional[str] = None
 
 
 class InterviewResponse(BaseModel):
@@ -93,6 +121,9 @@ class InterviewResponse(BaseModel):
     areas_of_concern: Optional[list[str]] = None
     recommended_follow_up_questions: Optional[list[str]] = None
     hiring_recommendation: Optional[str] = None
+    document_interview_alignment: Optional[str] = None
+    submitted_files: list[dict] = []
+    submitted_links: list[dict] = []
     status: str
     started_at: datetime
     completed_at: Optional[datetime] = None
@@ -134,3 +165,4 @@ class JobPublicInfo(BaseModel):
     employment_type: Optional[str] = None
     question_count: int
     custom_intro_message: Optional[str] = None
+    candidate_requirements: list[dict] = []
