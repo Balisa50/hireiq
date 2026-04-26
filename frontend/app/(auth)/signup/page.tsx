@@ -9,9 +9,14 @@ import { useAuth } from "@/lib/auth-context";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
+const SPECIAL = new Set("!@#$%^&*()_+-=[]{}|;':\",./<>?");
+
 const PASSWORD_REQUIREMENTS = [
-  { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
-  { label: "At least one number",   test: (p: string) => /\d/.test(p) },
+  { label: "At least 12 characters",       test: (p: string) => p.length >= 12 },
+  { label: "One uppercase letter",          test: (p: string) => /[A-Z]/.test(p) },
+  { label: "One lowercase letter",          test: (p: string) => /[a-z]/.test(p) },
+  { label: "One number",                   test: (p: string) => /\d/.test(p) },
+  { label: "One special character",         test: (p: string) => [...p].some((c) => SPECIAL.has(c)) },
 ];
 
 export default function SignupPage() {
