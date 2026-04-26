@@ -79,13 +79,18 @@ async def generate_questions_for_job(
 ) -> dict:
     """
     Generate AI interview questions for a job description.
-    Does NOT save the job — just returns the generated questions for review.
+    Passes candidate_requirements to Groq so it generates questions
+    that explicitly reference those submitted materials.
+    Does NOT save the job — returns generated questions for review.
     """
+    req_dicts = [r.model_dump() for r in request.candidate_requirements]
+
     questions = await generate_interview_questions(
         job_title=request.title,
         job_description=request.job_description,
         focus_areas=request.focus_areas,
         question_count=request.question_count,
+        candidate_requirements=req_dicts if req_dicts else None,
     )
 
     if not questions:
@@ -107,6 +112,7 @@ async def publish_job(
 ) -> JobResponse:
     """
     Save and publish a job with its AI-generated (and optionally edited) questions.
+    Stores candidate_requirements so the interview flow knows what to collect.
     Returns the job with its unique interview link token.
     """
     try:
@@ -120,6 +126,7 @@ async def publish_job(
             "question_count": request.question_count,
             "focus_areas": request.focus_areas,
             "questions": [q.model_dump() for q in request.questions],
+            "candidate_requirements": [r.model_dump() for r in request.candidate_requirements],
             "status": "active",
         }
 
@@ -149,7 +156,7 @@ async def get_job_detail(
     job_id: str,
     company_id: str = Depends(get_authenticated_company_id),
 ) -> JobResponse:
-    """Return full job details including questions and interview statistics."""
+    """Return full job details including questions, requirements, and interview statistics."""
     try:
         result = supabase.table("jobs").select("*").eq("id", job_id).execute()
 

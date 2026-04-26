@@ -3,10 +3,10 @@
 import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Wand2, Grip, Trash2, Copy, Check, AlertCircle, CheckCircle2, Plus } from "lucide-react";
+import { Wand2, Grip, Trash2, Copy, Check, AlertCircle, CheckCircle2, Plus, FileText, Link2, X } from "lucide-react";
 import { jobsAPI } from "@/lib/api";
-import type { GeneratedQuestion } from "@/lib/types";
-import { FOCUS_AREAS, EMPLOYMENT_TYPES } from "@/lib/types";
+import type { GeneratedQuestion, CandidateRequirement } from "@/lib/types";
+import { FOCUS_AREAS, EMPLOYMENT_TYPES, PRESET_REQUIREMENTS } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
@@ -35,10 +35,33 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
+// ── Required / Optional pill toggle ──────────────────────────────────────────
+function RequiredToggle({ required, onChange }: { required: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center bg-[var(--bg)] border border-border rounded-[4px] text-[12px] font-medium overflow-hidden shrink-0">
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        className={`px-2.5 py-1 transition-colors ${required ? "bg-ink text-white" : "text-muted hover:text-sub"}`}
+      >
+        Required
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        className={`px-2.5 py-1 transition-colors ${!required ? "bg-ink text-white" : "text-muted hover:text-sub"}`}
+      >
+        Optional
+      </button>
+    </div>
+  );
+}
+
 export default function NewJobPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("form");
 
+  // Job fields
   const [title, setTitle]               = useState("");
   const [department, setDepartment]     = useState("");
   const [location, setLocation]         = useState("");
@@ -47,6 +70,15 @@ export default function NewJobPage() {
   const [questionCount, setQuestionCount]   = useState(8);
   const [focusAreas, setFocusAreas] = useState<string[]>(["Technical Skills", "Problem Solving", "Communication"]);
 
+  // Candidate requirements
+  // activePresets: set of preset IDs the company has toggled on
+  const [activePresets, setActivePresets] = useState<Set<string>>(new Set());
+  // presetRequired: per-preset required/optional state
+  const [presetRequired, setPresetRequired] = useState<Record<string, boolean>>({});
+  // customRequirements: company-defined custom items
+  const [customReqs, setCustomReqs] = useState<Array<{ id: string; label: string; type: "file" | "link"; required: boolean }>>([]);
+
+  // Questions
   const [questions, setQuestions]             = useState<GeneratedQuestion[]>([]);
   const [editingQuestion, setEditingQuestion] = useState<string | null>(null);
   const [isGenerating, setIsGenerating]       = useState(false);
@@ -57,6 +89,46 @@ export default function NewJobPage() {
   const [linkCopied, setLinkCopied]           = useState(false);
 
   const wc = wordCount(jobDescription);
+
+  // ── Build the requirements array from presets + customs ───────────────────
+  const buildRequirements = useCallback((): CandidateRequirement[] => {
+    const result: CandidateRequirement[] = [];
+    for (const preset of PRESET_REQUIREMENTS) {
+      if (activePresets.has(preset.id)) {
+        result.push({
+          ...preset,
+          required: presetRequired[preset.id] ?? true,
+        });
+      }
+    }
+    for (const c of customReqs) {
+      if (c.label.trim()) result.push(c);
+    }
+    return result;
+  }, [activePresets, presetRequired, customReqs]);
+
+  const togglePreset = useCallback((id: string) => {
+    setActivePresets((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const addCustomReq = useCallback(() => {
+    setCustomReqs((p) => [
+      ...p,
+      { id: `custom-${Date.now()}`, label: "", type: "file", required: true },
+    ]);
+  }, []);
+
+  const updateCustomReq = useCallback((id: string, updates: Partial<{ label: string; type: "file" | "link"; required: boolean }>) => {
+    setCustomReqs((p) => p.map((r) => r.id === id ? { ...r, ...updates } : r));
+  }, []);
+
+  const removeCustomReq = useCallback((id: string) => {
+    setCustomReqs((p) => p.filter((r) => r.id !== id));
+  }, []);
 
   const toggleFocusArea = useCallback((area: string) => {
     setFocusAreas((prev) => prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]);
@@ -77,24 +149,39 @@ export default function NewJobPage() {
     if (!validate()) return;
     setIsGenerating(true); setApiError("");
     try {
-      const r = await jobsAPI.generateQuestions({ title, department, location, employment_type: employmentType, job_description: jobDescription, question_count: questionCount, focus_areas: focusAreas });
+      const r = await jobsAPI.generateQuestions({
+        title, department, location,
+        employment_type: employmentType,
+        job_description: jobDescription,
+        question_count: questionCount,
+        focus_areas: focusAreas,
+        candidate_requirements: buildRequirements(),
+      });
       setQuestions(r.questions);
       setStep("questions");
     } catch (e) {
       setApiError(e instanceof Error ? e.message : "Failed to generate questions.");
     } finally { setIsGenerating(false); }
-  }, [validate, title, department, location, employmentType, jobDescription, questionCount, focusAreas]);
+  }, [validate, title, department, location, employmentType, jobDescription, questionCount, focusAreas, buildRequirements]);
 
   const handlePublish = useCallback(async () => {
     setIsPublishing(true); setApiError("");
     try {
-      const job = await jobsAPI.publishJob({ title, department, location, employment_type: employmentType, job_description: jobDescription, question_count: questionCount, focus_areas: focusAreas, questions });
+      const job = await jobsAPI.publishJob({
+        title, department, location,
+        employment_type: employmentType,
+        job_description: jobDescription,
+        question_count: questionCount,
+        focus_areas: focusAreas,
+        questions,
+        candidate_requirements: buildRequirements(),
+      });
       setPublishedToken(job.interview_link_token);
       setStep("published");
     } catch (e) {
       setApiError(e instanceof Error ? e.message : "Failed to publish job.");
     } finally { setIsPublishing(false); }
-  }, [title, department, location, employmentType, jobDescription, questionCount, focusAreas, questions]);
+  }, [title, department, location, employmentType, jobDescription, questionCount, focusAreas, questions, buildRequirements]);
 
   const copyLink = useCallback(async () => {
     await navigator.clipboard.writeText(jobsAPI.buildInterviewLink(publishedToken));
@@ -124,22 +211,19 @@ export default function NewJobPage() {
             Share this link on LinkedIn, your careers page, or email it directly.
             Candidates click and start their interview immediately — no account needed.
           </p>
-
           <div className="flex items-center gap-2 mb-4">
-            <input
-              readOnly
-              value={link}
-              onClick={(e) => (e.target as HTMLInputElement).select()}
-              className="flex-1 font-mono text-[13px] text-ink bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2.5 outline-none cursor-pointer"
-            />
+            <input readOnly value={link} onClick={(e) => (e.target as HTMLInputElement).select()}
+              className="flex-1 font-mono text-[13px] text-ink bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2.5 outline-none cursor-pointer" />
             <Button variant="secondary" size="sm" onClick={copyLink}>
               {linkCopied ? <><Check className="w-3.5 h-3.5 text-success" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
             </Button>
           </div>
-
           <div className="flex items-center justify-center gap-6 text-[13px] mt-4">
-            <Link href={`/jobs`} className="text-sub hover:text-ink transition-colors">View this job</Link>
-            <button onClick={() => { setStep("form"); setTitle(""); setDepartment(""); setLocation(""); setJobDescription(""); setQuestions([]); setPublishedToken(""); }} className="text-sub hover:text-ink transition-colors">Post another job</button>
+            <Link href="/jobs" className="text-sub hover:text-ink transition-colors">View this job</Link>
+            <button onClick={() => {
+              setStep("form"); setTitle(""); setDepartment(""); setLocation(""); setJobDescription("");
+              setQuestions([]); setPublishedToken(""); setActivePresets(new Set()); setCustomReqs([]);
+            }} className="text-sub hover:text-ink transition-colors">Post another job</button>
           </div>
         </div>
       </div>
@@ -277,6 +361,92 @@ export default function NewJobPage() {
           </div>
           <p className="text-[13px] text-muted">{focusAreas.length} area{focusAreas.length !== 1 ? "s" : ""} selected</p>
         </div>
+      </Card>
+
+      {/* ── Candidate requirements ────────────────────────────────────────── */}
+      <Card title="Candidate requirements">
+        <p className="text-[13px] text-sub -mt-2">
+          Choose what candidates must provide before or during the interview.
+          The AI will generate questions that reference these materials.
+        </p>
+
+        {/* Presets */}
+        <div className="space-y-2">
+          {PRESET_REQUIREMENTS.map((preset) => {
+            const active = activePresets.has(preset.id);
+            return (
+              <div key={preset.id}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-[4px] border transition-colors ${active ? "bg-white border-ink" : "bg-[var(--bg)] border-border"}`}>
+                {/* Toggle checkbox */}
+                <button type="button" onClick={() => togglePreset(preset.id)}
+                  className={`w-4 h-4 rounded-[2px] border-2 flex items-center justify-center shrink-0 transition-colors ${active ? "bg-ink border-ink" : "border-border bg-white"}`}>
+                  {active && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                </button>
+
+                {/* Icon */}
+                {preset.type === "file"
+                  ? <FileText className="w-3.5 h-3.5 text-muted shrink-0" />
+                  : <Link2 className="w-3.5 h-3.5 text-muted shrink-0" />}
+
+                <span className={`text-[13px] flex-1 ${active ? "text-ink font-medium" : "text-sub"}`}>
+                  {preset.label}
+                </span>
+
+                {/* Required / Optional toggle — only shown when active */}
+                {active && (
+                  <RequiredToggle
+                    required={presetRequired[preset.id] ?? true}
+                    onChange={(v) => setPresetRequired((p) => ({ ...p, [preset.id]: v }))}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Custom requirements */}
+        {customReqs.length > 0 && (
+          <div className="space-y-2 pt-1">
+            {customReqs.map((req) => (
+              <div key={req.id} className="flex items-center gap-2 bg-white border border-ink rounded-[4px] px-3 py-2">
+                <input
+                  value={req.label}
+                  onChange={(e) => updateCustomReq(req.id, { label: e.target.value })}
+                  placeholder="e.g. Writing sample"
+                  className="flex-1 text-[13px] text-ink bg-transparent outline-none placeholder:text-muted"
+                />
+                <select
+                  value={req.type}
+                  onChange={(e) => updateCustomReq(req.id, { type: e.target.value as "file" | "link" })}
+                  className="text-[12px] text-sub bg-[var(--bg)] border border-border rounded-[4px] px-2 py-1 outline-none cursor-pointer"
+                >
+                  <option value="file">File upload</option>
+                  <option value="link">Link</option>
+                </select>
+                <RequiredToggle
+                  required={req.required}
+                  onChange={(v) => updateCustomReq(req.id, { required: v })}
+                />
+                <button type="button" onClick={() => removeCustomReq(req.id)}
+                  className="p-1 text-muted hover:text-danger transition-colors shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button type="button" onClick={addCustomReq}
+          className="text-[13px] text-sub hover:text-ink transition-colors flex items-center gap-1.5">
+          <Plus className="w-3.5 h-3.5" /> Add custom requirement
+        </button>
+
+        {buildRequirements().length > 0 && (
+          <p className="text-[12px] text-muted">
+            {buildRequirements().filter((r) => r.required).length} required ·{" "}
+            {buildRequirements().filter((r) => !r.required).length} optional
+          </p>
+        )}
       </Card>
 
       <Button className="w-full" size="lg" onClick={handleGenerate} isLoading={isGenerating} loadingText="Generating questions…">

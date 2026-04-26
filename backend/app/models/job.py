@@ -3,7 +3,7 @@ Pydantic models for job-related requests and responses.
 """
 
 from pydantic import BaseModel, field_validator
-from typing import Optional
+from typing import Optional, Literal
 from uuid import UUID
 from datetime import datetime
 
@@ -19,6 +19,15 @@ VALID_FOCUS_AREAS = {
     "Experience Depth",
     "Situational Judgement",
 }
+
+
+class CandidateRequirement(BaseModel):
+    """A single document or link requirement companies set for candidates."""
+    id: str
+    label: str
+    type: Literal["file", "link"]
+    preset_key: Optional[str] = None   # e.g. "cv", "linkedin", "github"
+    required: bool = True
 
 
 class GeneratedQuestion(BaseModel):
@@ -37,6 +46,7 @@ class CreateJobRequest(BaseModel):
     job_description: str
     question_count: int = 8
     focus_areas: list[str]
+    candidate_requirements: list[CandidateRequirement] = []
 
     @field_validator("title")
     @classmethod
@@ -94,6 +104,13 @@ class CreateJobRequest(BaseModel):
             raise ValueError(f"Employment type must be one of: {VALID_EMPLOYMENT_TYPES}")
         return employment_type
 
+    @field_validator("candidate_requirements")
+    @classmethod
+    def validate_requirements(cls, reqs: list[CandidateRequirement]) -> list[CandidateRequirement]:
+        if len(reqs) > 20:
+            raise ValueError("Maximum 20 candidate requirements allowed.")
+        return reqs
+
 
 class PublishJobRequest(BaseModel):
     title: str
@@ -104,6 +121,7 @@ class PublishJobRequest(BaseModel):
     question_count: int
     focus_areas: list[str]
     questions: list[GeneratedQuestion]
+    candidate_requirements: list[CandidateRequirement] = []
 
     @field_validator("questions")
     @classmethod
@@ -126,6 +144,7 @@ class JobResponse(BaseModel):
     question_count: int
     focus_areas: list[str]
     questions: list[dict]
+    candidate_requirements: list[dict] = []
     interview_link_token: UUID
     status: str
     created_at: datetime
