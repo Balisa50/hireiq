@@ -42,7 +42,7 @@ function JobRow({ job }: { job: JobSummary }) {
   }, [job.interview_link_token]);
 
   return (
-    <div className="grid grid-cols-[2fr_1fr_80px_80px_100px_120px] items-center gap-4 px-5 py-3.5 border-b border-border last:border-b-0 hover:bg-[var(--bg)] transition-colors cursor-pointer group">
+    <div className="grid grid-cols-[2fr_1fr_80px_80px_100px_120px] items-center gap-4 px-5 py-3.5 border-b border-border last:border-b-0 hover:bg-[var(--bg)] transition-colors cursor-pointer group min-w-[640px]">
       {/* Position */}
       <div className="min-w-0">
         <p className="text-sm font-semibold text-ink truncate">{job.title}</p>
@@ -125,8 +125,9 @@ export default function JobsPage() {
       )}
 
       <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+        <div className="overflow-x-auto">
         {/* Table header */}
-        <div className="grid grid-cols-[2fr_1fr_80px_80px_100px_120px] gap-4 px-5 py-3 bg-[var(--bg)] border-b border-border">
+        <div className="grid grid-cols-[2fr_1fr_80px_80px_100px_120px] gap-4 px-5 py-3 bg-[var(--bg)] border-b border-border min-w-[640px]">
           {["Position", "Department", "Candidates", "Avg Score", "Status", ""].map((h, i) => (
             <span key={i} className="text-[11px] font-semibold text-muted uppercase tracking-wide">{h}</span>
           ))}
@@ -151,6 +152,7 @@ export default function JobsPage() {
         ) : (
           jobs.map((job) => <JobRow key={job.id} job={job} />)
         )}
+        </div>{/* /overflow-x-auto */}
       </div>
     </div>
   );
