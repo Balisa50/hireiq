@@ -8,6 +8,30 @@ import type { Interview } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Skeleton from "@/components/ui/Skeleton";
 
+// ── Markdown stripper for transcript answers ──────────────────────────────────
+
+function stripMarkdown(text: string): string {
+  return text
+    // Horizontal rules / separators
+    .replace(/^-{3,}\s*$/gm, "")
+    // ATX headings (#, ##, etc.)
+    .replace(/^#{1,6}\s+/gm, "")
+    // Blockquotes
+    .replace(/^>\s?/gm, "")
+    // Bold + italic (**text**, *text*, __text__, _text_)
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    // Inline code
+    .replace(/`([^`]+)`/g, "$1")
+    // Ordered lists (1. 2. etc.) — keep text, remove numbering prefix
+    .replace(/^\s*\d+\.\s+/gm, "")
+    // Unordered lists (- * +)
+    .replace(/^\s*[-*+]\s+/gm, "")
+    // Collapse 3+ consecutive blank lines to 2
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // ── Score ring (SVG animated) ─────────────────────────────────────────────────
 
 function ScoreRing({ score }: { score: number }) {
@@ -305,8 +329,8 @@ export default function CandidateReportPage() {
                   {interview.transcript.map((entry, i) => (
                     <div key={i}>
                       <p className="text-[13px] font-semibold text-muted mb-1.5">Q{i + 1}. {entry.question}</p>
-                      <p className="text-sm text-ink leading-relaxed bg-[var(--bg)] border border-border rounded-[4px] px-4 py-3">
-                        {entry.answer}
+                      <p className="text-sm text-ink leading-relaxed bg-[var(--bg)] border border-border rounded-[4px] px-4 py-3 whitespace-pre-wrap">
+                        {stripMarkdown(entry.answer)}
                       </p>
                     </div>
                   ))}
