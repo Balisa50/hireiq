@@ -155,6 +155,19 @@ class UpdateCandidateStatusRequest(BaseModel):
         return status
 
 
+class SendMessageRequest(BaseModel):
+    """Candidate sends a message in the conversational interview."""
+    interview_id: UUID
+    candidate_message: str = ""
+
+    @field_validator("candidate_message")
+    @classmethod
+    def validate_message(cls, msg: str) -> str:
+        if len(msg) > 8_000:
+            raise ValueError("Message is too long.")
+        return msg.strip()
+
+
 class JobPublicInfo(BaseModel):
     id: UUID
     title: str

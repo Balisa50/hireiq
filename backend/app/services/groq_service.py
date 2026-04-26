@@ -257,11 +257,25 @@ async def score_candidate(
     AND all submitted materials. Cross-references document claims vs interview performance.
     Returns a structured JSON assessment or None if scoring fails.
     """
-    transcript_text = "\n".join(
-        f"Question {i+1}: {entry.get('question', '')}\n"
-        f"Answer: {entry.get('answer', '')}\n"
-        for i, entry in enumerate(transcript)
-    )
+    # Support both old Q&A format and new conversation format
+    if transcript and transcript[0].get("role"):
+        # New conversation format: [{role: 'ai'|'candidate', content, action?}]
+        pairs = []
+        for i, msg in enumerate(transcript):
+            if msg.get("role") == "ai" and msg.get("action") in (None, "continue"):
+                next_msg = transcript[i + 1] if i + 1 < len(transcript) else None
+                if next_msg and next_msg.get("role") == "candidate":
+                    pairs.append(
+                        f"AI: {msg.get('content', '')}\n"
+                        f"Candidate: {next_msg.get('content', '')}\n"
+                    )
+        transcript_text = "\n".join(pairs)
+    else:
+        transcript_text = "\n".join(
+            f"Question {i+1}: {entry.get('question', '')}\n"
+            f"Answer: {entry.get('answer', '')}\n"
+            for i, entry in enumerate(transcript)
+        )
 
     ctx_text = _format_candidate_context(candidate_context or {})
     has_documents = bool(candidate_context)
@@ -348,3 +362,171 @@ async def score_candidate(
             extra={"error": str(error), "raw": raw_response[:200]},
         )
         return None
+
+
+# ── 4. Conversational interview driver ────────────────────────────────────────
+
+def get_first_interview_message(
+    candidate_name: str,
+    company_name: str,
+    job_title: str,
+    resumed: bool = False,
+    last_ai_message: str = "",
+) -> dict:
+    """
+    Return the hardcoded opening AI message.
+    Never AI-generated — prevents hallucinations on the opening line.
+    """
+    first_name = candidate_name.split()[0] if candidate_name else "there"
+
+    if resumed and last_ai_message:
+        # Summarise the last topic from the last AI message (first sentence)
+        last_sentence = last_ai_message.split(".")[0].strip()
+        message = (
+            f"Welcome back, {first_name}. We left off where I asked: \"{last_sentence}.\" "
+            f"Ready to continue?"
+        )
+    else:
+        message = (
+            f"Hi {first_name}. I'm here on behalf of {company_name} to learn more about you "
+            f"and your interest in the {job_title} role. "
+            f"This won't feel like a typical application — just a conversation. "
+            f"I'll ask you some questions, you answer naturally, and I'll make sure everything "
+            f"the team needs gets captured along the way. Ready to get started?"
+        )
+
+    return {
+        "message": message,
+        "action": "continue",
+        "requirement_id": None,
+        "requirement_label": None,
+    }
+
+
+async def generate_conversation_response(
+    job_title: str,
+    company_name: str,
+    job_description: str,
+    focus_areas: list[str],
+    pre_generated_questions: list[dict],
+    candidate_requirements: list[dict],
+    conversation: list[dict],
+    candidate_name: str,
+    collected_requirement_ids: list[str],
+    candidate_context: dict | None = None,
+) -> dict | None:
+    """
+    Generate the next AI message in a conversational interview.
+    The AI drives the entire application — it decides what to cover, when to request
+    documents, and when the interview is complete.
+
+    Returns {message, action, requirement_id, requirement_label} or None on failure.
+    Actions:
+      'continue'     — regular conversation, candidate should reply
+      'request_file' — show inline file upload card; requirement_id + requirement_label set
+      'request_link' — show inline link input card; requirement_id + requirement_label set
+      'complete'     — interview done; trigger submission flow
+    """
+    first_name = candidate_name.split()[0] if candidate_name else "the candidate"
+
+    # Compute pending vs collected requirements
+    required_items = [r for r in candidate_requirements if r.get("required")]
+    pending = [r for r in required_items if r.get("id") not in collected_requirement_ids]
+    already_collected = [r for r in required_items if r.get("id") in collected_requirement_ids]
+
+    pending_lines = (
+        "\n".join(f"  - {r['label']} ({'file upload' if r.get('type') == 'file' else 'link'}) [id: {r['id']}]"
+                  for r in pending)
+        or "None — all required items collected."
+    )
+    collected_lines = (
+        "\n".join(f"  ✓ {r['label']}" for r in already_collected)
+        or "None yet."
+    )
+
+    # Pre-generated questions as guides
+    q_guides = (
+        "\n".join(
+            f"{i+1}. [{q.get('focus_area', '')}] {q.get('question', '')}"
+            for i, q in enumerate(pre_generated_questions[:15])
+        )
+        or "Use the focus areas as your guide."
+    )
+
+    system_prompt = (
+        f"You are a senior talent acquisition specialist conducting a job application conversation "
+        f"on behalf of {company_name}. You are warm, professional, genuinely curious.\n\n"
+        f"ROLE: {job_title} at {company_name}\n"
+        f"JOB DESCRIPTION:\n{job_description[:2500]}\n\n"
+        f"FOCUS AREAS TO ASSESS: {', '.join(focus_areas)}\n\n"
+        f"INTERVIEW QUESTION GUIDES (these are guides — adapt them naturally, do NOT read verbatim):\n{q_guides}\n\n"
+        f"CANDIDATE: {candidate_name}. Use ONLY this name. Never infer any other name. "
+        f"Address as '{first_name}' at most once every 5 messages.\n\n"
+        f"REQUIRED DOCUMENTS:\n"
+        f"Still needed:\n{pending_lines}\n"
+        f"Already collected:\n{collected_lines}\n\n"
+        "RULES:\n"
+        "1. Never sound scripted. Write for this specific candidate at this specific moment.\n"
+        "2. Cover all focus areas through natural conversation — you choose the order.\n"
+        "3. Vague answers → probe: 'Can you give me a specific example of that?'\n"
+        "4. Strong answers → brief acknowledgement ('That helps, thank you.') then move on. "
+        "Never say 'Great answer!' or 'Wonderful!' or 'That's amazing!'\n"
+        "5. Request documents conversationally at the right moment. "
+        "Example: 'Before we go further, could you share your CV? You can upload it right here.'\n"
+        "6. Set action='request_file' when requesting a file. Include requirement_id and requirement_label exactly.\n"
+        "7. Set action='request_link' when requesting a URL. Include requirement_id and requirement_label exactly.\n"
+        "8. Never request an item that is already collected (check Already Collected above).\n"
+        "9. Close ONLY when: (a) all focus areas meaningfully covered AND (b) all required items collected.\n"
+        "10. Closing question: 'Is there anything else you'd like the team to know about you "
+        "or your application that we haven't covered?'\n"
+        f"11. After closing answer: send thank-you ('Thank you {first_name}. I have everything I need. "
+        f"I'll be putting your application together now. You'll hear from {company_name} directly "
+        "if you're selected to move forward. Good luck.') with action='complete'.\n"
+        "12. Never reveal you are an AI.\n"
+        "13. Off-topic questions: redirect warmly. "
+        f"'I'm focused on your application today, but feel free to reach out to {company_name} directly.'\n\n"
+        "RETURN: Valid JSON only. No markdown. No extra text.\n"
+        '{"message": "your response", '
+        '"action": "continue|request_file|request_link|complete", '
+        '"requirement_id": null_or_string, '
+        '"requirement_label": null_or_string}'
+    )
+
+    # Build Groq message list from conversation history
+    groq_messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    for msg in conversation:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if role == "ai":
+            groq_messages.append({"role": "assistant", "content": content})
+        elif role == "candidate":
+            groq_messages.append({"role": "user", "content": content})
+
+    raw = await _call_groq_with_retry(
+        messages=groq_messages,
+        max_tokens=450,
+        temperature=0.75,
+        json_mode=True,
+    )
+
+    if not raw:
+        return None
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as error:
+        logger.error("Failed to parse Groq conversation response",
+                     extra={"error": str(error), "raw": raw[:200]})
+        return None
+
+    valid_actions = {"continue", "request_file", "request_link", "complete"}
+    action = parsed.get("action", "continue")
+    if action not in valid_actions:
+        action = "continue"
+
+    return {
+        "message": str(parsed.get("message", "")).strip(),
+        "action": action,
+        "requirement_id": parsed.get("requirement_id"),
+        "requirement_label": parsed.get("requirement_label"),
+    }

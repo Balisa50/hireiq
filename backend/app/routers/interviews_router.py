@@ -24,12 +24,18 @@ from app.models.interview import (
     GetNextQuestionRequest,
     SubmitInterviewRequest,
     SubmitLinkRequest,
+    SendMessageRequest,
     UpdateCandidateStatusRequest,
     InterviewResponse,
     CandidateSummary,
     JobPublicInfo,
 )
-from app.services.groq_service import generate_adaptive_next_question, score_candidate
+from app.services.groq_service import (
+    generate_adaptive_next_question,
+    generate_conversation_response,
+    get_first_interview_message,
+    score_candidate,
+)
 from app.services.pdf_service import generate_candidate_report_pdf
 from app.services import file_service
 import bleach
@@ -321,6 +327,156 @@ async def submit_candidate_link(request: SubmitLinkRequest) -> dict:
     }).eq("id", str(request.interview_id)).execute()
 
     return {"saved": True}
+
+
+@router.post("/public/message")
+async def send_interview_message(request: SendMessageRequest) -> dict:
+    """
+    Conversational interview driver — the new primary interview endpoint.
+
+    On first call (empty candidate_message, no conversation yet):
+      Returns the hardcoded greeting — never AI-generated.
+    On resume (empty candidate_message, conversation exists):
+      Returns the last AI message so the candidate can continue.
+    Otherwise:
+      Saves the candidate message, generates the next AI response, saves it.
+    When action='complete':
+      Marks interview completed and triggers AI scoring inline.
+    """
+    iv_result = (
+        supabase.table("interviews")
+        .select("*, jobs(title, job_description, focus_areas, questions, candidate_requirements, companies(company_name))")
+        .eq("id", str(request.interview_id))
+        .execute()
+    )
+
+    if not iv_result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    interview = iv_result.data[0]
+
+    if interview["status"] not in ("in_progress",):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Interview already submitted.")
+
+    job          = interview.get("jobs", {}) or {}
+    company      = (job.get("companies") or {})
+    company_name = company.get("company_name", "the company")
+    candidate_name = interview.get("candidate_name", "")
+    conversation   = interview.get("transcript") or []
+
+    # ── First message: return hardcoded greeting ──────────────────────────────
+    if not conversation:
+        first_msg = get_first_interview_message(candidate_name, company_name, job["title"])
+        new_conv   = [{
+            "role":      "ai",
+            "content":   first_msg["message"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action":    "continue",
+        }]
+        supabase.table("interviews").update({
+            "transcript":    new_conv,
+            "last_saved_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", str(request.interview_id)).execute()
+        return first_msg
+
+    # ── Resume: no new message — return the last AI message ──────────────────
+    candidate_msg = request.candidate_message.strip()
+    if not candidate_msg:
+        last_ai = next((m for m in reversed(conversation) if m.get("role") == "ai"), None)
+        if last_ai:
+            return {
+                "message":           last_ai.get("content", ""),
+                "action":            last_ai.get("action", "continue"),
+                "requirement_id":    last_ai.get("requirement_id"),
+                "requirement_label": last_ai.get("requirement_label"),
+            }
+        # Shouldn't happen — return first message as fallback
+        first_msg = get_first_interview_message(candidate_name, company_name, job["title"])
+        return first_msg
+
+    # ── Normal turn: append candidate message + generate AI response ──────────
+    candidate_entry = {
+        "role":      "candidate",
+        "content":   bleach.clean(candidate_msg, tags=[], strip=True),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    updated_conv = conversation + [candidate_entry]
+
+    # Collect what's already been submitted
+    submitted_files   = interview.get("submitted_files") or []
+    submitted_links   = interview.get("submitted_links") or []
+    collected_ids     = (
+        [f["requirement_id"] for f in submitted_files]
+        + [l["requirement_id"] for l in submitted_links]
+    )
+    candidate_context = interview.get("candidate_context") or None
+
+    ai_response = await generate_conversation_response(
+        job_title=job.get("title", ""),
+        company_name=company_name,
+        job_description=job.get("job_description", ""),
+        focus_areas=job.get("focus_areas", []),
+        pre_generated_questions=job.get("questions", []),
+        candidate_requirements=job.get("candidate_requirements", []),
+        conversation=updated_conv,
+        candidate_name=candidate_name,
+        collected_requirement_ids=collected_ids,
+        candidate_context=candidate_context,
+    )
+
+    if not ai_response:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI is temporarily unavailable. Please try again.",
+        )
+
+    ai_entry = {
+        "role":              "ai",
+        "content":           ai_response["message"],
+        "timestamp":         datetime.now(timezone.utc).isoformat(),
+        "action":            ai_response["action"],
+        "requirement_id":    ai_response.get("requirement_id"),
+        "requirement_label": ai_response.get("requirement_label"),
+    }
+    final_conv = updated_conv + [ai_entry]
+
+    if ai_response["action"] == "complete":
+        # Mark completed and score
+        supabase.table("interviews").update({
+            "transcript":    final_conv,
+            "status":        "completed",
+            "completed_at":  datetime.now(timezone.utc).isoformat(),
+            "last_saved_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", str(request.interview_id)).execute()
+
+        assessment = await score_candidate(
+            job_title=job.get("title", ""),
+            company_name=company_name,
+            job_description=job.get("job_description", ""),
+            focus_areas=job.get("focus_areas", []),
+            transcript=final_conv,
+            candidate_name=candidate_name,
+            candidate_context=candidate_context,
+        )
+        if assessment:
+            supabase.table("interviews").update({
+                "overall_score":                   assessment.get("overall_score"),
+                "score_breakdown":                 assessment.get("score_breakdown"),
+                "executive_summary":               assessment.get("executive_summary"),
+                "key_strengths":                   assessment.get("key_strengths"),
+                "areas_of_concern":                assessment.get("areas_of_concern"),
+                "recommended_follow_up_questions": assessment.get("recommended_follow_up_questions"),
+                "hiring_recommendation":           assessment.get("hiring_recommendation"),
+                "document_interview_alignment":    assessment.get("document_interview_alignment"),
+                "status":                          "scored",
+            }).eq("id", str(request.interview_id)).execute()
+    else:
+        supabase.table("interviews").update({
+            "transcript":    final_conv,
+            "last_saved_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", str(request.interview_id)).execute()
+
+    return ai_response
 
 
 @router.post("/public/save-answer")
