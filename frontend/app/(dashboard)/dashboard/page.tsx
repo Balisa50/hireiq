@@ -74,41 +74,39 @@ export default function DashboardPage() {
 
   const isFirstTime = !isLoading && stats !== null && stats.active_jobs === 0 && stats.total_interviews === 0;
 
-  // ── First time ─────────────────────────────────────────────────────────────
-  if (isFirstTime) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-        <div className="w-14 h-14 rounded-[4px] border border-border bg-white flex items-center justify-center mb-5">
-          <Briefcase className="w-7 h-7 text-sub" />
-        </div>
-        <h1 className="text-xl font-semibold text-ink mb-2">
-          Welcome to HireIQ, {company?.company_name}!
-        </h1>
-        <p className="text-sub text-sm max-w-sm leading-relaxed mb-7">
-          Describe the role and HireIQ will generate tailored interview questions automatically.
-          Then share a single link — candidates interview themselves.
-        </p>
-        <Link href="/jobs/new">
-          <Button size="lg"><Plus className="w-4 h-4" /> Create a Job</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  // ── Returning ──────────────────────────────────────────────────────────────
+  // ── Always render the full dashboard layout ────────────────────────────────
   return (
     <div className="space-y-8">
-      {/* Header */}
+      {/* Header — context-aware, never a separate full-screen state */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-ink">
-            Welcome back, {company?.company_name}
-          </h1>
-          <p className="text-sub text-sm mt-1">Here&apos;s what&apos;s happening with your hiring.</p>
+          {isFirstTime ? (
+            <>
+              <h1 className="text-xl font-semibold text-ink">
+                Welcome to HireIQ, {company?.company_name}.
+              </h1>
+              <p className="text-sub text-sm mt-1">Your hiring dashboard is ready.</p>
+              <Link
+                href="/jobs/new"
+                className="inline-flex items-center gap-1 text-[13px] text-sub hover:text-ink transition-colors mt-2"
+              >
+                <Plus className="w-3.5 h-3.5" /> Create your first job →
+              </Link>
+            </>
+          ) : (
+            <>
+              <h1 className="text-xl font-semibold text-ink">
+                Welcome back, {company?.company_name}
+              </h1>
+              <p className="text-sub text-sm mt-1">Here&apos;s what&apos;s happening with your hiring.</p>
+            </>
+          )}
         </div>
-        <Link href="/jobs/new">
-          <Button size="sm"><Plus className="w-4 h-4" /> New Job</Button>
-        </Link>
+        {!isFirstTime && (
+          <Link href="/jobs/new">
+            <Button size="sm"><Plus className="w-4 h-4" /> New Job</Button>
+          </Link>
+        )}
       </div>
 
       {error && (
