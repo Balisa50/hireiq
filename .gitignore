@@ -21,7 +21,7 @@ var/
 sdist/
 develop-eggs/
 .installed.cfg
-lib/
+backend/lib/
 lib64/
 .venv/
 venv/
