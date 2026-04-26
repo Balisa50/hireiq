@@ -22,6 +22,8 @@ async def sign_up_company(request: CompanySignupRequest) -> AuthResponse:
     """
     Register a new company account.
     Creates a Supabase Auth user and a matching companies row.
+    Handles the case where a previous signup attempt left an orphaned Auth user
+    (auth row created but companies row missing) by completing the profile setup.
     """
     try:
         auth_response = supabase.auth.sign_up({
@@ -37,40 +39,83 @@ async def sign_up_company(request: CompanySignupRequest) -> AuthResponse:
 
         company_id = auth_response.user.id
 
-        # Create the company profile row
-        company_data = {
+    except HTTPException:
+        raise
+    except Exception as error:
+        error_str = str(error).lower()
+
+        # "User already registered" — auth row exists, check if companies row also exists
+        if "already registered" in error_str or "already been registered" in error_str:
+            # Try to log them in to get their ID, then check for companies row
+            try:
+                login_resp = supabase.auth.sign_in_with_password({
+                    "email": request.email,
+                    "password": request.password,
+                })
+                if login_resp.user:
+                    existing = supabase.table("companies").select("*").eq("id", login_resp.user.id).execute()
+                    if existing.data:
+                        # Full account exists — tell them to log in
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="An account with this email already exists. Please log in instead.",
+                        )
+                    # Orphaned auth user — complete the companies row now
+                    company_id = login_resp.user.id
+                    result = supabase.table("companies").insert({
+                        "id": company_id,
+                        "email": request.email,
+                        "company_name": request.company_name,
+                    }).execute()
+                    if result.data:
+                        logger.info("Recovered orphaned auth user %s", company_id)
+                        return AuthResponse(
+                            access_token=login_resp.session.access_token if login_resp.session else "",
+                            company=CompanyResponse(**result.data[0]),
+                        )
+            except HTTPException:
+                raise
+            except Exception as inner:
+                logger.error("Orphaned-user recovery failed: %s", str(inner))
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An account with this email already exists. Please log in instead.",
+            )
+
+        logger.error("Signup error for %s***: %s", request.email[:3], str(error))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Sign up failed: {str(error)}",
+        ) from error
+
+    # Fresh signup — create the companies row
+    try:
+        result = supabase.table("companies").insert({
             "id": company_id,
             "email": request.email,
             "company_name": request.company_name,
-        }
-
-        result = supabase.table("companies").insert(company_data).execute()
+        }).execute()
 
         if not result.data:
-            logger.error(
-                "Failed to insert company profile after auth signup",
-                extra={"company_id": company_id},
-            )
+            logger.error("Failed to insert company profile for %s", company_id)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Account created but profile setup failed. Please contact support.",
             )
 
-        company = CompanyResponse(**result.data[0])
-
         return AuthResponse(
-            access_token=auth_response.session.access_token if auth_response.session else "",
-            company=company,
+            access_token=auth_response.session.access_token if auth_response.session else "",  # type: ignore[union-attr]
+            company=CompanyResponse(**result.data[0]),
         )
 
     except HTTPException:
         raise
     except Exception as error:
-        error_str = str(error)
-        logger.error("Signup error for %s***: %s", request.email[:3], error_str)
+        logger.error("Companies insert failed for %s: %s", company_id, str(error))
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Sign up failed: {error_str}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Account created but profile setup failed: {str(error)}",
         ) from error
 
 
@@ -98,7 +143,7 @@ async def log_in_company(request: CompanyLoginRequest) -> AuthResponse:
         if not result.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Company profile not found.",
+                detail="Account exists but company profile is missing. Please sign up again to complete setup.",
             )
 
         company = CompanyResponse(**result.data[0])
