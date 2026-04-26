@@ -117,7 +117,7 @@ const STEPS = [
   {
     number: "02",
     title: "Share the interview link",
-    description: "Every job gets a unique link. Post it anywhere — LinkedIn, your careers page, job boards. Candidates click and start immediately. No scheduling.",
+    description: "Every job gets a unique link. Post it anywhere. LinkedIn, your careers page, job boards. Candidates click and start immediately. No scheduling.",
   },
   {
     number: "03",
@@ -249,7 +249,7 @@ function MockInterview() {
     <div className="bg-white border border-border rounded-[4px] overflow-hidden shadow-sm select-none pointer-events-none">
       <div className="px-4 py-3 border-b border-border flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-success" />
-        <p className="text-[13px] font-medium text-ink">Senior Engineer — Interview in progress</p>
+        <p className="text-[13px] font-medium text-ink">Senior Engineer, Interview in progress</p>
       </div>
       <div className="p-4 space-y-4">
         <div className="flex gap-3">
@@ -316,7 +316,7 @@ const DEEP_FEATURES = [
   {
     label:       "Question generation",
     title:       "Questions that actually test the role",
-    description: "Paste your job description and HireIQ writes a full interview in seconds — behavioural, technical, and situational questions calibrated to the exact seniority and skills you need. You can edit, remove, or reorder before publishing.",
+    description: "Paste your job description and HireIQ writes a full interview in seconds. Behavioural, technical, and situational questions calibrated to the exact seniority and skills you need. You can edit, remove, or reorder before publishing.",
     bullets:     ["Calibrated to seniority level", "Multiple question types", "Edit before you publish"],
     mock:        <MockQuestions />,
     reverse:     false,
@@ -324,8 +324,8 @@ const DEEP_FEATURES = [
   {
     label:       "The interview",
     title:       "An AI that listens and pushes back",
-    description: "Candidates interview at their own pace — no scheduling, no ghosting. The AI follows up on vague answers, probes for depth, and keeps the conversation on track without being robotic.",
-    bullets:     ["Adaptive follow-ups on weak answers", "Works on any device, any timezone", "Auto-saves progress — candidates can resume"],
+    description: "Candidates interview at their own pace. No scheduling, no ghosting. The AI follows up on vague answers, probes for depth, and keeps the conversation on track without being robotic.",
+    bullets:     ["Adaptive follow-ups on weak answers", "Works on any device, any timezone", "Auto-saves progress. Candidates can resume"],
     mock:        <MockInterview />,
     reverse:     true,
   },
@@ -351,7 +351,7 @@ function FeatureDeepDive() {
             Built for the way hiring actually works
           </h2>
           <p className="text-sub max-w-lg mx-auto">
-            Every step of the process — from posting to shortlisting — designed to save time without cutting corners.
+            Every step of the process, from posting to shortlisting, designed to save time without cutting corners.
           </p>
         </div>
 

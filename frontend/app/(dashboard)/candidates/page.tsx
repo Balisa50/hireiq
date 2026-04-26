@@ -123,7 +123,7 @@ export default function CandidatesPage() {
           candidates.map((c, i) => {
             const rank   = String(i + 1).padStart(2, "0");
             const status = STATUS_CONFIG[c.status] ?? { label: c.status, color: "text-muted" };
-            const date   = c.completed_at ? new Date(c.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—";
+            const date   = c.completed_at ? new Date(c.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-";
             return (
               <Link key={c.id} href={`/candidates/${c.id}`}
                 className="grid grid-cols-1 md:grid-cols-[64px_2fr_2fr_100px_72px_100px_100px] gap-4 px-5 py-4 border-b border-border last:border-b-0 hover:bg-[var(--bg)] transition-colors cursor-pointer items-center">
@@ -135,7 +135,7 @@ export default function CandidatesPage() {
                 </div>
                 <p className="hidden md:block text-[13px] text-sub truncate">{c.job_title}</p>
                 <div className="flex items-center"><ScoreBadge score={c.overall_score} size="sm" /></div>
-                <span className="hidden md:block text-[13px] text-sub">{c.interview_duration_minutes !== null ? `${c.interview_duration_minutes}m` : "—"}</span>
+                <span className="hidden md:block text-[13px] text-sub">{c.interview_duration_minutes !== null ? `${c.interview_duration_minutes}m` : "-"}</span>
                 <span className="hidden md:block text-[13px] text-sub">{date}</span>
                 <span className={`hidden md:block text-[13px] font-medium ${status.color}`}>{status.label}</span>
               </Link>

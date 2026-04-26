@@ -206,7 +206,7 @@ export default function JobDetailPage() {
               <BarChart3 className="w-3.5 h-3.5" /> Average Score
             </div>
             <p className="text-2xl font-bold text-white">
-              {job.average_score !== null ? `${job.average_score}` : "—"}
+              {job.average_score !== null ? `${job.average_score}` : "-"}
               {job.average_score !== null && (
                 <span className="text-sm font-normal text-[var(--text-muted)]">/100</span>
               )}
@@ -348,11 +348,11 @@ export default function JobDetailPage() {
                 <span className="text-sm text-[var(--text-muted)]">
                   {c.interview_duration_minutes !== null
                     ? `${c.interview_duration_minutes}m`
-                    : "—"}
+                    : "-"}
                 </span>
                 <StatusBadge status={c.status} />
                 <span className="text-xs text-[var(--text-muted)] truncate">
-                  {c.hiring_recommendation ?? "—"}
+                  {c.hiring_recommendation ?? "-"}
                 </span>
                 <ChevronRight className="w-4 h-4 text-[var(--text-dim)] group-hover:text-brand-400 transition-colors" />
               </Link>

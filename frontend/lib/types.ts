@@ -237,16 +237,16 @@ export const WORK_ARRANGEMENTS = [
 ] as const;
 
 export const SALARY_CURRENCIES = [
-  { value: "USD", label: "USD — US Dollar" },
-  { value: "EUR", label: "EUR — Euro" },
-  { value: "GBP", label: "GBP — British Pound" },
-  { value: "CAD", label: "CAD — Canadian Dollar" },
-  { value: "AUD", label: "AUD — Australian Dollar" },
-  { value: "GHS", label: "GHS — Ghanaian Cedi" },
-  { value: "GMD", label: "GMD — Gambian Dalasi" },
-  { value: "NGN", label: "NGN — Nigerian Naira" },
-  { value: "KES", label: "KES — Kenyan Shilling" },
-  { value: "ZAR", label: "ZAR — South African Rand" },
+  { value: "USD", label: "USD, US Dollar" },
+  { value: "EUR", label: "EUR, Euro" },
+  { value: "GBP", label: "GBP, British Pound" },
+  { value: "CAD", label: "CAD, Canadian Dollar" },
+  { value: "AUD", label: "AUD, Australian Dollar" },
+  { value: "GHS", label: "GHS, Ghanaian Cedi" },
+  { value: "GMD", label: "GMD, Gambian Dalasi" },
+  { value: "NGN", label: "NGN, Nigerian Naira" },
+  { value: "KES", label: "KES, Kenyan Shilling" },
+  { value: "ZAR", label: "ZAR, South African Rand" },
 ] as const;
 
 export const SALARY_PERIODS = [

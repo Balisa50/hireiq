@@ -68,7 +68,7 @@ export default function LoginPage() {
 
         {slowHint && (
           <div className="rounded-[4px] bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700 mb-5">
-            Server is waking up — this can take up to 30 seconds on first sign-in. Hang tight.
+            Server is waking up. This can take up to 30 seconds on first sign-in. Hang tight.
           </div>
         )}
 

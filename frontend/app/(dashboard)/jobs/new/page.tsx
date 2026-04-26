@@ -118,7 +118,7 @@ function SkillsInput({ skills, onChange }: { skills: string[]; onChange: (v: str
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={handleKey}
         onBlur={() => addSkill(draft)}
-        placeholder={skills.length === 0 ? "e.g. React, Python, SQL — press Enter or comma to add" : "Add more…"}
+        placeholder={skills.length === 0 ? "e.g. React, Python, SQL , press Enter or comma to add" : "Add more…"}
         className="flex-1 min-w-[180px] text-[13px] text-ink bg-transparent outline-none placeholder:text-muted"
       />
     </div>
@@ -275,7 +275,7 @@ export default function NewJobPage() {
           <h1 className="text-xl font-semibold text-ink mb-2">Your job is live.</h1>
           <p className="text-sub text-sm mb-7 leading-relaxed">
             Share this link on LinkedIn, your careers page, or email it directly.
-            Candidates click and start their interview immediately — no account needed.
+            Candidates click and start their interview immediately , no account needed.
           </p>
           <div className="flex items-center gap-2 mb-4">
             <input readOnly value={link} onClick={(e) => (e.target as HTMLInputElement).select()}
@@ -428,7 +428,7 @@ export default function NewJobPage() {
           </div>
           <textarea
             value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} rows={9}
-            placeholder="Describe the role in detail — responsibilities, day-to-day work, what success looks like, and team context. The AI uses this to run a natural, relevant interview. Aim for 150+ words."
+            placeholder="Describe the role in detail , responsibilities, day-to-day work, what success looks like, and team context. The AI uses this to run a natural, relevant interview. Aim for 150+ words."
             className={`w-full bg-white border rounded-[4px] px-4 py-3 text-sm text-ink outline-none resize-none placeholder:text-muted transition-colors focus:border-ink ${errors.desc ? "border-danger" : "border-border"}`}
           />
           {errors.desc && <p className="text-[13px] text-danger mt-1">{errors.desc}</p>}
@@ -438,11 +438,11 @@ export default function NewJobPage() {
         <div className="space-y-2">
           <label className="block text-sm font-medium text-ink">
             Required Skills
-            <span className="ml-2 text-[12px] font-normal text-muted">optional — press Enter or comma to add each skill</span>
+            <span className="ml-2 text-[12px] font-normal text-muted">optional , press Enter or comma to add each skill</span>
           </label>
           <SkillsInput skills={skills} onChange={setSkills} />
           {skills.length > 0 && (
-            <p className="text-[12px] text-muted">{skills.length} skill{skills.length !== 1 ? "s" : ""} added — the AI will probe these during the interview.</p>
+            <p className="text-[12px] text-muted">{skills.length} skill{skills.length !== 1 ? "s" : ""} added , the AI will probe these during the interview.</p>
           )}
         </div>
       </Card>
@@ -457,7 +457,7 @@ export default function NewJobPage() {
           <input type="range" min={5} max={15} value={questionCount}
             onChange={(e) => setQuestionCount(Number(e.target.value))} className="w-full" />
           <div className="flex justify-between text-[13px] text-muted">
-            <span>5 — Quick screen</span><span>15 — In-depth</span>
+            <span>5 , Quick screen</span><span>15 , In-depth</span>
           </div>
         </div>
 
@@ -476,7 +476,7 @@ export default function NewJobPage() {
             })}
           </div>
           <p className="text-[13px] text-muted">
-            {focusAreas.length} area{focusAreas.length !== 1 ? "s" : ""} selected — the AI will probe these during the conversation.
+            {focusAreas.length} area{focusAreas.length !== 1 ? "s" : ""} selected , the AI will probe these during the conversation.
           </p>
         </div>
       </Card>
