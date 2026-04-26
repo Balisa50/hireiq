@@ -19,7 +19,7 @@ import type {
 } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const API_TIMEOUT_MS = 15_000;
+const API_TIMEOUT_MS = 60_000; // Render free tier needs up to 50s to cold-start
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
