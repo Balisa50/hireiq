@@ -38,6 +38,13 @@ export default function DashboardNav() {
   const { company, logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
 
+  const initials = React.useMemo(() => {
+    const name = company?.company_name?.trim() ?? "";
+    const words = name.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase() || "?";
+  }, [company?.company_name]);
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -80,8 +87,8 @@ export default function DashboardNav() {
               onClick={() => setProfileOpen((v) => !v)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-[4px] border border-border hover:border-sub transition-colors"
             >
-              <div className="w-6 h-6 rounded-full bg-ink flex items-center justify-center text-white text-[11px] font-semibold">
-                {company?.company_name?.charAt(0)?.toUpperCase() ?? "?"}
+              <div className="w-6 h-6 rounded-full bg-ink flex items-center justify-center text-white text-[10px] font-semibold tracking-tight">
+                {initials}
               </div>
               <span className="text-sm text-ink max-w-[120px] truncate hidden sm:block">
                 {company?.company_name ?? "Company"}
