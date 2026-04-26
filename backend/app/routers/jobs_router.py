@@ -117,17 +117,27 @@ async def publish_job(
     """
     try:
         job_data = {
-            "company_id": company_id,
-            "title": request.title,
-            "department": request.department,
-            "location": request.location,
-            "employment_type": request.employment_type,
-            "job_description": request.job_description,
-            "question_count": request.question_count,
-            "focus_areas": request.focus_areas,
-            "questions": [q.model_dump() for q in request.questions],
+            "company_id":           company_id,
+            "title":                request.title,
+            "department":           request.department,
+            "location":             request.location,
+            "employment_type":      request.employment_type,
+            "job_description":      request.job_description,
+            "question_count":       request.question_count,
+            "focus_areas":          request.focus_areas,
+            "questions":            [q.model_dump() for q in request.questions],
             "candidate_requirements": [r.model_dump() for r in request.candidate_requirements],
-            "status": "active",
+            "status":               "active",
+            # Extended fields
+            "experience_level":     request.experience_level,
+            "work_arrangement":     request.work_arrangement,
+            "openings":             request.openings,
+            "skills":               request.skills,
+            "salary_min":           request.salary_min,
+            "salary_max":           request.salary_max,
+            "salary_currency":      request.salary_currency,
+            "salary_period":        request.salary_period,
+            "salary_disclosed":     request.salary_disclosed,
         }
 
         result = supabase.table("jobs").insert(job_data).execute()

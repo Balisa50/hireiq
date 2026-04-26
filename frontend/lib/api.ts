@@ -237,6 +237,15 @@ export const jobsAPI = {
     focus_areas: string[];
     questions: GeneratedQuestion[];
     candidate_requirements?: CandidateRequirement[];
+    experience_level?: string;
+    work_arrangement?: string;
+    openings?: number;
+    skills?: string[];
+    salary_min?: number;
+    salary_max?: number;
+    salary_currency?: string;
+    salary_period?: string;
+    salary_disclosed?: boolean;
   }): Promise<Job> {
     return apiFetch<Job>("/api/jobs/", {
       method: "POST",

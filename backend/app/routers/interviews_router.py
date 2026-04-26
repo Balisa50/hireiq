@@ -422,6 +422,8 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
         candidate_name=candidate_name,
         collected_requirement_ids=collected_ids,
         candidate_context=candidate_context,
+        experience_level=job.get("experience_level", "any"),
+        skills=job.get("skills") or [],
     )
 
     if not ai_response:
