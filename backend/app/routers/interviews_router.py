@@ -802,7 +802,8 @@ async def generate_email_draft(
     result = (
         supabase.table("interviews")
         .select("company_id, candidate_name, candidate_email, executive_summary, "
-                "key_strengths, areas_of_concern, jobs(title, companies(company_name))")
+                "key_strengths, areas_of_concern, "
+                "jobs(title, companies(company_name, contact_email, website))")
         .eq("id", interview_id)
         .execute()
     )
@@ -825,6 +826,8 @@ async def generate_email_draft(
         executive_summary=interview.get("executive_summary") or "",
         key_strengths=interview.get("key_strengths") or [],
         areas_of_concern=interview.get("areas_of_concern") or [],
+        company_email=company.get("contact_email") or "",
+        company_website=company.get("website") or "",
     )
 
     if not draft:

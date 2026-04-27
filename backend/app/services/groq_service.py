@@ -406,6 +406,8 @@ async def generate_candidate_email(
     executive_summary: str,
     key_strengths: list[str],
     areas_of_concern: list[str],
+    company_email: str = "",
+    company_website: str = "",
 ) -> dict | None:
     """
     Generate a candidate notification email draft.
@@ -445,20 +447,51 @@ async def generate_candidate_email(
     tone_guidance = tone_structures.get(tone.lower(), tone_structures["professional"])
 
     # ── Signal extraction — force specificity, reject generic bullets ─────────
-    strengths_raw  = "\n".join(f"- {s}" for s in key_strengths)  if key_strengths  else "(none)"
-    concerns_raw   = "\n".join(f"- {c}" for c in areas_of_concern) if areas_of_concern else "(none)"
-    summary_snippet = executive_summary[:600] if executive_summary else "(no summary)"
+    strengths_raw   = "\n".join(f"- {s}" for s in key_strengths)  if key_strengths  else "(none provided)"
+    concerns_raw    = "\n".join(f"- {c}" for c in areas_of_concern) if areas_of_concern else "(none provided)"
+    summary_full    = executive_summary[:2000] if executive_summary else ""
 
-    signal_instructions = (
-        "SIGNAL EXTRACTION — this is mandatory:\n"
-        "From the assessment data below, extract ONE signal that is specific to this actual candidate.\n"
-        "A good signal: a named technology, a quantified result, a specific project, a concrete skill demonstrated.\n"
-        "A bad signal: 'strong communication', 'relevant experience', 'good culture fit', any generic phrase.\n"
-        "If no specific signal exists in the data, use the most concrete available. Do not invent one.\n"
-        f"\nAssessment summary: {summary_snippet}\n"
-        f"Key strengths:\n{strengths_raw}\n"
-        f"Areas of concern:\n{concerns_raw}"
-    )
+    # Build footer block for the email
+    footer_lines = [company_name] if company_name else []
+    if company_email:
+        footer_lines.append(company_email)
+    if company_website:
+        footer_lines.append(company_website)
+    footer_text = "\n".join(footer_lines)
+
+    # Assessment context block — always included
+    if summary_full or key_strengths or areas_of_concern:
+        assessment_block = (
+            f"=== CANDIDATE ASSESSMENT DATA ===\n"
+            f"Executive summary: {summary_full if summary_full else '(not yet available)'}\n\n"
+            f"Key strengths:\n{strengths_raw}\n\n"
+            f"Areas of concern:\n{concerns_raw}\n"
+            f"=================================\n"
+        )
+        signal_instructions = (
+            "SIGNAL EXTRACTION — mandatory, non-negotiable:\n"
+            "Read the CANDIDATE ASSESSMENT DATA above carefully.\n"
+            "You MUST extract ONE concrete signal from it. Not a category, not a description — "
+            "a specific thing: a named technology, a quantified result, a specific project, "
+            "a concrete demonstrated skill, a named tool, or a real scenario from the interview.\n\n"
+            "GOOD signal examples: 'your experience with React and Node.js', "
+            "'the CRM migration project you described', 'your background in financial modelling', "
+            "'your five years managing cross-functional teams'.\n"
+            "BAD signals (forbidden): 'your experience', 'relevant background', 'strong communication', "
+            "'good culture fit', 'impressive credentials', 'your qualifications'.\n\n"
+            "ABSOLUTE PROHIBITION: You may NEVER write 'assessment data does not provide' or any "
+            "equivalent phrase. If data is sparse, use the most specific thing available. "
+            "If only a job title and company name are known, reference what the role requires. "
+            "A concrete reference to the role requirements is better than a generic phrase.\n\n"
+            f"{assessment_block}"
+        )
+    else:
+        signal_instructions = (
+            "SIGNAL EXTRACTION:\n"
+            "No detailed assessment data is available for this candidate. "
+            "Reference something specific about the role itself rather than making up candidate details.\n"
+            "Do NOT write 'assessment data does not provide'. Reference the role requirements instead.\n"
+        )
 
     if status == "shortlisted":
         instructions = (
@@ -505,6 +538,18 @@ async def generate_candidate_email(
     system_prompt = (
         f"You are writing a candidate notification email on behalf of the hiring team at {company_name}.\n\n"
         f"{tone_guidance}\n\n"
+        "MANDATORY EMAIL STRUCTURE — every email must have all of these, in order:\n"
+        "1. Greeting line: 'Dear [FirstName],' — always on its own line.\n"
+        "2. Opening paragraph: state the purpose of the email clearly within the first sentence.\n"
+        "3. Body paragraph: reference ONE specific thing from the assessment data about this candidate. "
+        "This must be concrete and tied to the role.\n"
+        "4. Next step paragraph: tell the candidate clearly what happens next. Specific, not vague.\n"
+        "5. Sign-off line: 'Kind regards,' or 'Best regards,' — on its own line.\n"
+        "6. Name line: 'The Hiring Team' or equivalent — on the next line after sign-off.\n"
+        f"7. Footer block — exactly as follows, each item on its own line:\n{footer_text if footer_text else company_name}\n\n"
+        "Blank line between each section. No section may be omitted.\n"
+        "DIRECT tone may compress the body and next step into one short paragraph, "
+        "but must still include all 7 structural elements.\n\n"
         "NON-NEGOTIABLE QUALITY RULES:\n"
         "- No 'we were blown away'. No 'exciting opportunity'. No corporate filler.\n"
         "- Sound like a sharp human who actually read this candidate's file.\n"
@@ -514,7 +559,7 @@ async def generate_candidate_email(
         "whether this is good news or not.\n\n"
         "Return valid JSON only. No markdown. No explanation. No preamble.\n"
         '{"subject": "...", "body": "..."}\n'
-        "The body must be plain text. Blank lines between paragraphs. No HTML. No markdown.\n"
+        "The body must be plain text. Blank lines between sections. No HTML. No markdown.\n"
         "The three tones must produce structurally different emails, not the same email "
         "with different adjectives."
     )
@@ -530,7 +575,7 @@ async def generate_candidate_email(
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt},
         ],
-        max_tokens=600,
+        max_tokens=900,
         temperature=0.65,
         json_mode=True,
     )

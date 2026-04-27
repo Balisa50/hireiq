@@ -1,8 +1,8 @@
 """
 HireIQ email service — powered by Resend.
-All platform emails route through a single Resend API key stored in RESEND_API_KEY.
-Companies never configure email settings. The from address shows the company name
-alongside HireIQ so candidates recognise who sent the email.
+All platform emails route through a single Resend API key (RESEND_API_KEY).
+Companies never configure anything. The from address shows only the company name.
+HireIQ is invisible to candidates.
 """
 
 import logging
@@ -24,8 +24,7 @@ async def send_candidate_email(
 ) -> bool:
     """
     Send a candidate notification email via Resend.
-    The from display name is "{company_name} via HireIQ" so the candidate
-    immediately knows who contacted them.
+    The from display name is the company name only — HireIQ is not mentioned.
     Returns True on success, False if API key is missing or the send fails.
     """
     settings = get_settings()
@@ -37,12 +36,12 @@ async def send_candidate_email(
         )
         return False
 
-    # Build the from address
-    sender_name   = f"{company_name} via HireIQ" if company_name else "HireIQ"
-    from_address  = f"{sender_name} <{settings.resend_from_email}>"
-    to_address    = f"{to_name} <{to_email}>" if to_name else to_email
+    # Company name in the from field — candidate sees who contacted them, not the platform
+    sender_name  = company_name if company_name else "Hiring Team"
+    from_address = f"{sender_name} <{settings.resend_from_email}>"
+    to_address   = f"{to_name} <{to_email}>" if to_name else to_email
 
-    # Build HTML body — preserve paragraph breaks, minimal styling
+    # HTML body — clean, no platform branding, no footer attribution
     html_paragraphs = "".join(
         f"<p>{para.replace(chr(10), '<br>')}</p>"
         for para in body.split("\n\n")
@@ -53,9 +52,6 @@ async def send_candidate_email(
         "'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.7;"
         "color:#1a1a1a;max-width:600px;margin:0 auto;padding:32px 24px;\">"
         f"{html_paragraphs}"
-        "<p style=\"margin-top:40px;font-size:12px;color:#9ca3af;\">"
-        f"Sent via HireIQ on behalf of {company_name or 'the hiring team'}."
-        "</p>"
         "</body></html>"
     )
 
