@@ -777,7 +777,8 @@ def get_first_interview_message(
             f"a short conversation about the {role} role. "
             f"Nothing too formal, just want to get a sense of who you are and what "
             f"you've been working on. "
-            f"To kick things off, could you tell me a little about your background?"
+            f"To kick things off, walk me through your most recent role and what you "
+            f"were actually doing day to day."
         )
 
     return {
