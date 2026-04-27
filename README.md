@@ -18,7 +18,7 @@ hireiq/
 | Layer | Technology |
 |---|---|
 | Database & Auth | Supabase (PostgreSQL + Row Level Security) |
-| AI / LLM | Groq API — LLaMA 3.3 70B |
+| AI / LLM | Google Gemini Flash 2.0 |
 | PDF Generation | WeasyPrint (server-side) |
 | Rate Limiting | slowapi |
 | Frontend hosting | Vercel |
@@ -31,7 +31,7 @@ hireiq/
 - Python 3.11+
 - Node.js 18+
 - A [Supabase](https://supabase.com) project
-- A [Groq](https://console.groq.com) API key
+- A [Google AI Studio](https://aistudio.google.com) API key (Gemini)
 
 ---
 
@@ -49,7 +49,7 @@ cd hireiq
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-GROQ_API_KEY=gsk_your_groq_key
+GEMINI_API_KEY=your_gemini_api_key
 ENVIRONMENT=development
 FRONTEND_URL=http://localhost:3000
 SECRET_KEY=generate-with-openssl-rand-hex-32
@@ -100,7 +100,7 @@ App will be available at `http://localhost:3000`.
 | `SUPABASE_URL` | Supabase project URL | ✅ |
 | `SUPABASE_ANON_KEY` | Supabase anon/public key | ✅ |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (bypasses RLS for admin ops) | ✅ |
-| `GROQ_API_KEY` | Groq API key for LLM inference | ✅ |
+| `GEMINI_API_KEY` | Google Gemini API key for LLM inference | ✅ |
 | `ENVIRONMENT` | `development` or `production` | ✅ |
 | `FRONTEND_URL` | Frontend origin for CORS | ✅ |
 | `SECRET_KEY` | 32-byte hex string for internal signing | ✅ |
@@ -189,24 +189,24 @@ See `supabase/schema.sql` for the full DDL.
 ## AI Behaviour
 
 ### Question Generation
-Model: `llama-3.3-70b-versatile`
+Model: `gemini-2.0-flash`
 Persona: Senior executive recruiter with 20 years experience + McKinsey analyst.
 Input: Job title, department, description, question count, focus areas.
 Output: JSON array of `{id, question, type, focus_area, what_it_reveals}`.
 
 ### Adaptive Follow-Up
-Model: `llama-3.3-70b-versatile`
+Model: `gemini-2.0-flash`
 Persona: Experienced interviewer who probes vague answers.
 Input: Original question + candidate answer + remaining question count.
 Output: Optional adaptive follow-up question string (or `null` to proceed).
 
 ### Candidate Scoring
-Model: `llama-3.3-70b-versatile`
+Model: `gemini-2.0-flash`
 Persona: Head of People at Fortune 500 + behavioral psychologist.
 Input: Job description, focus areas, full interview transcript.
 Output: `overall_score`, `score_breakdown`, `executive_summary`, `key_strengths`, `areas_of_concern`, `recommended_follow_up_questions`, `hiring_recommendation`.
 
-All Groq calls have a 15-second timeout and 1 automatic retry with a 3-second delay.
+All Gemini calls have a 45-second timeout and 1 automatic retry with a 3-second delay.
 
 ---
 
@@ -231,7 +231,7 @@ pytest tests/ -v
 ```
 
 Tests cover:
-- Groq service: question generation, adaptive follow-up, scoring (mocked)
+- AI service: question generation, adaptive follow-up, scoring (mocked)
 - Auth: signup, login, token verification
 - Interview flow: start, save-answer, next-question, submit
 - Candidate isolation: company A cannot access company B's data
