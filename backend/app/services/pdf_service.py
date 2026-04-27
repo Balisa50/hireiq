@@ -4,10 +4,62 @@ Generates professional candidate assessment reports using WeasyPrint.
 """
 
 import logging
+import re
 from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger("hireiq.pdf")
+
+# Personal detail keywords — exchanges that collected these are filtered out
+# of the transcript so the PDF only shows substantive role Q&A.
+_PERSONAL_RE = re.compile(
+    r"\b(your name|full name|email address|phone number|phone|"
+    r"location|where are you|currently based|currently employed|"
+    r"employment status|working at)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_qa_pairs(transcript: list[dict]) -> list[dict]:
+    """
+    Convert conversation-format transcript [{role, content, action}]
+    into clean Q&A pairs, filtering out personal-detail collection exchanges.
+    Falls back gracefully to the old {question, answer} format.
+    """
+    if not transcript:
+        return []
+
+    first = transcript[0]
+
+    # New format: {role: 'ai'|'candidate', content, action?}
+    if first.get("role"):
+        pairs = []
+        for i, msg in enumerate(transcript):
+            if msg.get("role") != "ai":
+                continue
+            action = msg.get("action", "continue")
+            if action in ("request_file", "request_link"):
+                continue  # skip document-request messages
+            content = str(msg.get("content", "")).strip()
+            if not content:
+                continue
+            # Skip personal detail collection exchanges
+            if _PERSONAL_RE.search(content) and len(content) < 150:
+                continue
+            # Find next candidate reply
+            next_msg = transcript[i + 1] if i + 1 < len(transcript) else None
+            if next_msg and next_msg.get("role") == "candidate":
+                answer = str(next_msg.get("content", "")).strip()
+                if len(answer.split()) >= 5:   # skip very short replies
+                    pairs.append({"question": content, "answer": answer})
+        return pairs
+
+    # Old format: {question_index, question, answer}
+    return [
+        {"question": str(e.get("question", "")), "answer": str(e.get("answer", ""))}
+        for e in transcript
+        if e.get("question") and e.get("answer")
+    ]
 
 
 def _build_score_bars_html(score_breakdown: dict) -> str:
@@ -79,15 +131,19 @@ def generate_candidate_report_pdf(
 
         interview_date = (completed_at or started_at).strftime("%B %d, %Y")
 
-        transcript_html = "".join(
-            f"""
-            <div class="transcript-entry">
-                <p class="transcript-question">Q{i+1}. {entry.get('question', '')}</p>
-                <p class="transcript-answer">{entry.get('answer', '')}</p>
-            </div>
-            """
-            for i, entry in enumerate(transcript)
-        )
+        qa_pairs = _extract_qa_pairs(transcript)
+        if qa_pairs:
+            transcript_html = "".join(
+                f"""
+                <div class="transcript-entry">
+                    <p class="transcript-question">Q{i+1}. {pair['question']}</p>
+                    <p class="transcript-answer">{pair['answer']}</p>
+                </div>
+                """
+                for i, pair in enumerate(qa_pairs)
+            )
+        else:
+            transcript_html = "<p style='color:#9ca3af;font-size:13px;'>No substantive transcript available.</p>"
 
         html_content = f"""
         <!DOCTYPE html>
@@ -96,12 +152,10 @@ def generate_candidate_report_pdf(
         <meta charset="UTF-8">
         <title>HireIQ Candidate Report — {candidate_name}</title>
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 
             body {{
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
                 font-size: 13px;
                 line-height: 1.6;
                 color: #111827;

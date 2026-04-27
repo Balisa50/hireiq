@@ -12,6 +12,10 @@ import Skeleton from "@/components/ui/Skeleton";
 
 interface TranscriptPair { question: string; answer: string }
 
+// Personal detail phrases — filter these out of the transcript view.
+// Recruiters only want to see substantive role Q&A, not "What's your phone number?"
+const PERSONAL_RE = /\b(your name|full name|email address|phone number|phone|location|where are you|currently based|currently employed|employment status|working at|confirm your)\b/i;
+
 function normaliseTranscript(raw: unknown[]): TranscriptPair[] {
   if (!raw?.length) return [];
   const first = raw[0] as Record<string, unknown>;
@@ -21,11 +25,22 @@ function normaliseTranscript(raw: unknown[]): TranscriptPair[] {
     const pairs: TranscriptPair[] = [];
     for (let i = 0; i < raw.length; i++) {
       const msg = raw[i] as Record<string, unknown>;
-      if (msg.role === "ai" && msg.action !== "request_file" && msg.action !== "request_link") {
-        const next = raw[i + 1] as Record<string, unknown> | undefined;
-        if (next?.role === "candidate") {
-          pairs.push({ question: String(msg.content ?? ""), answer: String(next.content ?? "") });
-        }
+      if (msg.role !== "ai") continue;
+      const action = String(msg.action ?? "continue");
+      if (action === "request_file" || action === "request_link") continue;
+
+      const aiContent = String(msg.content ?? "").trim();
+      if (!aiContent) continue;
+
+      // Skip personal detail collection exchanges
+      if (PERSONAL_RE.test(aiContent) && aiContent.length < 160) continue;
+
+      const next = raw[i + 1] as Record<string, unknown> | undefined;
+      if (next?.role === "candidate") {
+        const answer = String(next.content ?? "").trim();
+        // Skip very short answers (name confirmations, one-word replies)
+        if (answer.split(" ").length < 5) continue;
+        pairs.push({ question: aiContent, answer });
       }
     }
     return pairs;
