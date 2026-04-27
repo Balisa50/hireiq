@@ -12,6 +12,7 @@ Functions:
 """
 
 import json
+import re
 import asyncio
 import logging
 import httpx
@@ -19,11 +20,93 @@ from app.config import get_settings
 
 logger = logging.getLogger("hireiq.groq")
 
-# Gemini Flash 2.0 endpoint (model name is the only thing that changes if we upgrade)
+# Gemini Flash 2.0 — stable GA model via v1beta
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 
-# ── Core Gemini caller — general prompt → text ────────────────────────────────
+# ── Shared response parser ─────────────────────────────────────────────────────
+
+def _extract_gemini_text(data: dict, caller: str = "") -> str | None:
+    """
+    Pull text out of a Gemini generateContent response.
+    Handles safety blocks, MAX_TOKENS truncation, and missing content gracefully.
+    Logs a clear, readable message (no extra={} dicts) so Render surfaces it.
+    """
+    # Prompt itself was blocked before generation
+    prompt_feedback = data.get("promptFeedback", {})
+    block_reason    = prompt_feedback.get("blockReason")
+    if block_reason:
+        logger.error(f"[{caller}] Gemini blocked prompt: blockReason={block_reason}")
+        return None
+
+    candidates = data.get("candidates", [])
+    if not candidates:
+        logger.error(f"[{caller}] Gemini returned no candidates. Full response: {str(data)[:400]}")
+        return None
+
+    candidate    = candidates[0]
+    finish_reason = candidate.get("finishReason", "STOP")
+
+    # Only STOP and MAX_TOKENS are usable; everything else (SAFETY, RECITATION, OTHER) is a failure
+    if finish_reason not in ("STOP", "MAX_TOKENS"):
+        logger.error(
+            f"[{caller}] Gemini finished with reason={finish_reason}. "
+            f"safetyRatings={candidate.get('safetyRatings', [])} "
+            f"Full candidate: {str(candidate)[:400]}"
+        )
+        return None
+
+    parts = candidate.get("content", {}).get("parts", [])
+    if not parts:
+        logger.error(
+            f"[{caller}] Gemini returned empty parts. "
+            f"finishReason={finish_reason} candidate={str(candidate)[:400]}"
+        )
+        return None
+
+    text = parts[0].get("text", "").strip()
+    if not text:
+        logger.error(f"[{caller}] Gemini text part is blank. finishReason={finish_reason}")
+        return None
+
+    return text
+
+
+def _extract_json_from_text(text: str) -> str:
+    """
+    Robustly extract a JSON object or array from text that may have prose around it.
+    Handles:  plain JSON, ```json ... ``` fences, text-before-JSON preambles.
+    Returns the original text unchanged if no JSON block is found.
+    """
+    # Strip markdown code fences
+    fence_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```", text, re.IGNORECASE)
+    if fence_match:
+        return fence_match.group(1).strip()
+
+    # Find first { or [ and take from there to matching close
+    start = -1
+    open_char: str | None = None
+    for i, ch in enumerate(text):
+        if ch in ("{", "["):
+            start    = i
+            open_char = ch
+            break
+
+    if start != -1 and open_char is not None:
+        close_char = "}" if open_char == "{" else "]"
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == open_char:
+                depth += 1
+            elif text[i] == close_char:
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+
+    return text  # unchanged — let the caller's json.loads raise
+
+
+# ── Core Gemini caller — single-turn ──────────────────────────────────────────
 
 async def _call_gemini(
     system_prompt: str,
@@ -39,7 +122,7 @@ async def _call_gemini(
     """
     settings = get_settings()
     if not settings.gemini_api_key:
-        logger.error("GEMINI_API_KEY not configured")
+        logger.error("_call_gemini: GEMINI_API_KEY is empty — set it in Render environment variables")
         return None
 
     url = f"{GEMINI_URL}?key={settings.gemini_api_key}"
@@ -59,28 +142,26 @@ async def _call_gemini(
 
     for attempt in range(1, 3):
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=45) as client:
                 response = await client.post(url, json=payload)
 
             if response.status_code == 200:
-                data       = response.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        return parts[0].get("text", "")
-                logger.error("Gemini returned empty candidates", extra={"body": str(data)[:300]})
-                return None
+                data = response.json()
+                text = _extract_gemini_text(data, caller="_call_gemini")
+                if text is None:
+                    return None
+                # When JSON mode is on, strip any accidental markdown fences
+                return _extract_json_from_text(text) if json_mode else text
 
+            # Surface the actual Gemini error clearly in Render logs
             logger.error(
-                "Gemini API error",
-                extra={"attempt": attempt, "status": response.status_code, "body": response.text[:300]},
+                f"_call_gemini HTTP {response.status_code} (attempt {attempt}): {response.text[:600]}"
             )
             if attempt == 1:
                 await asyncio.sleep(settings.groq_retry_delay_seconds)
 
         except Exception as error:
-            logger.error("Gemini call failed", extra={"attempt": attempt, "error": str(error)})
+            logger.error(f"_call_gemini exception (attempt {attempt}): {error}")
             if attempt == 1:
                 await asyncio.sleep(settings.groq_retry_delay_seconds)
 
@@ -92,17 +173,22 @@ async def _call_gemini(
 async def _call_gemini_conversation(
     system_prompt: str,
     contents: list[dict],
-    max_tokens: int = 600,
+    max_tokens: int = 800,
     temperature: float = 0.75,
 ) -> str | None:
     """
     Multi-turn Gemini call for the interview conversation agent.
     contents: Gemini-format [{role: "user"|"model", parts: [{text: "..."}]}]
     Returns raw text (JSON string) or None on failure.
+
+    NOTE: We do NOT use responseMimeType=application/json here because the model
+    occasionally refuses to generate when the conversation history is long and
+    JSON mode is enforced.  Instead we ask for JSON in the prompt and extract it
+    with _extract_json_from_text() which handles markdown fences and preambles.
     """
     settings = get_settings()
     if not settings.gemini_api_key:
-        logger.error("GEMINI_API_KEY not configured — cannot use Gemini for interview conversation")
+        logger.error("_call_gemini_conversation: GEMINI_API_KEY is empty")
         return None
 
     url     = f"{GEMINI_URL}?key={settings.gemini_api_key}"
@@ -110,36 +196,33 @@ async def _call_gemini_conversation(
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents":          contents,
         "generationConfig":  {
-            "temperature":      temperature,
-            "maxOutputTokens":  max_tokens,
-            "responseMimeType": "application/json",
+            "temperature":     temperature,
+            "maxOutputTokens": max_tokens,
+            # No responseMimeType — extract JSON from text instead (more robust)
         },
     }
 
     for attempt in range(1, 3):
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=45) as client:
                 response = await client.post(url, json=payload)
 
             if response.status_code == 200:
-                data       = response.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        return parts[0].get("text", "")
-                logger.error("Gemini returned empty candidates", extra={"body": str(data)[:300]})
-                return None
+                data = response.json()
+                text = _extract_gemini_text(data, caller="_call_gemini_conversation")
+                if text is None:
+                    return None
+                return _extract_json_from_text(text)
 
             logger.error(
-                "Gemini API error",
-                extra={"attempt": attempt, "status": response.status_code, "body": response.text[:300]},
+                f"_call_gemini_conversation HTTP {response.status_code} (attempt {attempt}): "
+                f"{response.text[:600]}"
             )
             if attempt == 1:
                 await asyncio.sleep(settings.groq_retry_delay_seconds)
 
         except Exception as error:
-            logger.error("Gemini call failed", extra={"attempt": attempt, "error": str(error)})
+            logger.error(f"_call_gemini_conversation exception (attempt {attempt}): {error}")
             if attempt == 1:
                 await asyncio.sleep(settings.groq_retry_delay_seconds)
 
@@ -673,17 +756,29 @@ def get_first_interview_message(
     """
     Return the hardcoded opening AI message.
     Never AI-generated — prevents hallucinations on the opening line.
+    Warm, human, and specific to the company and role.
     """
     first_name = candidate_name.split()[0] if candidate_name else "there"
+    company    = company_name.strip() if company_name else "the company"
+    role       = job_title.strip()    if job_title    else "this role"
 
     if resumed and last_ai_message:
+        # Resuming — recap where we left off, don't repeat the full intro
         last_sentence = last_ai_message.split(".")[0].strip()
         message = (
             f"Welcome back, {first_name}. We left off at: \"{last_sentence}.\" "
-            f"Ready to pick up where we left off?"
+            f"Ready to continue?"
         )
     else:
-        message = "To get started, could you confirm your full name for me?"
+        # Fresh start — greet by name, set context, invite naturally
+        message = (
+            f"Hi {first_name}, thanks for taking the time today. "
+            f"I'm reaching out on behalf of {company} — I'll be walking you through "
+            f"a short conversation about the {role} role. "
+            f"Nothing too formal, just want to get a sense of who you are and what "
+            f"you've been working on. "
+            f"To kick things off, could you tell me a little about your background?"
+        )
 
     return {
         "message":           message,
