@@ -508,9 +508,10 @@ export default function InterviewPage() {
   const [hasCardPending, setHasCardPending]     = useState(false);
   const [progressPct, setProgressPct]           = useState(0);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef       = useRef<HTMLTextAreaElement>(null);
-  const lastShownTime  = useRef<number>(0); // for timestamp display logic
+  const messagesEndRef  = useRef<HTMLDivElement>(null);
+  const inputRef        = useRef<HTMLTextAreaElement>(null);
+  const lastShownTime   = useRef<number>(0); // for timestamp display logic
+  const isStartingRef   = useRef(false);     // gate — prevents handleStartWithCredentials running twice
   // Holds Google session — state so changes re-trigger the drain effect
   const [pendingOAuth, setPendingOAuth] = useState<{ name: string; email: string } | null>(null);
 
@@ -619,6 +620,10 @@ export default function InterviewPage() {
   // ── Start interview with name + email ─────────────────────────────────────
   const handleStartWithCredentials = useCallback(async (name: string, email: string) => {
     if (!jobInfo) return;
+    // Guard: Supabase fires INITIAL_SESSION + SIGNED_IN back-to-back.
+    // Without this, the function runs twice and the opening message appears twice.
+    if (isStartingRef.current) return;
+    isStartingRef.current = true;
     setIsAuthLoading(true);
     setAuthGlobalError("");
     try {
@@ -656,6 +661,7 @@ export default function InterviewPage() {
       } else {
         setAuthGlobalError(msg);
       }
+      isStartingRef.current = false; // allow retry on error
     } finally {
       setIsAuthLoading(false);
     }
