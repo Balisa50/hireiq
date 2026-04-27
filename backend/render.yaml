@@ -18,6 +18,6 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: FRONTEND_URL
-        sync: false
+        value: https://hireiq-ab.vercel.app
       - key: SECRET_KEY
         generateValue: true
