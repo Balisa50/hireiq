@@ -149,10 +149,42 @@ class UpdateCandidateStatusRequest(BaseModel):
     @field_validator("status")
     @classmethod
     def validate_status(cls, status: str) -> str:
-        valid_statuses = {"shortlisted", "rejected", "in_progress", "completed", "scored"}
+        valid_statuses = {"shortlisted", "rejected", "accepted", "in_progress", "completed", "scored"}
         if status not in valid_statuses:
             raise ValueError(f"Status must be one of: {valid_statuses}")
         return status
+
+
+class GenerateCandidateEmailRequest(BaseModel):
+    status: str   # shortlisted | rejected | accepted
+    tone: str = "professional"  # professional | warm | direct
+
+    @field_validator("status")
+    @classmethod
+    def validate_email_status(cls, v: str) -> str:
+        if v not in {"shortlisted", "rejected", "accepted"}:
+            raise ValueError("status must be shortlisted, rejected, or accepted")
+        return v
+
+    @field_validator("tone")
+    @classmethod
+    def validate_tone(cls, v: str) -> str:
+        if v not in {"professional", "warm", "direct"}:
+            return "professional"
+        return v
+
+
+class SendCandidateEmailRequest(BaseModel):
+    subject: str
+    body: str
+
+    @field_validator("subject", "body")
+    @classmethod
+    def validate_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Field cannot be empty.")
+        return v
 
 
 class SendMessageRequest(BaseModel):

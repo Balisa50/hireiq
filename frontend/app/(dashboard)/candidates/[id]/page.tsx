@@ -2,18 +2,19 @@
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Download, CheckCircle2, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Mail } from "lucide-react";
+import {
+  Download, CheckCircle2, XCircle, ChevronDown, ChevronUp,
+  Clock, Calendar, Mail, RefreshCw, Send, X, Star,
+} from "lucide-react";
 import { candidatesAPI } from "@/lib/api";
 import type { Interview } from "@/lib/types";
 import Button from "@/components/ui/Button";
 import Skeleton from "@/components/ui/Skeleton";
 
-// ── Transcript normaliser — handles both old Q&A format and new conversation format ──
+// ── Transcript normaliser ─────────────────────────────────────────────────────
 
 interface TranscriptPair { question: string; answer: string }
 
-// Personal detail phrases — filter these out of the transcript view.
-// Recruiters only want to see substantive role Q&A, not "What's your phone number?"
 const PERSONAL_RE = /\b(your name|full name|email address|phone number|phone|location|where are you|currently based|currently employed|employment status|working at|confirm your)\b/i;
 
 function normaliseTranscript(raw: unknown[]): TranscriptPair[] {
@@ -21,24 +22,18 @@ function normaliseTranscript(raw: unknown[]): TranscriptPair[] {
   const first = raw[0] as Record<string, unknown>;
 
   if (first.role) {
-    // New conversation format: [{role: 'ai'|'candidate', content, action?}]
     const pairs: TranscriptPair[] = [];
     for (let i = 0; i < raw.length; i++) {
       const msg = raw[i] as Record<string, unknown>;
       if (msg.role !== "ai") continue;
       const action = String(msg.action ?? "continue");
       if (action === "request_file" || action === "request_link") continue;
-
       const aiContent = String(msg.content ?? "").trim();
       if (!aiContent) continue;
-
-      // Skip personal detail collection exchanges
       if (PERSONAL_RE.test(aiContent) && aiContent.length < 160) continue;
-
       const next = raw[i + 1] as Record<string, unknown> | undefined;
       if (next?.role === "candidate") {
         const answer = String(next.content ?? "").trim();
-        // Skip very short answers (name confirmations, one-word replies)
         if (answer.split(" ").length < 5) continue;
         pairs.push({ question: aiContent, answer });
       }
@@ -46,41 +41,25 @@ function normaliseTranscript(raw: unknown[]): TranscriptPair[] {
     return pairs;
   }
 
-  // Old Q&A format: [{question_index, question, answer}]
   return (raw as Record<string, unknown>[]).map((e) => ({
     question: String(e.question ?? ""),
     answer:   String(e.answer ?? ""),
   }));
 }
 
-// ── Markdown stripper for transcript answers ──────────────────────────────────
-
 function stripMarkdown(text: string): string {
   return text
-    // Horizontal rules / separators
-    .replace(/^-{3,}\s*$/gm, "")
-    // ATX headings (#, ##, etc.)
-    .replace(/^#{1,6}\s+/gm, "")
-    // Blockquotes
-    .replace(/^>\s?/gm, "")
-    // Bold + italic (**text**, *text*, __text__, _text_)
-    .replace(/(\*\*|__)(.*?)\1/g, "$2")
-    .replace(/(\*|_)(.*?)\1/g, "$2")
-    // Inline code
-    .replace(/`([^`]+)`/g, "$1")
-    // Ordered lists (1. 2. etc.) — keep text, remove numbering prefix
-    .replace(/^\s*\d+\.\s+/gm, "")
-    // Unordered lists (- * +)
-    .replace(/^\s*[-*+]\s+/gm, "")
-    // Collapse 3+ consecutive blank lines to 2
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/^-{3,}\s*$/gm, "").replace(/^#{1,6}\s+/gm, "")
+    .replace(/^>\s?/gm, "").replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2").replace(/`([^`]+)`/g, "$1")
+    .replace(/^\s*\d+\.\s+/gm, "").replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/\n{3,}/g, "\n\n").trim();
 }
 
-// ── Score ring (SVG animated) ─────────────────────────────────────────────────
+// ── Score ring ────────────────────────────────────────────────────────────────
 
 function ScoreRing({ score }: { score: number }) {
-  const r   = 52;
+  const r    = 52;
   const circ = 2 * Math.PI * r;
   const [displayed, setDisplayed] = useState(0);
 
@@ -88,8 +67,8 @@ function ScoreRing({ score }: { score: number }) {
     const start = performance.now();
     const dur   = 1000;
     function tick(now: number) {
-      const t   = Math.min((now - start) / dur, 1);
-      const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      const t    = Math.min((now - start) / dur, 1);
+      const ease = 1 - Math.pow(1 - t, 3);
       setDisplayed(Math.round(score * ease));
       if (t < 1) requestAnimationFrame(tick);
     }
@@ -117,17 +96,10 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-// ── Score bar (animated) ──────────────────────────────────────────────────────
-
 function ScoreBar({ label, score, delay }: { label: string; score: number; delay: number }) {
   const [width, setWidth] = useState(0);
   const color = score >= 70 ? "#16A34A" : score >= 50 ? "#D97706" : "#DC2626";
-
-  useEffect(() => {
-    const t = setTimeout(() => setWidth(score), delay);
-    return () => clearTimeout(t);
-  }, [score, delay]);
-
+  useEffect(() => { const t = setTimeout(() => setWidth(score), delay); return () => clearTimeout(t); }, [score, delay]);
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
@@ -141,8 +113,6 @@ function ScoreBar({ label, score, delay }: { label: string; score: number; delay
   );
 }
 
-// ── Section card ──────────────────────────────────────────────────────────────
-
 function Card({ title, label, children }: { title: string; label?: string; children: React.ReactNode }) {
   return (
     <div className="bg-white border border-border rounded-[4px] p-6">
@@ -154,15 +124,14 @@ function Card({ title, label, children }: { title: string; label?: string; child
   );
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
-
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
-    shortlisted: { label: "Shortlisted", color: "text-success", bg: "bg-green-50 border-success/20" },
-    rejected:    { label: "Rejected",    color: "text-danger",  bg: "bg-red-50 border-danger/20" },
-    scored:      { label: "Scored",      color: "text-sub",     bg: "bg-[var(--bg)] border-border" },
-    completed:   { label: "Completed",   color: "text-sub",     bg: "bg-[var(--bg)] border-border" },
-    in_progress: { label: "In Progress", color: "text-warn",    bg: "bg-amber-50 border-amber-200" },
+    shortlisted: { label: "Shortlisted", color: "text-success",  bg: "bg-green-50 border-success/20" },
+    accepted:    { label: "Accepted",    color: "text-blue-600", bg: "bg-blue-50 border-blue-200" },
+    rejected:    { label: "Rejected",    color: "text-danger",   bg: "bg-red-50 border-danger/20" },
+    scored:      { label: "Scored",      color: "text-sub",      bg: "bg-[var(--bg)] border-border" },
+    completed:   { label: "Completed",   color: "text-sub",      bg: "bg-[var(--bg)] border-border" },
+    in_progress: { label: "In Progress", color: "text-warn",     bg: "bg-amber-50 border-amber-200" },
   };
   const cfg = map[status] ?? { label: status, color: "text-muted", bg: "bg-[var(--bg)] border-border" };
   return (
@@ -172,16 +141,275 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Spinner ───────────────────────────────────────────────────────────────────
+function Spinner({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
+// ── Email Panel ───────────────────────────────────────────────────────────────
+
+type EmailStatus = "shortlisted" | "rejected" | "accepted";
+type EmailTone   = "professional" | "warm" | "direct";
+
+interface EmailPanelProps {
+  interviewId: string;
+  candidateName: string;
+  candidateEmail: string;
+  emailStatus: EmailStatus;
+  onClose: () => void;
+}
+
+function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, onClose }: EmailPanelProps) {
+  const [tone, setTone]         = useState<EmailTone>("professional");
+  const [subject, setSubject]   = useState("");
+  const [body, setBody]         = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [sending, setSending]   = useState(false);
+  const [sent, setSent]         = useState(false);
+  const [genError, setGenError] = useState("");
+  const [sendError, setSendError] = useState("");
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const generationAbort = useRef(false);
+
+  const firstName = candidateName.split(" ")[0] || candidateName;
+
+  const statusLabel: Record<EmailStatus, string> = {
+    shortlisted: "Shortlist notification",
+    rejected:    "Rejection",
+    accepted:    "Offer progression",
+  };
+
+  const generate = useCallback(async (selectedTone: EmailTone) => {
+    generationAbort.current = false;
+    setGenerating(true);
+    setGenError("");
+    try {
+      const draft = await candidatesAPI.generateEmail(interviewId, emailStatus, selectedTone);
+      if (!generationAbort.current) {
+        setSubject(draft.subject);
+        setBody(draft.body);
+      }
+    } catch {
+      if (!generationAbort.current) setGenError("Generation failed. Try again.");
+    } finally {
+      if (!generationAbort.current) setGenerating(false);
+    }
+  }, [interviewId, emailStatus]);
+
+  // Auto-generate on mount
+  useEffect(() => {
+    generate("professional");
+    return () => { generationAbort.current = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (!bodyRef.current) return;
+    bodyRef.current.style.height = "auto";
+    bodyRef.current.style.height = `${bodyRef.current.scrollHeight}px`;
+  }, [body]);
+
+  const handleTone = (t: EmailTone) => {
+    setTone(t);
+    generate(t);
+  };
+
+  const handleSend = async () => {
+    if (!subject.trim() || !body.trim()) return;
+    setSending(true);
+    setSendError("");
+    try {
+      const result = await candidatesAPI.sendEmail(interviewId, subject.trim(), body.trim());
+      if (result.sent) {
+        setSent(true);
+        setTimeout(onClose, 1800);
+      } else {
+        // SMTP not configured — show warning but don't block the recruiter
+        setSendError(result.message);
+      }
+    } catch {
+      setSendError("Send failed. Check your SMTP settings or try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const TONES: { value: EmailTone; label: string }[] = [
+    { value: "professional", label: "Professional" },
+    { value: "warm",         label: "Warm" },
+    { value: "direct",       label: "Direct" },
+  ];
+
+  const statusColor: Record<EmailStatus, string> = {
+    shortlisted: "text-success border-success/30 bg-green-50",
+    rejected:    "text-danger border-danger/30 bg-red-50",
+    accepted:    "text-blue-600 border-blue-200 bg-blue-50",
+  };
+
+  return (
+    <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+      {/* Panel header */}
+      <div className="px-5 py-3.5 border-b border-border flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Mail className="w-4 h-4 text-muted shrink-0" />
+          <span className="text-[13px] font-semibold text-ink truncate">
+            Email to {firstName}
+          </span>
+          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${statusColor[emailStatus]}`}>
+            {statusLabel[emailStatus]}
+          </span>
+        </div>
+        <button onClick={onClose} className="text-muted hover:text-ink transition-colors shrink-0">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="px-5 py-4 space-y-4">
+        {/* Tone selector */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted font-medium uppercase tracking-wider mr-1">Tone</span>
+          {TONES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => handleTone(t.value)}
+              disabled={generating}
+              className={`px-3 py-1 rounded-full text-[12px] font-medium border transition-colors disabled:opacity-40 ${
+                tone === t.value
+                  ? "bg-[#1A1714] text-white border-[#1A1714]"
+                  : "border-border text-sub hover:border-ink hover:text-ink"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Generating state */}
+        {generating && (
+          <div className="flex items-center gap-2.5 py-6 justify-center text-muted">
+            <Spinner className="w-4 h-4" />
+            <span className="text-[13px]">Generating draft…</span>
+          </div>
+        )}
+
+        {genError && !generating && (
+          <div className="text-[13px] text-danger flex items-center gap-2">
+            <span>{genError}</span>
+            <button
+              onClick={() => generate(tone)}
+              className="underline underline-offset-2 hover:no-underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!generating && !genError && subject && (
+          <>
+            {/* Subject */}
+            <div>
+              <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
+                Subject
+              </label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2 text-[13px] text-ink outline-none focus:border-ink transition-colors"
+              />
+            </div>
+
+            {/* Body */}
+            <div>
+              <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
+                Body
+              </label>
+              <textarea
+                ref={bodyRef}
+                value={body}
+                onChange={(e) => {
+                  setBody(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${e.target.scrollHeight}px`;
+                }}
+                className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2.5 text-[13px] text-ink leading-relaxed outline-none focus:border-ink transition-colors resize-none"
+                style={{ minHeight: "160px" }}
+              />
+              <p className="text-[11px] text-muted mt-1">
+                To: {candidateEmail}
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* Send error */}
+        {sendError && (
+          <p className="text-[12px] text-danger">{sendError}</p>
+        )}
+
+        {/* Sent confirmation */}
+        {sent && (
+          <div className="flex items-center gap-2 text-success text-[13px]">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Email sent to {candidateEmail}
+          </div>
+        )}
+
+        {/* Actions */}
+        {!sent && !generating && !genError && subject && (
+          <div className="flex items-center justify-between pt-1">
+            <button
+              onClick={() => generate(tone)}
+              disabled={generating}
+              className="flex items-center gap-1.5 text-[12px] text-sub hover:text-ink transition-colors disabled:opacity-40"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Regenerate
+            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-[13px] text-sub hover:text-ink border border-border rounded-[4px] hover:border-ink transition-colors"
+              >
+                Skip
+              </button>
+              <button
+                onClick={handleSend}
+                disabled={sending || !subject.trim() || !body.trim()}
+                className="flex items-center gap-2 px-4 py-2 bg-[#1A1714] text-white text-[13px] font-medium rounded-[4px] hover:bg-[#2d2926] transition-colors disabled:opacity-40"
+              >
+                {sending ? <Spinner className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                Send email
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CandidateReportPage() {
-  const { id }     = useParams<{ id: string }>();
-  const router     = useRouter();
-  const [interview, setInterview]       = useState<Interview | null>(null);
-  const [isLoading, setIsLoading]       = useState(true);
-  const [error, setError]               = useState("");
+  const { id }  = useParams<{ id: string }>();
+  const router  = useRouter();
+
+  const [interview, setInterview]           = useState<Interview | null>(null);
+  const [isLoading, setIsLoading]           = useState(true);
+  const [error, setError]                   = useState("");
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+
+  // Email panel
+  const [emailPanel, setEmailPanel] = useState<EmailStatus | null>(null);
 
   useEffect(() => {
     candidatesAPI.getInterview(id)
@@ -190,12 +418,14 @@ export default function CandidateReportPage() {
       .finally(() => setIsLoading(false));
   }, [id]);
 
-  const updateStatus = useCallback(async (newStatus: "shortlisted" | "rejected") => {
+  const updateStatus = useCallback(async (newStatus: "shortlisted" | "rejected" | "accepted") => {
     if (!interview) return;
     setStatusUpdating(true);
     try {
       await candidatesAPI.updateCandidateStatus(interview.id, newStatus);
       setInterview((p) => p ? { ...p, status: newStatus } : p);
+      // Open email panel immediately after status saves
+      setEmailPanel(newStatus);
     } catch { /* silent */ }
     finally { setStatusUpdating(false); }
   }, [interview]);
@@ -237,13 +467,17 @@ export default function CandidateReportPage() {
     );
   }
 
-  const isScored = interview.status !== "in_progress" && interview.overall_score !== null;
-  const duration = interview.completed_at && interview.started_at
+  const isScored      = interview.status !== "in_progress" && interview.overall_score !== null;
+  const duration      = interview.completed_at && interview.started_at
     ? Math.max(1, Math.round((new Date(interview.completed_at).getTime() - new Date(interview.started_at).getTime()) / 60_000))
     : null;
   const completedDate = interview.completed_at
     ? new Date(interview.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null;
+
+  const canShortlist = interview.status !== "shortlisted" && interview.status !== "accepted";
+  const canReject    = interview.status !== "rejected";
+  const canAccept    = interview.status !== "accepted";
 
   return (
     <div className="max-w-[720px] mx-auto space-y-5 pb-12">
@@ -254,24 +488,45 @@ export default function CandidateReportPage() {
             {interview.candidate_name}
           </h1>
           <div className="flex flex-wrap items-center gap-4 mt-1.5">
-            <span className="flex items-center gap-1.5 text-[13px] text-sub"><Mail className="w-3.5 h-3.5" />{interview.candidate_email}</span>
-            {duration && <span className="flex items-center gap-1.5 text-[13px] text-sub"><Clock className="w-3.5 h-3.5" />{duration} minutes</span>}
-            {completedDate && <span className="flex items-center gap-1.5 text-[13px] text-sub"><Calendar className="w-3.5 h-3.5" />{completedDate}</span>}
+            <span className="flex items-center gap-1.5 text-[13px] text-sub">
+              <Mail className="w-3.5 h-3.5" />{interview.candidate_email}
+            </span>
+            {duration && (
+              <span className="flex items-center gap-1.5 text-[13px] text-sub">
+                <Clock className="w-3.5 h-3.5" />{duration} minutes
+              </span>
+            )}
+            {completedDate && (
+              <span className="flex items-center gap-1.5 text-[13px] text-sub">
+                <Calendar className="w-3.5 h-3.5" />{completedDate}
+              </span>
+            )}
           </div>
           <div className="mt-2"><StatusBadge status={interview.status} /></div>
         </div>
+
         <div className="flex items-center gap-2 flex-wrap">
           {isScored && (
             <Button variant="secondary" size="sm" onClick={downloadPdf}>
               <Download className="w-3.5 h-3.5" /> PDF Report
             </Button>
           )}
-          {interview.status !== "shortlisted" && (
+          {canShortlist && (
             <Button size="sm" isLoading={statusUpdating} onClick={() => updateStatus("shortlisted")}>
               <CheckCircle2 className="w-3.5 h-3.5" /> Shortlist
             </Button>
           )}
-          {interview.status !== "rejected" && (
+          {canAccept && (
+            <button
+              disabled={statusUpdating}
+              onClick={() => updateStatus("accepted")}
+              className="inline-flex items-center justify-center gap-2 text-[13px] font-medium px-3 py-1.5 h-8 bg-blue-600 text-white rounded-[4px] hover:bg-blue-700 transition-colors disabled:opacity-40"
+            >
+              {statusUpdating ? <Spinner className="w-3.5 h-3.5" /> : <Star className="w-3.5 h-3.5" />}
+              Accept
+            </button>
+          )}
+          {canReject && (
             <Button variant="danger" size="sm" isLoading={statusUpdating} onClick={() => updateStatus("rejected")}>
               <XCircle className="w-3.5 h-3.5" /> Reject
             </Button>
@@ -279,10 +534,23 @@ export default function CandidateReportPage() {
         </div>
       </div>
 
+      {/* Email panel — appears immediately after status change */}
+      {emailPanel && (
+        <EmailPanel
+          interviewId={interview.id}
+          candidateName={interview.candidate_name}
+          candidateEmail={interview.candidate_email}
+          emailStatus={emailPanel}
+          onClose={() => setEmailPanel(null)}
+        />
+      )}
+
       {/* Not scored yet */}
       {!isScored && (
         <div className="bg-white border border-border rounded-[4px] p-8 text-center">
-          <p className="text-sub text-sm">This interview is still in progress. The AI assessment will appear once the candidate submits.</p>
+          <p className="text-sub text-sm">
+            This interview is still in progress. The AI assessment will appear once the candidate submits.
+          </p>
         </div>
       )}
 
@@ -351,7 +619,9 @@ export default function CandidateReportPage() {
               <ol className="space-y-3">
                 {interview.recommended_follow_up_questions.map((q, i) => (
                   <li key={i} className="flex items-start gap-3 text-sm text-ink">
-                    <span className="w-5 h-5 rounded-full border border-border flex items-center justify-center text-[11px] text-muted font-medium shrink-0 mt-0.5">{i + 1}</span>
+                    <span className="w-5 h-5 rounded-full border border-border flex items-center justify-center text-[11px] text-muted font-medium shrink-0 mt-0.5">
+                      {i + 1}
+                    </span>
                     {q}
                   </li>
                 ))}
@@ -369,7 +639,9 @@ export default function CandidateReportPage() {
                   className="w-full px-6 py-4 flex items-center justify-between text-sm font-medium text-ink hover:bg-[var(--bg)] transition-colors"
                 >
                   <span>View full interview transcript</span>
-                  {transcriptOpen ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
+                  {transcriptOpen
+                    ? <ChevronUp className="w-4 h-4 text-muted" />
+                    : <ChevronDown className="w-4 h-4 text-muted" />}
                 </button>
                 {transcriptOpen && (
                   <div className="px-6 pb-6 space-y-5 border-t border-border pt-5">
@@ -387,7 +659,7 @@ export default function CandidateReportPage() {
             ) : null;
           })()}
 
-          {/* Bottom actions */}
+          {/* Bottom PDF button */}
           <div className="flex items-center gap-3">
             {isScored && (
               <Button variant="secondary" onClick={downloadPdf}>
