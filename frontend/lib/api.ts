@@ -306,6 +306,28 @@ export const candidatesAPI = {
     const token = getStoredAccessToken() ?? "";
     return `${API_BASE_URL}/api/interviews/${interviewId}/report/pdf?token=${token}`;
   },
+
+  async generateEmail(
+    interviewId: string,
+    emailStatus: string,
+    tone: string,
+  ): Promise<{ subject: string; body: string }> {
+    return apiFetch<{ subject: string; body: string }>(
+      `/api/interviews/${interviewId}/email/generate`,
+      { method: "POST", body: JSON.stringify({ status: emailStatus, tone }) },
+    );
+  },
+
+  async sendEmail(
+    interviewId: string,
+    subject: string,
+    body: string,
+  ): Promise<{ sent: boolean; message: string }> {
+    return apiFetch<{ sent: boolean; message: string }>(
+      `/api/interviews/${interviewId}/email/send`,
+      { method: "POST", body: JSON.stringify({ subject, body }) },
+    );
+  },
 };
 
 // ── Public interview API (candidate side — no auth) ───────────────────────────

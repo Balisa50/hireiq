@@ -26,6 +26,8 @@ from app.models.interview import (
     SubmitLinkRequest,
     SendMessageRequest,
     UpdateCandidateStatusRequest,
+    GenerateCandidateEmailRequest,
+    SendCandidateEmailRequest,
     InterviewResponse,
     CandidateSummary,
     JobPublicInfo,
@@ -35,10 +37,12 @@ from app.services.groq_service import (
     generate_conversation_response,
     get_first_interview_message,
     score_candidate,
+    generate_candidate_email,
 )
 from app.services.pdf_service import generate_candidate_report_pdf
 from app.services import file_service
 from app.services import github_service
+from app.services import email_service
 import bleach
 
 logger = logging.getLogger("hireiq.interviews_router")
@@ -783,6 +787,93 @@ async def update_candidate_status(
     supabase.table("interviews").update({"status": request.status}).eq("id", interview_id).execute()
 
     return {"message": f"Candidate status updated to {request.status}."}
+
+
+@router.post("/{interview_id}/email/generate", response_model=dict)
+async def generate_email_draft(
+    interview_id: str,
+    request: GenerateCandidateEmailRequest,
+    company_id: str = Depends(get_authenticated_company_id),
+) -> dict:
+    """
+    Generate an AI-drafted candidate notification email.
+    Returns {subject, body}. Does NOT send the email.
+    """
+    result = (
+        supabase.table("interviews")
+        .select("company_id, candidate_name, candidate_email, executive_summary, "
+                "key_strengths, areas_of_concern, jobs(title, companies(company_name))")
+        .eq("id", interview_id)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    interview = result.data[0]
+    verify_company_owns_resource(interview["company_id"], company_id, "interview")
+
+    job     = interview.get("jobs") or {}
+    company = job.get("companies") or {}
+
+    draft = await generate_candidate_email(
+        status=request.status,
+        tone=request.tone,
+        candidate_name=interview.get("candidate_name", ""),
+        job_title=job.get("title", "this role"),
+        company_name=company.get("company_name", ""),
+        executive_summary=interview.get("executive_summary") or "",
+        key_strengths=interview.get("key_strengths") or [],
+        areas_of_concern=interview.get("areas_of_concern") or [],
+    )
+
+    if not draft:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email draft generation failed. Please try again.",
+        )
+
+    return draft
+
+
+@router.post("/{interview_id}/email/send", response_model=dict)
+async def send_candidate_email_endpoint(
+    interview_id: str,
+    request: SendCandidateEmailRequest,
+    company_id: str = Depends(get_authenticated_company_id),
+) -> dict:
+    """
+    Send a candidate notification email using the recruiter-approved draft.
+    Returns {sent: bool, message: str}.
+    """
+    result = (
+        supabase.table("interviews")
+        .select("company_id, candidate_name, candidate_email")
+        .eq("id", interview_id)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    interview = result.data[0]
+    verify_company_owns_resource(interview["company_id"], company_id, "interview")
+
+    sent = await email_service.send_candidate_email(
+        to_email=interview["candidate_email"],
+        to_name=interview.get("candidate_name", ""),
+        subject=request.subject,
+        body=request.body,
+    )
+
+    if not sent:
+        # SMTP not configured — return 200 with a warning rather than failing silently
+        return {
+            "sent": False,
+            "message": "Email queued but SMTP is not configured. Add SMTP credentials in your environment settings.",
+        }
+
+    return {"sent": True, "message": "Email sent successfully."}
 
 
 @router.get("/{interview_id}/report/pdf")

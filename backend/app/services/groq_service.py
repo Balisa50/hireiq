@@ -395,7 +395,134 @@ async def score_candidate(
         return None
 
 
-# ── 4. Conversational interview driver ────────────────────────────────────────
+# ── 4. Candidate notification email generation ────────────────────────────────
+
+async def generate_candidate_email(
+    status: str,
+    tone: str,
+    candidate_name: str,
+    job_title: str,
+    company_name: str,
+    executive_summary: str,
+    key_strengths: list[str],
+    areas_of_concern: list[str],
+) -> dict | None:
+    """
+    Generate a candidate notification email draft.
+    status: 'shortlisted' | 'rejected' | 'accepted'
+    tone:   'professional' | 'warm' | 'direct'
+    Returns {subject, body} or None on failure.
+    """
+    first_name = candidate_name.split()[0] if candidate_name else "there"
+
+    tone_map = {
+        "professional": (
+            "Professional. Measured and clear. Sound like a senior HR professional who has seen "
+            "thousands of candidates. No warmth inflation. No filler."
+        ),
+        "warm": (
+            "Warm but honest. Genuinely human. As if you have met this person and respect their "
+            "time. Not saccharine. Still clear and direct."
+        ),
+        "direct": (
+            "Direct. Short. No softening language. Every sentence earns its place. Firm but fair."
+        ),
+    }
+    tone_guidance = tone_map.get(tone.lower(), tone_map["professional"])
+
+    # Pull one specific signal per category, not a list dump
+    top_strength = key_strengths[0] if key_strengths else ""
+    top_concern  = areas_of_concern[0] if areas_of_concern else ""
+
+    if status == "shortlisted":
+        instructions = (
+            f"Write a shortlist notification for {first_name} ({candidate_name}).\n\n"
+            "Requirements:\n"
+            f"- Say they are being shortlisted for {job_title} at {company_name}.\n"
+            f"- Reference ONE real specific signal from the assessment that stood out. "
+            f"Be specific, not generic. Signal: {top_strength}\n"
+            "- Tell them what happens next: the team will be in touch to arrange the next stage.\n"
+            "- Do NOT say 'we were impressed', 'exciting opportunity', or 'strong pool of candidates'.\n"
+            "- Do NOT overpromise about timelines.\n"
+            "- Close professionally.\n"
+            "- Total length: 100-160 words."
+        )
+    elif status == "rejected":
+        instructions = (
+            f"Write a rejection email for {first_name} ({candidate_name}). "
+            "This is the most important email to get right. Candidates remember how they were rejected.\n\n"
+            "Requirements:\n"
+            f"- Thank them for their time interviewing for {job_title} at {company_name}.\n"
+            "- Be completely clear this is a rejection. Do not soften it so much they have to re-read.\n"
+            f"- Give ONE honest, role-specific reason tied to the requirements, not a personal criticism. "
+            f"Reason: {top_concern}\n"
+            "- Do NOT say: 'keep your CV on file', 'we had many strong candidates', "
+            "'not a fit at this time', 'best of luck in your search'.\n"
+            "- Do NOT use the words: 'unfortunately', 'regret to inform', 'at this time'.\n"
+            "- Sound like a person, not HR software.\n"
+            "- Close with genuine respect. They invested real time.\n"
+            "- Total length: 90-140 words."
+        )
+    else:  # accepted
+        instructions = (
+            f"Write an offer progression email for {first_name} ({candidate_name}) "
+            f"for {job_title} at {company_name}.\n\n"
+            "Requirements:\n"
+            "- Confirm they have been selected to progress to the offer stage.\n"
+            "- Be explicit about next steps: a member of the team will be in touch shortly "
+            "with formal offer details.\n"
+            "- Keep it clear and professional. This is not a celebration email, it is a signal.\n"
+            "- Do not say 'congratulations' or 'we are thrilled'.\n"
+            "- Total length: 80-130 words."
+        )
+
+    system_prompt = (
+        f"You are writing a candidate notification email on behalf of the hiring team at {company_name}.\n\n"
+        f"Tone: {tone_guidance}\n\n"
+        "Email quality rules, non-negotiable:\n"
+        "- No 'we were blown away'. No 'exciting opportunity'. No corporate filler.\n"
+        "- Sound like a sharp human who actually read the file.\n"
+        "- Specific where possible. Short. Every word earns its place.\n"
+        "- Never use em dashes. Use commas or periods.\n"
+        "- The subject line must be clear and direct. No clickbait.\n\n"
+        "Return valid JSON only. No markdown. No explanation.\n"
+        '{"subject": "...", "body": "..."}\n'
+        "The body must be plain text. Use blank lines between paragraphs. No HTML. No markdown."
+    )
+
+    user_prompt = (
+        f"Candidate: {candidate_name}\n"
+        f"Job: {job_title}\n"
+        f"Company: {company_name}\n"
+        + (f"Assessment context: {executive_summary[:400]}\n" if executive_summary else "")
+        + f"\n{instructions}"
+    )
+
+    raw = await _call_groq_with_retry(
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        max_tokens=600,
+        temperature=0.65,
+        json_mode=True,
+    )
+
+    if not raw:
+        return None
+
+    try:
+        parsed = json.loads(raw)
+        return {
+            "subject": str(parsed.get("subject", "")).strip(),
+            "body":    str(parsed.get("body",    "")).strip(),
+        }
+    except json.JSONDecodeError as error:
+        logger.error("Failed to parse Groq email response", extra={"error": str(error), "raw": raw[:200]})
+        return None
+
+
+# ── 5. Conversational interview driver ────────────────────────────────────────
 
 def get_first_interview_message(
     candidate_name: str,
