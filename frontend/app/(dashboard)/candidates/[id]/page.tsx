@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Download, CheckCircle2, XCircle, ChevronDown, ChevronUp,
-  Clock, Calendar, Mail, RefreshCw, Send, X, Star,
+  Clock, Calendar, Mail, RefreshCw, Send, X, Star, Trash2, AlertTriangle,
 } from "lucide-react";
 import { candidatesAPI } from "@/lib/api";
 import type { Interview } from "@/lib/types";
@@ -467,6 +467,70 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
   );
 }
 
+// ── Delete Confirmation Modal ─────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  candidateName,
+  onConfirm,
+  onCancel,
+  isDeleting,
+}: {
+  candidateName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isDeleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        onClick={onCancel}
+      />
+      {/* Modal */}
+      <div className="relative bg-white border border-border rounded-[4px] shadow-xl max-w-sm w-full p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-full bg-red-50 border border-danger/20 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-danger" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold text-ink">Delete candidate?</h2>
+            <p className="text-[13px] text-sub mt-1 leading-relaxed">
+              This will permanently remove{" "}
+              <strong>{candidateName}</strong> and everything associated with
+              them — their interview, transcript, AI score report, and all
+              uploaded documents.{" "}
+              <strong className="text-ink">This cannot be undone.</strong>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="px-4 py-2 text-[13px] text-sub hover:text-ink border border-border rounded-[4px] hover:border-ink transition-colors disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="flex items-center gap-2 px-4 py-2 bg-danger text-white text-[13px] font-medium rounded-[4px] hover:bg-red-700 transition-colors disabled:opacity-40"
+          >
+            {isDeleting ? (
+              <><Spinner className="w-3.5 h-3.5" /> Deleting…</>
+            ) : (
+              <><Trash2 className="w-3.5 h-3.5" /> Delete permanently</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CandidateReportPage() {
@@ -481,6 +545,11 @@ export default function CandidateReportPage() {
 
   // Email panel
   const [emailPanel, setEmailPanel] = useState<EmailStatus | null>(null);
+
+  // Delete modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting]           = useState(false);
+  const [deleteError, setDeleteError]         = useState("");
 
   useEffect(() => {
     candidatesAPI.getInterview(id)
@@ -505,6 +574,20 @@ export default function CandidateReportPage() {
     if (!interview) return;
     window.open(candidatesAPI.getPdfReportUrl(interview.id), "_blank");
   }, [interview]);
+
+  const handleDelete = useCallback(async () => {
+    if (!interview) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await candidatesAPI.deleteCandidate(interview.id);
+      router.push("/candidates");
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Deletion failed. Please try again.");
+      setIsDeleting(false);
+      setShowDeleteModal(false);
+    }
+  }, [interview, router]);
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -552,6 +635,24 @@ export default function CandidateReportPage() {
 
   return (
     <div className="max-w-[720px] mx-auto space-y-5 pb-12">
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <DeleteConfirmModal
+          candidateName={interview.candidate_name}
+          onConfirm={handleDelete}
+          onCancel={() => { setShowDeleteModal(false); setDeleteError(""); }}
+          isDeleting={isDeleting}
+        />
+      )}
+
+      {/* Delete error banner */}
+      {deleteError && (
+        <div className="flex items-center gap-2 rounded-[4px] bg-red-50 border border-danger/20 px-3 py-2.5 text-[13px] text-danger">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {deleteError}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -602,6 +703,17 @@ export default function CandidateReportPage() {
               <XCircle className="w-3.5 h-3.5" /> Reject
             </Button>
           )}
+
+          {/* Separator — visually isolates the destructive action */}
+          <div className="w-px h-6 bg-border mx-1 shrink-0" />
+
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            title="Delete candidate permanently"
+            className="w-8 h-8 flex items-center justify-center rounded-[4px] border border-border text-muted hover:border-danger hover:text-danger transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 

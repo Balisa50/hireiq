@@ -11,12 +11,16 @@ Handles all interactions with the Groq API:
 import json
 import asyncio
 import logging
+import httpx
 from groq import AsyncGroq
 from app.config import get_settings
 
 logger = logging.getLogger("hireiq.groq")
 
 MODEL = "llama-3.3-70b-versatile"
+
+# Gemini Flash 2.0 — used for the interview conversation agent only
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 
 def _build_groq_client() -> AsyncGroq:
@@ -58,6 +62,65 @@ async def _call_groq_with_retry(
             )
             if attempt == 1:
                 await asyncio.sleep(settings.groq_retry_delay_seconds)
+
+    return None
+
+
+# ── Gemini Flash 2.0 — interview conversation ──────────────────────────────────
+
+async def _call_gemini_conversation(
+    system_prompt: str,
+    contents: list[dict],
+    max_tokens: int = 600,
+    temperature: float = 0.75,
+) -> str | None:
+    """
+    Call Gemini Flash 2.0 for the interview conversation agent.
+    contents: Gemini-format list [{role: "user"|"model", parts: [{text: "..."}]}]
+    Returns raw text (JSON string) or None on failure.
+    """
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        logger.error("GEMINI_API_KEY not configured — cannot use Gemini for interview conversation")
+        return None
+
+    url     = f"{GEMINI_URL}?key={settings.gemini_api_key}"
+    payload = {
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents": contents,
+        "generationConfig": {
+            "temperature":      temperature,
+            "maxOutputTokens":  max_tokens,
+            "responseMimeType": "application/json",
+        },
+    }
+
+    for attempt in range(1, 3):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(url, json=payload)
+
+            if response.status_code == 200:
+                data       = response.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        return parts[0].get("text", "")
+                logger.error("Gemini returned empty candidates", extra={"body": str(data)[:300]})
+                return None
+
+            logger.error(
+                "Gemini API error",
+                extra={"attempt": attempt, "status": response.status_code, "body": response.text[:300]},
+            )
+            if attempt == 1:
+                await asyncio.sleep(3)
+
+        except Exception as error:
+            logger.error("Gemini call failed", extra={"attempt": attempt, "error": str(error)})
+            if attempt == 1:
+                await asyncio.sleep(3)
 
     return None
 
@@ -847,21 +910,34 @@ async def generate_conversation_response(
         '"requirement_id": null, "requirement_label": null}'
     )
 
-    # Build Groq message list from conversation history
-    groq_messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    # Build Gemini contents list from conversation history.
+    # Gemini requires: alternating user/model turns, always starting with user.
+    raw_contents: list[dict] = []
     for msg in conversation:
-        role = msg.get("role", "")
+        role    = msg.get("role", "")
         content = msg.get("content", "")
         if role == "ai":
-            groq_messages.append({"role": "assistant", "content": content})
+            raw_contents.append({"role": "model", "parts": [{"text": content}]})
         elif role == "candidate":
-            groq_messages.append({"role": "user", "content": content})
+            raw_contents.append({"role": "user",  "parts": [{"text": content}]})
 
-    raw = await _call_groq_with_retry(
-        messages=groq_messages,
+    # Ensure the conversation starts with a user turn (Gemini requirement)
+    if not raw_contents or raw_contents[0]["role"] != "user":
+        raw_contents.insert(0, {"role": "user", "parts": [{"text": "Ready."}]})
+
+    # Deduplicate consecutive same-role messages (merge their text)
+    gemini_contents: list[dict] = [raw_contents[0]]
+    for msg in raw_contents[1:]:
+        if msg["role"] == gemini_contents[-1]["role"]:
+            gemini_contents[-1]["parts"][0]["text"] += "\n" + msg["parts"][0]["text"]
+        else:
+            gemini_contents.append(msg)
+
+    raw = await _call_gemini_conversation(
+        system_prompt=system_prompt,
+        contents=gemini_contents,
         max_tokens=600,
         temperature=0.75,
-        json_mode=True,
     )
 
     if not raw:

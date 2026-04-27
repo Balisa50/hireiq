@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Sending address on HireIQ's verified Resend domain.
     resend_from_email: str = "noreply@hireiq.app"
 
+    # Gemini — interview conversation agent only (scoring + email stay on Groq)
+    gemini_api_key: str = ""
+
     # Interview settings
     interview_link_expiry_days: int = 7
     interview_resume_window_hours: int = 24

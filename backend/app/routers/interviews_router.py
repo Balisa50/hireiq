@@ -810,6 +810,48 @@ async def get_interview_report(
     return InterviewResponse(**interview)
 
 
+@router.delete("/{interview_id}", response_model=dict)
+async def delete_candidate(
+    interview_id: str,
+    company_id: str = Depends(get_authenticated_company_id),
+) -> dict:
+    """
+    Permanently delete a candidate and all associated data.
+    Removes: interview record, transcript, AI scores, uploaded files from Storage.
+    This action is irreversible.
+    """
+    result = (
+        supabase.table("interviews")
+        .select("company_id, job_id, submitted_files")
+        .eq("id", interview_id)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    interview = result.data[0]
+    verify_company_owns_resource(interview["company_id"], company_id, "interview")
+
+    # Delete all uploaded files from Supabase Storage first
+    submitted_files = interview.get("submitted_files") or []
+    if submitted_files:
+        paths = [f["file_path"] for f in submitted_files if f.get("file_path")]
+        if paths:
+            try:
+                supabase.storage.from_("interview-documents").remove(paths)
+                logger.info("Deleted candidate files from storage", extra={"count": len(paths)})
+            except Exception as exc:
+                # Log but never block record deletion — orphaned files are acceptable
+                logger.warning("Failed to delete some files from storage", extra={"error": str(exc)})
+
+    # Delete the interview record (all JSON columns — transcript, scores — go with it)
+    supabase.table("interviews").delete().eq("id", interview_id).execute()
+    logger.info("Candidate deleted", extra={"interview_id": interview_id, "company_id": company_id})
+
+    return {"deleted": True}
+
+
 @router.patch("/{interview_id}/status", response_model=dict)
 async def update_candidate_status(
     interview_id: str,

@@ -302,6 +302,12 @@ export const candidatesAPI = {
     });
   },
 
+  async deleteCandidate(interviewId: string): Promise<{ deleted: boolean }> {
+    return apiFetch<{ deleted: boolean }>(`/api/interviews/${interviewId}`, {
+      method: "DELETE",
+    });
+  },
+
   getPdfReportUrl(interviewId: string): string {
     const token = getStoredAccessToken() ?? "";
     return `${API_BASE_URL}/api/interviews/${interviewId}/report/pdf?token=${token}`;
