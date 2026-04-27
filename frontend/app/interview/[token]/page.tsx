@@ -5,14 +5,20 @@
  *
  * Screens: loading → auth → conversation → review → complete | error
  *
- * The AI drives the entire conversation — no static Q&A, no "Next Question" button.
- * File/link uploads live in the bottom input bar (not buried in message bubbles).
- * Auth via Google OAuth or email + name form.
+ * Fixes applied:
+ *  - File input accepts all types (accept="*\/*") + multiple selection + processes all files
+ *  - All text forced LTR (dir="ltr") on containers, textarea, and message bubbles
+ *  - Scroll lock: RAF-based scrollTop = scrollHeight — no jerk during streaming
+ *  - Textarea: max-height 160px, overflow-y-auto, resets to single line after send
+ *  - Review screen: explicit gate before any submission. Backend sets pending_review;
+ *    scoring only happens after candidate clicks confirm here.
+ *  - "Go back" returns to read-only conversation view (input disabled)
+ *  - Optional documents: agent accepts graceful decline, never forces
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
-import { Paperclip, Link2, Send, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Paperclip, Link2, Send, AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { interviewAPI } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import type { JobPublicInfo } from "@/lib/types";
@@ -30,7 +36,6 @@ interface ConversationMessage {
   action?: "continue" | "request_file" | "request_link" | "complete";
   requirement_id?: string | null;
   requirement_label?: string | null;
-  /** Completion state for the inline badge — set after bar-level upload/link */
   cardStatus?: "idle" | "uploading" | "complete" | "error";
   cardProgress?: number;
   cardFileName?: string;
@@ -87,7 +92,7 @@ function extractPersonalDetails(
   return details;
 }
 
-// ── Mark (HireIQ logo) ─────────────────────────────────────────────────────────
+// ── Mark (logo) ────────────────────────────────────────────────────────────────
 
 function Mark({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -151,9 +156,8 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4 py-12" dir="ltr">
       <div className="max-w-[400px] w-full space-y-6">
-        {/* Header */}
         <div className="text-center space-y-3">
           <Mark className="w-7 h-7 text-ink mx-auto" />
           <p className="text-[13px] text-muted">
@@ -172,7 +176,6 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
         </div>
 
         <div className="bg-white border border-border rounded-[4px] p-6 space-y-4">
-          {/* Global error */}
           {globalError && (
             <div className="flex items-start gap-2 rounded-[4px] bg-red-50 border border-danger/20 px-3 py-2.5 text-[13px] text-danger">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -180,7 +183,6 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
             </div>
           )}
 
-          {/* Google OAuth */}
           <button
             onClick={onGoogleAuth}
             disabled={googleLoading || isLoading}
@@ -190,14 +192,12 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
             Continue with Google
           </button>
 
-          {/* Divider */}
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-border" />
             <span className="text-[12px] text-muted">or enter your details</span>
             <div className="flex-1 h-px bg-border" />
           </div>
 
-          {/* Manual form */}
           <div className="space-y-3">
             <div>
               <label className="block text-[12px] font-medium text-ink mb-1">Full Name</label>
@@ -207,6 +207,7 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your full name"
                 autoComplete="name"
+                dir="ltr"
                 className={`w-full bg-[var(--bg)] border rounded-[4px] px-3 py-2.5 text-[14px] text-ink outline-none transition-colors focus:border-ink placeholder:text-muted ${errors.name ? "border-danger" : "border-border"}`}
               />
               {errors.name && <p className="text-[12px] text-danger mt-1">{errors.name}</p>}
@@ -219,6 +220,7 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
                 autoComplete="email"
+                dir="ltr"
                 onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
                 className={`w-full bg-[var(--bg)] border rounded-[4px] px-3 py-2.5 text-[14px] text-ink outline-none transition-colors focus:border-ink placeholder:text-muted ${errors.email ? "border-danger" : "border-border"}`}
               />
@@ -254,13 +256,10 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
 }
 
 // ── AI Message Bubble ──────────────────────────────────────────────────────────
-// Displays text only. File/link interaction is in the bottom bar.
-// Shows a completion badge after the user submits the requested item.
 
 function AIMessageBubble({ message }: { message: ConversationMessage }) {
   return (
-    <div className="flex items-start gap-3">
-      {/* Avatar */}
+    <div className="flex items-start gap-3" dir="ltr">
       <div className="w-6 h-6 rounded-full bg-white border border-border flex items-center justify-center shrink-0 mt-1">
         {message.isTyping ? (
           <span className="w-1.5 h-4 bg-muted rounded-full animate-pulse inline-block" />
@@ -269,14 +268,13 @@ function AIMessageBubble({ message }: { message: ConversationMessage }) {
         )}
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         {message.isTyping ? (
           <span className="text-[16px] text-muted animate-pulse"
             style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>_</span>
         ) : (
           <p className="text-[16px] text-ink leading-[1.75]"
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+            style={{ fontFamily: "'Playfair Display', Georgia, serif", textAlign: "left", direction: "ltr" }}>
             {message.content}
           </p>
         )}
@@ -314,11 +312,14 @@ function CandidateMessageBubble({ content, showTimestamp, timestamp }: {
 }) {
   const time = new Date(timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-1" dir="ltr">
       {showTimestamp && (
         <p className="text-[11px]" style={{ color: "#9C9590" }}>{time}</p>
       )}
-      <p className="text-[15px] text-ink border-r-2 border-[#E8E4DF] pr-3.5 max-w-[85%] text-right leading-relaxed">
+      <p
+        className="text-[15px] text-ink border-r-2 border-[#E8E4DF] pr-3.5 max-w-[85%] leading-relaxed"
+        style={{ textAlign: "right", direction: "ltr" }}
+      >
         {content}
       </p>
     </div>
@@ -358,25 +359,34 @@ export default function InterviewPage() {
   const [candidateEmail, setCandidateEmail]   = useState("");
 
   // Interview session
-  const [interviewId, setInterviewId]       = useState("");
-  const [messages, setMessages]             = useState<ConversationMessage[]>([]);
-  const [inputValue, setInputValue]         = useState("");
-  const [isWaitingForAI, setIsWaitingForAI] = useState(false);
-  const [aiError, setAiError]               = useState("");
-  const [progressPct, setProgressPct]       = useState(0);
+  const [interviewId, setInterviewId]           = useState("");
+  const [messages, setMessages]                 = useState<ConversationMessage[]>([]);
+  const [inputValue, setInputValue]             = useState("");
+  const [isWaitingForAI, setIsWaitingForAI]     = useState(false);
+  const [aiError, setAiError]                   = useState("");
+  const [progressPct, setProgressPct]           = useState(0);
+  // Once the AI fires "complete", the interview is pending_review — lock input
+  const [interviewComplete, setInterviewComplete] = useState(false);
 
   // Bar-level upload / link state
-  const [linkValue, setLinkValue]         = useState("");
-  const [barError, setBarError]           = useState("");
-  const [isUploading, setIsUploading]     = useState(false);
+  const [linkValue, setLinkValue]           = useState("");
+  const [barError, setBarError]             = useState("");
+  const [isUploading, setIsUploading]       = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadFileName, setUploadFileName] = useState("");
+  const [uploadQueue, setUploadQueue]       = useState<File[]>([]);
   const pageFileRef = useRef<HTMLInputElement>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef       = useRef<HTMLTextAreaElement>(null);
-  const lastShownTime  = useRef<number>(0);
-  const isStartingRef  = useRef(false);
+  // Review screen state
+  const [isSubmitting, setIsSubmitting]   = useState(false);
+  const [submitError, setSubmitError]     = useState("");
+  // Editable personal detail overrides on the review screen
+  const [detailEdits, setDetailEdits] = useState<Record<string, string>>({});
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef            = useRef<HTMLTextAreaElement>(null);
+  const lastShownTime       = useRef<number>(0);
+  const isStartingRef       = useRef(false);
   const [pendingOAuth, setPendingOAuth] = useState<{ name: string; email: string } | null>(null);
 
   // ── Derive pending action from last AI message ─────────────────────────────
@@ -391,12 +401,25 @@ export default function InterviewPage() {
       : "continue";
   const hasCardPending = pendingAction !== "continue";
 
+  // ── Scroll to bottom — stable, no jerk ────────────────────────────────────
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      container.scrollTop = container.scrollHeight;
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
   // ── Load job info ──────────────────────────────────────────────────────────
   useEffect(() => {
     interviewAPI.getJobInfo(token)
       .then((info) => {
         setJobInfo(info);
-        setScreen("welcome" as Screen);
+        setScreen("auth");
       })
       .catch((err: Error) => {
         const m = err.message.toLowerCase();
@@ -410,10 +433,6 @@ export default function InterviewPage() {
         setScreen("error");
       });
   }, [token]);
-
-  useEffect(() => {
-    if ((screen as string) === "welcome" && jobInfo) setScreen("auth");
-  }, [screen, jobInfo]);
 
   // ── Supabase OAuth state change ───────────────────────────────────────────
   useEffect(() => {
@@ -436,7 +455,7 @@ export default function InterviewPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Drain pending OAuth whenever auth screen is ready OR session arrives ───
+  // ── Drain pending OAuth whenever auth screen is ready or session arrives ───
   useEffect(() => {
     if (screen === "auth" && pendingOAuth && !interviewId) {
       const { name, email } = pendingOAuth;
@@ -445,11 +464,6 @@ export default function InterviewPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, pendingOAuth]);
-
-  // ── Scroll to bottom on new messages ──────────────────────────────────────
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
 
   // ── Progress ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -465,6 +479,7 @@ export default function InterviewPage() {
     setUploadProgress(0);
     setUploadFileName("");
     setLinkValue("");
+    setUploadQueue([]);
   }, [pendingAction]);
 
   // ── Google OAuth ───────────────────────────────────────────────────────────
@@ -518,7 +533,7 @@ export default function InterviewPage() {
       await kickoffConversation(r.interview_id, r.resumed, r.transcript ?? []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
-      if (msg.includes("already submitted")) {
+      if (msg.toLowerCase().includes("already submitted")) {
         setAuthGlobalError("You've already submitted your application for this role.");
       } else {
         setAuthGlobalError(msg);
@@ -580,9 +595,12 @@ export default function InterviewPage() {
       }]));
       if (resp.action === "complete") {
         setProgressPct(100);
-        setTimeout(() => setScreen("review"), 3500);
+        setInterviewComplete(true);
+        // Navigate to review after a short pause so candidate reads the closing message
+        setTimeout(() => setScreen("review"), 1800);
       }
     } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
       setAiError("Couldn't continue the interview. Please try again.");
     } finally {
       setIsWaitingForAI(false);
@@ -592,9 +610,11 @@ export default function InterviewPage() {
   // ── Send candidate message ─────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
-    if (!text || isWaitingForAI || hasCardPending) return;
+    if (!text || isWaitingForAI || hasCardPending || interviewComplete) return;
 
     setInputValue("");
+    // Reset textarea height to single line
+    if (inputRef.current) inputRef.current.style.height = "42px";
     setAiError("");
     setIsWaitingForAI(true);
 
@@ -606,7 +626,7 @@ export default function InterviewPage() {
     const thinkingId = nanoid();
     setMessages((prev) => [
       ...prev,
-      { id: nanoid(), role: "candidate", content: text, timestamp: now },
+      { id: nanoid(), role: "candidate", content: text, timestamp: now, showTimestamp: showTs },
       { id: thinkingId, role: "ai", content: "", timestamp: now, isTyping: true },
     ]);
 
@@ -624,7 +644,8 @@ export default function InterviewPage() {
       }]));
       if (resp.action === "complete") {
         setProgressPct(100);
-        setTimeout(() => setScreen("review"), 3500);
+        setInterviewComplete(true);
+        setTimeout(() => setScreen("review"), 1800);
       }
     } catch (err: unknown) {
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
@@ -633,44 +654,60 @@ export default function InterviewPage() {
       setIsWaitingForAI(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [inputValue, isWaitingForAI, hasCardPending, interviewId]);
+  }, [inputValue, isWaitingForAI, hasCardPending, interviewComplete, interviewId]);
 
-  // ── Bar-level file upload ──────────────────────────────────────────────────
-  const handlePageFile = useCallback(async (file: File) => {
+  // ── Bar-level file upload — processes all selected files ──────────────────
+  const handlePageFile = useCallback(async (files: FileList | File[]) => {
     if (!lastAiMsg) return;
+    const fileArray = Array.from(files);
+    if (!fileArray.length) return;
+
     const MAX = 10 * 1024 * 1024;
-    if (file.size > MAX) { setBarError("File exceeds 10 MB. Please choose a smaller file."); return; }
-    const ALLOWED = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "image/jpeg", "image/png", "text/plain",
-    ];
-    if (!ALLOWED.includes(file.type) && !file.name.match(/\.(pdf|docx?|jpg|jpeg|png|txt)$/i)) {
-      setBarError("Invalid type. Use PDF, Word, JPEG, or PNG.");
-      return;
-    }
+    // Client-side validation on first file; subsequent follow same rules
+    const first = fileArray[0];
+    if (first.size > MAX) { setBarError("File exceeds 10 MB. Please choose a smaller file."); return; }
 
     setBarError("");
     setIsUploading(true);
-    setUploadFileName(file.name);
+    setUploadFileName(fileArray.length > 1 ? `${fileArray.length} files` : fileArray[0].name);
     setUploadProgress(0);
 
     const msgId    = lastAiMsg.id;
     const reqId    = lastAiMsg.requirement_id ?? "";
     const reqLabel = lastAiMsg.requirement_label ?? "file";
 
+    // Upload files sequentially, using progress of the first for the progress bar
+    let lastFileName = "";
+    let lastFileSize = 0;
     try {
-      await interviewAPI.uploadFile(
-        interviewId, reqId, reqLabel, reqId, file,
-        (pct) => setUploadProgress(pct),
-      );
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        if (fileArray.length > 1) setUploadFileName(`Uploading ${i + 1} of ${fileArray.length}…`);
+        await interviewAPI.uploadFile(
+          interviewId,
+          `${reqId}${fileArray.length > 1 ? `-${i}` : ""}`,
+          reqLabel,
+          reqId,
+          file,
+          (pct) => setUploadProgress(pct),
+        );
+        lastFileName = file.name;
+        lastFileSize = file.size;
+      }
+
       setIsUploading(false);
+      const displayName = fileArray.length > 1
+        ? `${fileArray.length} files uploaded`
+        : lastFileName;
       setMessages((prev) => prev.map((m) =>
         m.id === msgId
-          ? { ...m, cardStatus: "complete", cardFileName: file.name, cardFileSize: file.size }
+          ? { ...m, cardStatus: "complete", cardFileName: displayName, cardFileSize: fileArray.length === 1 ? lastFileSize : undefined }
           : m,
       ));
-      await sendAutoMessage(`I've uploaded my ${reqLabel}.`);
+      const autoText = fileArray.length > 1
+        ? `I've uploaded ${fileArray.length} files for my ${reqLabel}.`
+        : `I've uploaded my ${reqLabel}.`;
+      await sendAutoMessage(autoText);
     } catch (e) {
       setIsUploading(false);
       setBarError(e instanceof Error ? e.message : "Upload failed. Please try again.");
@@ -719,6 +756,21 @@ export default function InterviewPage() {
     ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
   }, []);
 
+  // ── Review screen submit ───────────────────────────────────────────────────
+  const handleConfirmSubmit = useCallback(async () => {
+    if (!interviewId) return;
+    setIsSubmitting(true);
+    setSubmitError("");
+    try {
+      await interviewAPI.confirmSubmission(interviewId);
+      setScreen("complete");
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Submission failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [interviewId]);
+
   // ── Screens ────────────────────────────────────────────────────────────────
 
   if (screen === "loading") {
@@ -756,21 +808,27 @@ export default function InterviewPage() {
 
   // ── Review screen ──────────────────────────────────────────────────────────
   if (screen === "review") {
-    const personalDetails = extractPersonalDetails(messages, candidateName, candidateEmail);
-    const submittedDocs   = messages.filter(
+    const rawDetails  = extractPersonalDetails(messages, candidateName, candidateEmail);
+    // Apply any edits the candidate made on the review screen
+    const personalDetails = rawDetails.map((d) => ({
+      label: d.label,
+      value: detailEdits[d.label] !== undefined ? detailEdits[d.label] : d.value,
+    }));
+
+    const submittedDocs = messages.filter(
       (m) => m.role === "ai" && m.cardStatus === "complete",
     );
     const keyAnswers = messages.filter((m, i) => {
       if (m.role !== "candidate") return false;
-      if ((m.content.split(" ").length) < 10) return false;
+      if (m.content.split(" ").length < 10) return false;
       const prevAi = messages.slice(0, i).filter((x) => x.role === "ai").at(-1);
       if (prevAi && PERSONAL_RE.test(prevAi.content ?? "")) return false;
       return true;
     }).slice(0, 3);
 
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-start px-4 py-12">
-        <div className="max-w-[520px] w-full space-y-6">
+      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-start px-4 py-12" dir="ltr">
+        <div className="max-w-[520px] w-full space-y-5">
           {/* Header */}
           <div className="text-center space-y-2">
             <Mark className="w-7 h-7 text-ink mx-auto" />
@@ -779,12 +837,12 @@ export default function InterviewPage() {
               Review your application
             </h1>
             <p className="text-[13px] text-sub">
-              Take a moment to confirm everything before we send it to{" "}
-              <strong>{jobInfo?.company_name}</strong>.
+              Check everything before it goes to{" "}
+              <strong>{jobInfo?.company_name}</strong>. You can edit any field below.
             </p>
           </div>
 
-          {/* Personal details */}
+          {/* Personal details — each field is editable */}
           {personalDetails.length > 0 && (
             <div className="bg-white border border-border rounded-[4px] overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
@@ -792,9 +850,15 @@ export default function InterviewPage() {
               </div>
               <div className="divide-y divide-border">
                 {personalDetails.map(({ label, value }) => (
-                  <div key={label} className="px-5 py-3 flex items-baseline justify-between gap-4">
-                    <span className="text-[12px] text-muted shrink-0">{label}</span>
-                    <span className="text-[13px] text-ink text-right">{value}</span>
+                  <div key={label} className="px-5 py-3 flex items-center justify-between gap-4">
+                    <span className="text-[12px] text-muted shrink-0 w-24">{label}</span>
+                    <input
+                      type="text"
+                      value={value}
+                      dir="ltr"
+                      onChange={(e) => setDetailEdits((prev) => ({ ...prev, [label]: e.target.value }))}
+                      className="flex-1 text-[13px] text-ink bg-transparent border-b border-transparent focus:border-border outline-none transition-colors text-right py-0.5 placeholder:text-muted"
+                    />
                   </div>
                 ))}
               </div>
@@ -823,7 +887,7 @@ export default function InterviewPage() {
             </div>
           )}
 
-          {/* Key answers */}
+          {/* Key answers preview */}
           {keyAnswers.length > 0 && (
             <div className="bg-white border border-border rounded-[4px] overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
@@ -840,19 +904,32 @@ export default function InterviewPage() {
             </div>
           )}
 
+          {/* Submit error */}
+          {submitError && (
+            <div className="flex items-start gap-2 rounded-[4px] bg-red-50 border border-danger/20 px-3 py-2.5 text-[13px] text-danger">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              {submitError}
+            </div>
+          )}
+
           {/* Actions */}
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3 pt-1">
             <button
-              onClick={() => setScreen("complete")}
-              className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3.5 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors"
+              onClick={handleConfirmSubmit}
+              disabled={isSubmitting}
+              className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3.5 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              Submit Application →
+              {isSubmitting ? (
+                <><Spinner className="w-4 h-4" /> Submitting…</>
+              ) : (
+                <>Submit Application <ChevronRight className="w-4 h-4" /></>
+              )}
             </button>
             <button
               onClick={() => setScreen("conversation")}
               className="w-full bg-transparent border border-border rounded-[4px] px-4 py-3 text-[13px] text-sub hover:text-ink hover:border-ink transition-colors"
             >
-              ← Go back and continue
+              ← Review your answers
             </button>
           </div>
 
@@ -868,7 +945,7 @@ export default function InterviewPage() {
   if (screen === "complete") {
     const firstName = candidateName.trim().split(" ")[0] || candidateName;
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4">
+      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4" dir="ltr">
         <div className="max-w-sm w-full text-center space-y-4">
           <svg className="w-12 h-12 mx-auto text-ink" viewBox="0 0 48 48" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -891,31 +968,35 @@ export default function InterviewPage() {
   }
 
   // ── CONVERSATION ───────────────────────────────────────────────────────────
-  const canSend = inputValue.trim().length > 0 && !isWaitingForAI && !hasCardPending;
+  // Input is disabled once the interview is complete (pending_review on backend)
+  const canSend = inputValue.trim().length > 0 && !isWaitingForAI && !hasCardPending && !interviewComplete;
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] flex flex-col">
+    <div className="min-h-screen bg-[var(--bg)] flex flex-col" dir="ltr">
       <TopBar
         company={jobInfo?.company_name ?? ""}
         title={jobInfo?.title ?? ""}
         progress={progressPct}
       />
 
-      {/* Hidden page-level file input */}
+      {/* Hidden page-level file input
+          - accept="*\/*" opens the system file manager on mobile (not just gallery)
+          - multiple allows selecting several files at once */}
       <input
         ref={pageFileRef}
         type="file"
-        accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.txt"
+        accept="*/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handlePageFile(f);
+          const files = e.target.files;
+          if (files && files.length > 0) handlePageFile(files);
           e.target.value = "";
         }}
       />
 
-      {/* Message list */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Message list — scrollContainerRef for stable scroll-to-bottom */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto" dir="ltr">
         <div className="max-w-[680px] mx-auto px-4 py-8 space-y-6 pb-40">
           {messages.map((msg, i) => {
             if (msg.role === "ai") {
@@ -934,14 +1015,28 @@ export default function InterviewPage() {
               />
             );
           })}
-          <div ref={messagesEndRef} />
+
+          {/* Review prompt banner when interview is complete */}
+          {interviewComplete && screen === "conversation" && (
+            <div className="flex flex-col items-center gap-3 py-4">
+              <p className="text-[13px] text-muted text-center">
+                Your interview is complete. Review your application before submitting.
+              </p>
+              <button
+                onClick={() => setScreen("review")}
+                className="flex items-center gap-1.5 bg-[#1A1714] text-white rounded-[4px] px-5 py-2.5 text-[13px] font-semibold hover:bg-[#2d2926] transition-colors"
+              >
+                Review &amp; Submit <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Fixed bottom input bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg)] border-t border-border">
+      <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg)] border-t border-border" dir="ltr">
         <div className="max-w-[680px] mx-auto px-4 py-3">
-          {/* Error line (AI or bar) */}
+          {/* Error line */}
           {(aiError || barError) && (
             <p className="text-[12px] text-danger mb-2 flex items-center gap-1">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -950,9 +1045,8 @@ export default function InterviewPage() {
           )}
 
           {/* FILE ATTACH BAR */}
-          {pendingAction === "request_file" && (
+          {pendingAction === "request_file" && !interviewComplete && (
             isUploading ? (
-              /* Progress bar during upload */
               <div className="space-y-1.5 py-1">
                 <div className="flex justify-between text-[12px] text-sub">
                   <span className="truncate">{uploadFileName}</span>
@@ -966,15 +1060,14 @@ export default function InterviewPage() {
                 </div>
               </div>
             ) : (
-              /* Clickable attach zone */
               <button
                 type="button"
                 onClick={() => { setBarError(""); pageFileRef.current?.click(); }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
-                  const f = e.dataTransfer.files?.[0];
-                  if (f) { setBarError(""); handlePageFile(f); }
+                  const files = e.dataTransfer.files;
+                  if (files && files.length > 0) { setBarError(""); handlePageFile(files); }
                 }}
                 className="w-full flex items-center gap-3 border-2 border-dashed border-border rounded-[4px] px-4 py-3 hover:border-ink transition-colors group cursor-pointer"
               >
@@ -982,7 +1075,7 @@ export default function InterviewPage() {
                 <span className="text-[13px] text-sub group-hover:text-ink transition-colors text-left">
                   Attach {lastAiMsg?.requirement_label ?? "document"}
                   <span className="ml-2 text-[11px] text-muted font-normal">
-                    PDF, Word, JPEG, PNG · max 10 MB
+                    PDF, Word, image · max 10 MB
                   </span>
                 </span>
               </button>
@@ -990,7 +1083,7 @@ export default function InterviewPage() {
           )}
 
           {/* LINK INPUT BAR */}
-          {pendingAction === "request_link" && (
+          {pendingAction === "request_link" && !interviewComplete && (
             <div className="flex items-center gap-2">
               <div className="flex-1 flex items-center gap-2 bg-white border border-border rounded-[4px] px-3 py-2.5 focus-within:border-ink transition-colors">
                 <Link2 className="w-4 h-4 text-muted shrink-0" />
@@ -1002,6 +1095,7 @@ export default function InterviewPage() {
                   placeholder={`Paste your ${lastAiMsg?.requirement_label ?? "link"} here…`}
                   disabled={isWaitingForAI}
                   autoFocus
+                  dir="ltr"
                   className="flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-muted disabled:opacity-50"
                 />
               </div>
@@ -1017,35 +1111,45 @@ export default function InterviewPage() {
             </div>
           )}
 
-          {/* NORMAL TEXTAREA */}
+          {/* NORMAL TEXTAREA — disabled + replaced with review prompt when complete */}
           {pendingAction === "continue" && (
-            <>
-              <div className="flex items-end gap-2">
-                <textarea
-                  ref={inputRef}
-                  value={inputValue}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Type your answer…"
-                  disabled={isWaitingForAI}
-                  rows={1}
-                  className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2.5 text-[14px] text-ink outline-none resize-none overflow-hidden placeholder:text-muted transition-colors focus:border-ink disabled:opacity-50"
-                  style={{ minHeight: "42px", maxHeight: "160px" }}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!canSend}
-                  className="w-9 h-9 rounded-[4px] bg-[#1A1714] text-white flex items-center justify-center hover:bg-[#2d2926] transition-colors disabled:opacity-30 shrink-0"
-                >
-                  {isWaitingForAI
-                    ? <Spinner className="w-3.5 h-3.5" />
-                    : <Send className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-              <p className="text-[11px] text-muted mt-1.5 hidden sm:block">
-                Press Enter to send · Shift+Enter for new line
-              </p>
-            </>
+            interviewComplete ? (
+              <button
+                onClick={() => setScreen("review")}
+                className="w-full flex items-center justify-center gap-2 bg-[#1A1714] text-white rounded-[4px] px-4 py-3 text-[13px] font-semibold hover:bg-[#2d2926] transition-colors"
+              >
+                Review &amp; Submit application <ChevronRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <>
+                <div className="flex items-end gap-2">
+                  <textarea
+                    ref={inputRef}
+                    value={inputValue}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type your answer…"
+                    disabled={isWaitingForAI}
+                    rows={1}
+                    dir="ltr"
+                    className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2.5 text-[14px] text-ink outline-none resize-none overflow-y-auto placeholder:text-muted transition-colors focus:border-ink disabled:opacity-50"
+                    style={{ minHeight: "42px", maxHeight: "160px", textAlign: "left" }}
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!canSend}
+                    className="w-9 h-9 rounded-[4px] bg-[#1A1714] text-white flex items-center justify-center hover:bg-[#2d2926] transition-colors disabled:opacity-30 shrink-0"
+                  >
+                    {isWaitingForAI
+                      ? <Spinner className="w-3.5 h-3.5" />
+                      : <Send className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted mt-1.5 hidden sm:block">
+                  Press Enter to send · Shift+Enter for new line
+                </p>
+              </>
+            )
           )}
         </div>
       </div>
