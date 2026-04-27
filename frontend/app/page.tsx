@@ -49,12 +49,6 @@ function Navbar() {
           <Link href="/login" className="text-sm text-sub hover:text-ink transition-colors hidden sm:block">
             Log in
           </Link>
-          <Link
-            href="/signup"
-            className="inline-flex items-center bg-ink text-white text-sm font-medium px-4 py-2 rounded-[4px] hover:bg-ink-2 transition-colors"
-          >
-            Get started
-          </Link>
         </div>
       </div>
     </nav>
@@ -88,7 +82,7 @@ function Hero() {
             href="/signup"
             className="inline-flex items-center bg-ink text-white text-sm font-medium px-6 py-3 rounded-[4px] hover:bg-ink-2 transition-colors"
           >
-            Start free
+            Get started
           </Link>
           <a
             href="#how-it-works"
@@ -410,7 +404,7 @@ const PLANS = [
   },
   {
     name: "Growth",
-    price: "$79",
+    price: "$1",
     sub: "/ month",
     description: "For teams hiring consistently at scale.",
     features: ["Unlimited jobs", "Unlimited interviews", "Branded interview page", "Custom intro message", "CSV export", "Priority support"],
