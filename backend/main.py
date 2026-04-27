@@ -70,13 +70,20 @@ if settings.allowed_origins:
         o = o.strip().rstrip("/")
         if o and o not in _origins:
             _origins.append(o)
+# Always allow the canonical production frontend
+_production_origins = ["https://hireiq-ab.vercel.app"]
+for o in _production_origins:
+    if o not in _origins:
+        _origins.append(o)
+# Dev convenience
 if settings.environment == "development":
     _origins.extend([
         "http://localhost:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3000",
     ])
-allowed_origins = _origins or ["*"]
+# Never fall back to "*" — it is incompatible with allow_credentials=True
+allowed_origins = _origins
 
 app.add_middleware(
     CORSMiddleware,
