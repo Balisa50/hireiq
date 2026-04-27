@@ -57,7 +57,7 @@ export default function InterviewDefaultsPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-12">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Interview Defaults</h1>
+        <h1 className="text-xl font-semibold text-ink">Application Defaults</h1>
         <p className="text-sub text-sm mt-1">Applied to all jobs unless overridden per-role.</p>
       </div>
 
@@ -102,7 +102,7 @@ export default function InterviewDefaultsPage() {
         </div>
 
         <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-ink">Interview language</label>
+          <label className="block text-sm font-medium text-ink">Application language</label>
           <select value={language} onChange={(e) => setLanguage(e.target.value)}
             className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors appearance-none cursor-pointer">
             <option value="en">English</option>
@@ -127,7 +127,7 @@ export default function InterviewDefaultsPage() {
           <div className="flex items-center gap-3">
             <input type="number" min={0} max={500} value={autoClose} onChange={(e) => setAutoClose(Number(e.target.value))}
               className="w-24 bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors text-center" />
-            <span className="text-sm text-sub">interviews <span className="text-muted">(0 = never auto-close)</span></span>
+            <span className="text-sm text-sub">applications <span className="text-muted">(0 = never auto-close)</span></span>
           </div>
         </div>
       </Section>

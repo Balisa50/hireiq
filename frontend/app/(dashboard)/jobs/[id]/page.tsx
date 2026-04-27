@@ -127,7 +127,7 @@ export default function JobDetailPage() {
               {linkCopied ? (
                 <><Check className="w-3.5 h-3.5 text-green-400" /> Copied!</>
               ) : (
-                <><Copy className="w-3.5 h-3.5" /> Copy Interview Link</>
+                <><Copy className="w-3.5 h-3.5" /> Copy Application Link</>
               )}
             </Button>
           )}
@@ -225,7 +225,7 @@ export default function JobDetailPage() {
       {isActive && (
         <div className="glass rounded-2xl p-5">
           <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-3">
-            Interview Link
+            Application Link
           </h2>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex-1 min-w-0 bg-[var(--bg)] border border-[var(--border)] rounded-xl px-4 py-2.5 font-mono text-sm text-brand-400 truncate">
@@ -254,7 +254,7 @@ export default function JobDetailPage() {
       {job.focus_areas.length > 0 && (
         <div className="glass rounded-2xl p-5">
           <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-3">
-            Interview Focus Areas
+            Application Focus Areas
           </h2>
           <div className="flex flex-wrap gap-2">
             {job.focus_areas.map((area) => (
@@ -273,7 +273,7 @@ export default function JobDetailPage() {
       {job.questions.length > 0 && (
         <div className="glass rounded-2xl p-5">
           <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-4">
-            Interview Questions ({job.questions.length})
+            Application Questions ({job.questions.length})
           </h2>
           <div className="space-y-3">
             {job.questions.map((q, i) => (
@@ -321,7 +321,7 @@ export default function JobDetailPage() {
             <Users className="w-10 h-10 text-[var(--text-dim)] mx-auto mb-3" />
             <h3 className="text-base font-semibold text-white mb-1">No candidates yet</h3>
             <p className="text-[var(--text-muted)] text-sm">
-              Share the interview link to start receiving applicants.
+              Share the application link to start receiving applicants.
             </p>
           </div>
         ) : (

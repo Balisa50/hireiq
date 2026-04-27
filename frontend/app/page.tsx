@@ -65,12 +65,12 @@ function Hero() {
           className="text-5xl sm:text-6xl font-bold leading-[1.1] text-ink mb-6"
           style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
         >
-          Stop reading applications.<br />
-          Start hiring people.
+          Stop reading forms.<br />
+          Start meeting people.
         </h1>
 
         <p className="text-base text-sub max-w-xl mx-auto mb-10 leading-relaxed">
-          Every candidate gets an AI interview. You get a ranked shortlist. You only meet the people worth your time.
+          Candidates apply through a real conversation instead of a static form. Your team gets a ranked shortlist. You only meet the people worth your time.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -98,7 +98,7 @@ const STEPS = [
   {
     number: "01",
     title: "Post a job",
-    description: "Paste your job description. HireIQ generates a tailored interview — behavioural, technical, situational — calibrated to the role.",
+    description: "Paste your job description. HireIQ generates a tailored set of questions — behavioural, technical, situational — calibrated to the role.",
   },
   {
     number: "02",
@@ -107,13 +107,13 @@ const STEPS = [
   },
   {
     number: "03",
-    title: "AI interviews every applicant",
-    description: "The AI listens, asks follow-ups on weak answers, and keeps the conversation honest.",
+    title: "AI talks to every applicant",
+    description: "The AI listens, asks follow-ups on weak answers, and structures each person's application.",
   },
   {
     number: "04",
     title: "Review ranked reports",
-    description: "Every completed interview becomes a scored report. Open your dashboard to a shortlist.",
+    description: "Every completed application becomes a scored report. Open your dashboard to a shortlist.",
   },
 ];
 
@@ -153,8 +153,8 @@ function HowItWorks() {
 const FEATURES = [
   {
     icon: MessageSquare,
-    title: "Adaptive interviews",
-    description: "The AI probes vague answers and follows threads that matter. Every session is different.",
+    title: "Conversational applications",
+    description: "The AI probes vague answers and follows threads that matter. Every application is structured, not skimmed.",
   },
   {
     icon: BarChart3,
@@ -164,7 +164,7 @@ const FEATURES = [
   {
     icon: Clock,
     title: "No scheduling",
-    description: "Candidates interview on their own time. Your team sees results, not calendar invites.",
+    description: "Candidates apply on their own time. Your team sees results, not calendar invites.",
   },
   {
     icon: Shield,
@@ -229,7 +229,7 @@ function MockInterview() {
     <div className="bg-white border border-border rounded-[4px] overflow-hidden shadow-sm select-none pointer-events-none">
       <div className="px-4 py-3 border-b border-border flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-success" />
-        <p className="text-[13px] font-medium text-ink">Senior Engineer, Interview in progress</p>
+        <p className="text-[13px] font-medium text-ink">Senior Engineer, Application in progress</p>
       </div>
       <div className="p-4 space-y-4">
         <div className="flex gap-3">
@@ -254,7 +254,7 @@ function MockInterview() {
         </div>
         <div className="ml-9 flex items-center gap-2 text-[12px] text-muted">
           <div className="w-1.5 h-1.5 rounded-full bg-warn animate-pulse" />
-          Reading your answer
+          Processing your response
         </div>
       </div>
     </div>
@@ -296,15 +296,15 @@ const DEEP_FEATURES = [
   {
     label:       "Question generation",
     title:       "Questions that actually test the role",
-    description: "Paste your job description. HireIQ writes the interview — behavioural, technical, and situational, calibrated to seniority. Edit or reorder before you publish.",
+    description: "Paste your job description. HireIQ writes the application — behavioural, technical, and situational, calibrated to seniority. Edit or reorder before you publish.",
     bullets:     ["Calibrated to seniority", "Multiple question types", "Editable before publishing"],
     mock:        <MockQuestions />,
     reverse:     false,
   },
   {
-    label:       "The interview",
+    label:       "The conversation",
     title:       "An AI that listens and pushes back",
-    description: "Candidates interview at their own pace. The AI follows up on vague answers, probes for depth, and keeps the conversation on track.",
+    description: "Candidates apply at their own pace. The AI follows up on vague answers, probes for depth, and structures their responses.",
     bullets:     ["Adaptive follow-ups", "Handles deflection and drift", "Consistent across every candidate"],
     mock:        <MockInterview />,
     reverse:     true,
@@ -312,7 +312,7 @@ const DEEP_FEATURES = [
   {
     label:       "Ranked reports",
     title:       "Open your dashboard to a shortlist",
-    description: "Every completed interview becomes a structured report: score, skill breakdown, strengths, red flags, hiring recommendation. PDF export included.",
+    description: "Every completed application becomes a structured report: score, skill breakdown, strengths, red flags, hiring recommendation. PDF export included.",
     bullets:     ["Objective scoring", "Per-skill breakdown", "PDF export"],
     mock:        <MockReport />,
     reverse:     false,
@@ -368,7 +368,7 @@ const PLANS = [
     name: "Starter",
     price: "Free",
     sub: "",
-    features: ["2 active jobs", "50 interviews / month", "AI scoring and reports", "PDF exports"],
+    features: ["2 active jobs", "50 applications / month", "AI scoring and reports", "PDF exports"],
     cta: "Get started",
     href: "/signup",
     highlight: false,
@@ -377,7 +377,7 @@ const PLANS = [
     name: "Growth",
     price: "$1",
     sub: "/ month",
-    features: ["Unlimited jobs", "Unlimited interviews", "Branded interview page", "Custom intro message", "CSV export", "Priority support"],
+    features: ["Unlimited jobs", "Unlimited applications", "Branded application page", "Custom intro message", "CSV export", "Priority support"],
     cta: "Get started",
     href: "/signup",
     highlight: true,

@@ -4,15 +4,15 @@ import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   title: {
-    default: "HireIQ, AI-Powered Hiring",
+    default: "HireIQ",
     template: "%s | HireIQ",
   },
   description:
-    "HireIQ interviews every candidate with adaptive AI and delivers ranked, scored reports to your team. You only meet the people worth your time.",
-  keywords: ["AI hiring", "recruitment AI", "candidate screening", "interview automation"],
+    "Every candidate gets a smart AI application. You get a ranked shortlist. You only meet the people worth your time.",
+  keywords: ["AI hiring", "recruitment", "candidate screening", "smart application"],
   openGraph: {
-    title: "HireIQ, AI-Powered Hiring",
-    description: "Intelligent AI interviews. Ranked candidates. Faster hiring.",
+    title: "HireIQ",
+    description: "Smart applications. Ranked candidates. Faster hiring.",
     type: "website",
   },
   icons: {
