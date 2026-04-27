@@ -966,36 +966,42 @@ export default function InterviewPage() {
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />{aiError}
             </p>
           )}
-          {hasCardPending && (
-            <p className="text-[12px] text-muted mb-2">
-              Please complete the item above before continuing.
+
+          {hasCardPending ? (
+            /* When an upload / link card is active, collapse the input completely
+               so the card above is fully visible and clickable on mobile */
+            <p className="text-[12px] text-muted text-center py-1">
+              Scroll up to complete the request above, then continue.
             </p>
+          ) : (
+            <>
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type your answer…"
+                  disabled={isWaitingForAI}
+                  rows={1}
+                  className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2.5 text-[14px] text-ink outline-none resize-none overflow-hidden placeholder:text-muted transition-colors focus:border-ink disabled:opacity-50"
+                  style={{ minHeight: "42px", maxHeight: "160px" }}
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!canSend}
+                  className="w-9 h-9 rounded-[4px] bg-[#1A1714] text-white flex items-center justify-center hover:bg-[#2d2926] transition-colors disabled:opacity-30 shrink-0"
+                >
+                  {isWaitingForAI
+                    ? <Spinner className="w-3.5 h-3.5" />
+                    : <Send className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-muted mt-1.5 hidden sm:block">
+                Press Enter to send · Shift+Enter for new line
+              </p>
+            </>
           )}
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              value={inputValue}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={hasCardPending ? "Complete the upload above first…" : "Type your answer…"}
-              disabled={isWaitingForAI || hasCardPending}
-              rows={1}
-              className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2.5 text-[14px] text-ink outline-none resize-none overflow-hidden placeholder:text-muted transition-colors focus:border-ink disabled:opacity-50"
-              style={{ minHeight: "42px", maxHeight: "160px" }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!canSend}
-              className="w-9 h-9 rounded-[4px] bg-[#1A1714] text-white flex items-center justify-center hover:bg-[#2d2926] transition-colors disabled:opacity-30 shrink-0"
-            >
-              {isWaitingForAI
-                ? <Spinner className="w-3.5 h-3.5" />
-                : <Send className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-          <p className="text-[11px] text-muted mt-1.5 hidden sm:block">
-            Press Enter to send · Shift+Enter for new line
-          </p>
         </div>
       </div>
     </div>
