@@ -308,9 +308,21 @@ export const candidatesAPI = {
     });
   },
 
-  getPdfReportUrl(interviewId: string): string {
+  async downloadPdfReport(interviewId: string, candidateName: string): Promise<void> {
     const token = getStoredAccessToken() ?? "";
-    return `${API_BASE_URL}/api/interviews/${interviewId}/report/pdf?token=${token}`;
+    const response = await fetch(`${API_BASE_URL}/api/interviews/${interviewId}/report/pdf`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error("Failed to generate PDF report.");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `HireIQ_Report_${candidateName.replace(/\s+/g, "_")}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 
   async generateEmail(
