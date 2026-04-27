@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     # Resend — candidate email notifications
     # Set RESEND_API_KEY in Render env vars. All platform emails route through it.
     resend_api_key: str = ""
-    # Sending domain verified in Resend dashboard. Defaults to Resend test address.
-    resend_from_email: str = "onboarding@resend.dev"
+    # Sending address on HireIQ's verified Resend domain.
+    resend_from_email: str = "noreply@hireiq.app"
 
     # Interview settings
     interview_link_expiry_days: int = 7

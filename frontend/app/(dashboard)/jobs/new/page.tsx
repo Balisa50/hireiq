@@ -515,29 +515,33 @@ export default function NewJobPage() {
         {customReqs.length > 0 && (
           <div className="space-y-2 pt-1">
             {customReqs.map((req) => (
-              <div key={req.id} className="flex items-center gap-2 bg-white border border-ink rounded-[4px] px-3 py-2">
+              <div key={req.id} className="flex flex-col bg-white border border-ink rounded-[4px] px-3 py-2.5 gap-2">
+                {/* Label input — full width on all screens */}
                 <input
                   value={req.label}
                   onChange={(e) => updateCustomReq(req.id, { label: e.target.value })}
                   placeholder="e.g. Writing sample"
-                  className="flex-1 text-[13px] text-ink bg-transparent outline-none placeholder:text-muted"
+                  className="w-full text-[13px] text-ink bg-transparent outline-none placeholder:text-muted"
                 />
-                <select
-                  value={req.type}
-                  onChange={(e) => updateCustomReq(req.id, { type: e.target.value as "file" | "link" })}
-                  className="text-[12px] text-sub bg-[var(--bg)] border border-border rounded-[4px] px-2 py-1 outline-none cursor-pointer"
-                >
-                  <option value="file">File upload</option>
-                  <option value="link">Link</option>
-                </select>
-                <RequiredToggle
-                  required={req.required}
-                  onChange={(v) => updateCustomReq(req.id, { required: v })}
-                />
-                <button type="button" onClick={() => removeCustomReq(req.id)}
-                  className="p-1 text-muted hover:text-danger transition-colors shrink-0">
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                {/* Controls row — type selector + required toggle + delete, never overflows */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    value={req.type}
+                    onChange={(e) => updateCustomReq(req.id, { type: e.target.value as "file" | "link" })}
+                    className="text-[12px] text-sub bg-[var(--bg)] border border-border rounded-[4px] px-2 py-1 outline-none cursor-pointer shrink-0"
+                  >
+                    <option value="file">File upload</option>
+                    <option value="link">Link</option>
+                  </select>
+                  <RequiredToggle
+                    required={req.required}
+                    onChange={(v) => updateCustomReq(req.id, { required: v })}
+                  />
+                  <button type="button" onClick={() => removeCustomReq(req.id)}
+                    className="ml-auto p-1 text-muted hover:text-danger transition-colors shrink-0">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

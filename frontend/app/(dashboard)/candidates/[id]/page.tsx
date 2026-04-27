@@ -348,7 +348,7 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
               <div className="px-4 py-3 bg-[var(--bg)] border-b border-border space-y-1.5">
                 <div className="grid grid-cols-[44px_1fr] gap-2 items-baseline">
                   <span className="text-[11px] text-muted font-medium uppercase tracking-wide">From</span>
-                  <span className="text-ink">Your Company via HireIQ</span>
+                  <span className="text-ink">Your Company</span>
                 </div>
                 <div className="grid grid-cols-[44px_1fr] gap-2 items-baseline">
                   <span className="text-[11px] text-muted font-medium uppercase tracking-wide">To</span>
