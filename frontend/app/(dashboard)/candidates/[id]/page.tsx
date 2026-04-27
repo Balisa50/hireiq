@@ -165,16 +165,17 @@ interface EmailPanelProps {
 }
 
 function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, onClose }: EmailPanelProps) {
-  const [tone, setTone]         = useState<EmailTone>("professional");
-  const [subject, setSubject]   = useState("");
-  const [body, setBody]         = useState("");
+  const [tone, setTone]             = useState<EmailTone>("professional");
+  const [subject, setSubject]       = useState("");
+  const [body, setBody]             = useState("");
   const [generating, setGenerating] = useState(false);
-  const [sending, setSending]   = useState(false);
-  const [sent, setSent]         = useState(false);
-  const [genError, setGenError] = useState("");
-  const [sendError, setSendError] = useState("");
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const generationAbort = useRef(false);
+  const [sending, setSending]       = useState(false);
+  const [sent, setSent]             = useState(false);
+  const [genError, setGenError]     = useState("");
+  const [sendError, setSendError]   = useState("");
+  const [previewMode, setPreviewMode] = useState(false);
+  const bodyRef          = useRef<HTMLTextAreaElement>(null);
+  const generationAbort  = useRef(false);
 
   const firstName = candidateName.split(" ")[0] || candidateName;
 
@@ -187,6 +188,7 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
   const generate = useCallback(async (selectedTone: EmailTone) => {
     generationAbort.current = false;
     setGenerating(true);
+    setPreviewMode(false); // always return to edit view on regen
     setGenError("");
     try {
       const draft = await candidatesAPI.generateEmail(interviewId, emailStatus, selectedTone);
@@ -210,10 +212,10 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
 
   // Auto-resize textarea
   useEffect(() => {
-    if (!bodyRef.current) return;
+    if (!bodyRef.current || previewMode) return;
     bodyRef.current.style.height = "auto";
     bodyRef.current.style.height = `${bodyRef.current.scrollHeight}px`;
-  }, [body]);
+  }, [body, previewMode]);
 
   const handleTone = (t: EmailTone) => {
     setTone(t);
@@ -230,7 +232,6 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
         setSent(true);
         setTimeout(onClose, 1800);
       } else {
-        // SMTP not configured — show warning but don't block the recruiter
         setSendError(result.message);
       }
     } catch {
@@ -252,6 +253,8 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
     accepted:    "text-blue-600 border-blue-200 bg-blue-50",
   };
 
+  const hasDraft = !generating && !genError && subject;
+
   return (
     <div className="bg-white border border-border rounded-[4px] overflow-hidden">
       {/* Panel header */}
@@ -271,23 +274,48 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
       </div>
 
       <div className="px-5 py-4 space-y-4">
-        {/* Tone selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted font-medium uppercase tracking-wider mr-1">Tone</span>
-          {TONES.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => handleTone(t.value)}
-              disabled={generating}
-              className={`px-3 py-1 rounded-full text-[12px] font-medium border transition-colors disabled:opacity-40 ${
-                tone === t.value
-                  ? "bg-[#1A1714] text-white border-[#1A1714]"
-                  : "border-border text-sub hover:border-ink hover:text-ink"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        {/* Controls row: tone pills + edit/preview toggle */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          {/* Tone selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted font-medium uppercase tracking-wider mr-1">Tone</span>
+            {TONES.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => handleTone(t.value)}
+                disabled={generating}
+                className={`px-3 py-1 rounded-full text-[12px] font-medium border transition-colors disabled:opacity-40 ${
+                  tone === t.value
+                    ? "bg-[#1A1714] text-white border-[#1A1714]"
+                    : "border-border text-sub hover:border-ink hover:text-ink"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Edit / Preview toggle — only shown when a draft exists */}
+          {hasDraft && (
+            <div className="flex items-center rounded-[4px] border border-border bg-[var(--bg)] p-0.5 shrink-0">
+              <button
+                onClick={() => setPreviewMode(false)}
+                className={`px-3 py-1 text-[12px] font-medium rounded-[3px] transition-colors ${
+                  !previewMode ? "bg-white text-ink shadow-sm" : "text-muted hover:text-sub"
+                }`}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => setPreviewMode(true)}
+                className={`px-3 py-1 text-[12px] font-medium rounded-[3px] transition-colors ${
+                  previewMode ? "bg-white text-ink shadow-sm" : "text-muted hover:text-sub"
+                }`}
+              >
+                Preview
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Generating state */}
@@ -298,6 +326,7 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
           </div>
         )}
 
+        {/* Generation error */}
         {genError && !generating && (
           <div className="text-[13px] text-danger flex items-center gap-2">
             <span>{genError}</span>
@@ -310,42 +339,84 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
           </div>
         )}
 
-        {!generating && !genError && subject && (
-          <>
-            {/* Subject */}
-            <div>
-              <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
-                Subject
-              </label>
-              <input
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2 text-[13px] text-ink outline-none focus:border-ink transition-colors"
-              />
+        {/* Draft content */}
+        {hasDraft && (
+          previewMode ? (
+            /* ── PREVIEW MODE ──────────────────────────────────────────────── */
+            <div className="border border-border rounded-[4px] overflow-hidden text-[13px]">
+              {/* Email headers */}
+              <div className="px-4 py-3 bg-[var(--bg)] border-b border-border space-y-1.5">
+                <div className="grid grid-cols-[44px_1fr] gap-2 items-baseline">
+                  <span className="text-[11px] text-muted font-medium uppercase tracking-wide">From</span>
+                  <span className="text-ink">Your Company via HireIQ</span>
+                </div>
+                <div className="grid grid-cols-[44px_1fr] gap-2 items-baseline">
+                  <span className="text-[11px] text-muted font-medium uppercase tracking-wide">To</span>
+                  <span className="text-ink">{candidateName} &lt;{candidateEmail}&gt;</span>
+                </div>
+                <div className="grid grid-cols-[44px_1fr] gap-2 items-baseline">
+                  <span className="text-[11px] text-muted font-medium uppercase tracking-wide">Subject</span>
+                  <span className="text-ink font-semibold">{subject || "—"}</span>
+                </div>
+              </div>
+              {/* Body rendered */}
+              <div className="px-5 py-5 bg-white">
+                {body.split("\n\n").map((para, i) => (
+                  para.trim() ? (
+                    <p key={i} className={`text-[14px] text-ink leading-[1.75] ${i > 0 ? "mt-4" : ""}`}>
+                      {para.split("\n").map((line, j) => (
+                        <React.Fragment key={j}>
+                          {j > 0 && <br />}
+                          {line}
+                        </React.Fragment>
+                      ))}
+                    </p>
+                  ) : null
+                ))}
+              </div>
+              <div className="px-5 py-2.5 bg-[var(--bg)] border-t border-border">
+                <p className="text-[11px] text-muted">
+                  This is how the email will appear in the candidate&apos;s inbox.
+                  Switch to Edit to make changes before sending.
+                </p>
+              </div>
             </div>
+          ) : (
+            /* ── EDIT MODE ─────────────────────────────────────────────────── */
+            <>
+              {/* Subject */}
+              <div>
+                <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
+                  Subject
+                </label>
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2 text-[13px] text-ink outline-none focus:border-ink transition-colors"
+                />
+              </div>
 
-            {/* Body */}
-            <div>
-              <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
-                Body
-              </label>
-              <textarea
-                ref={bodyRef}
-                value={body}
-                onChange={(e) => {
-                  setBody(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                }}
-                className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2.5 text-[13px] text-ink leading-relaxed outline-none focus:border-ink transition-colors resize-none"
-                style={{ minHeight: "160px" }}
-              />
-              <p className="text-[11px] text-muted mt-1">
-                To: {candidateEmail}
-              </p>
-            </div>
-          </>
+              {/* Body */}
+              <div>
+                <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
+                  Body
+                </label>
+                <textarea
+                  ref={bodyRef}
+                  value={body}
+                  onChange={(e) => {
+                    setBody(e.target.value);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
+                  className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2.5 text-[13px] text-ink leading-relaxed outline-none focus:border-ink transition-colors resize-none"
+                  style={{ minHeight: "160px" }}
+                />
+                <p className="text-[11px] text-muted mt-1">To: {candidateEmail}</p>
+              </div>
+            </>
+          )
         )}
 
         {/* Send error */}
@@ -362,7 +433,7 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
         )}
 
         {/* Actions */}
-        {!sent && !generating && !genError && subject && (
+        {!sent && hasDraft && (
           <div className="flex items-center justify-between pt-1">
             <button
               onClick={() => generate(tone)}

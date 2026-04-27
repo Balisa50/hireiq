@@ -848,7 +848,7 @@ async def send_candidate_email_endpoint(
     """
     result = (
         supabase.table("interviews")
-        .select("company_id, candidate_name, candidate_email")
+        .select("company_id, candidate_name, candidate_email, jobs(companies(company_name))")
         .eq("id", interview_id)
         .execute()
     )
@@ -859,18 +859,22 @@ async def send_candidate_email_endpoint(
     interview = result.data[0]
     verify_company_owns_resource(interview["company_id"], company_id, "interview")
 
+    job_info     = interview.get("jobs") or {}
+    company_info = (job_info.get("companies") or {}) if isinstance(job_info, dict) else {}
+    company_name = company_info.get("company_name", "")
+
     sent = await email_service.send_candidate_email(
         to_email=interview["candidate_email"],
         to_name=interview.get("candidate_name", ""),
         subject=request.subject,
         body=request.body,
+        company_name=company_name,
     )
 
     if not sent:
-        # SMTP not configured — return 200 with a warning rather than failing silently
         return {
             "sent": False,
-            "message": "Email queued but SMTP is not configured. Add SMTP credentials in your environment settings.",
+            "message": "Email not sent. Add your RESEND_API_KEY to the Render environment variables.",
         }
 
     return {"sent": True, "message": "Email sent successfully."}
