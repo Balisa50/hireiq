@@ -38,17 +38,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
       return;
     }
-    try {
-      const profile = await companyAPI.getProfile();
-      setCompany(profile);
-    } catch {
-      // Token is invalid or expired — clear it silently.
-      // The dashboard layout's useEffect will redirect to /login.
-      clearStoredToken();
-      setCompany(null);
-    } finally {
-      setIsLoading(false);
+    // Retry up to 3 times — Render cold-starts can take a few seconds.
+    // Only a 401 should log the user out (apiFetch handles that already).
+    // Never clear the token here — network errors must not kill the session.
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const profile = await companyAPI.getProfile();
+        setCompany(profile);
+        setIsLoading(false);
+        return;
+      } catch (err) {
+        lastErr = err;
+        // apiFetch already redirected + cleared token on 401 — stop retrying.
+        if (!authAPI.isAuthenticated()) {
+          setIsLoading(false);
+          return;
+        }
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 1500));
+      }
     }
+    // All retries failed but token still exists — keep user logged in visually,
+    // just leave company null. Dashboard will show an empty state rather than
+    // bouncing to /login for a transient server error.
+    console.warn("Profile load failed after 3 attempts:", lastErr);
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
