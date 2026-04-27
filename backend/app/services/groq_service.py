@@ -1,72 +1,93 @@
 """
-HireIQ Groq AI service.
-Handles all interactions with the Groq API:
-  - Interview question generation (with candidate requirements awareness)
-  - Adaptive follow-up question generation during live interviews
-    (references candidate's actual submitted documents & links)
-  - Candidate scoring and assessment report generation
-    (cross-references document claims vs interview performance)
+HireIQ AI service — powered entirely by Google Gemini Flash 2.0.
+Every AI call in the system routes through GEMINI_API_KEY via the Google AI Studio REST API.
+
+Functions:
+  1. generate_interview_questions   — structured question generation
+  2. generate_adaptive_next_question — single follow-up question
+  3. score_candidate                — full assessment with skill gap analysis
+  4. generate_candidate_email       — candidate notification email drafts
+  5. generate_conversation_response — live interview conversation driver
+  6. get_first_interview_message    — hardcoded opening (never AI-generated)
 """
 
 import json
 import asyncio
 import logging
 import httpx
-from groq import AsyncGroq
 from app.config import get_settings
 
 logger = logging.getLogger("hireiq.groq")
 
-MODEL = "llama-3.3-70b-versatile"
-
-# Gemini Flash 2.0 — used for the interview conversation agent only
+# Gemini Flash 2.0 endpoint (model name is the only thing that changes if we upgrade)
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 
-def _build_groq_client() -> AsyncGroq:
-    settings = get_settings()
-    return AsyncGroq(api_key=settings.groq_api_key)
+# ── Core Gemini caller — general prompt → text ────────────────────────────────
 
-
-async def _call_groq_with_retry(
-    messages: list[dict],
+async def _call_gemini(
+    system_prompt: str,
+    user_content: str,
     max_tokens: int = 2048,
     temperature: float = 0.7,
     json_mode: bool = False,
 ) -> str | None:
     """
-    Call Groq with one automatic retry on failure.
-    Returns the text content or None if both attempts fail.
+    Single-turn Gemini call: system instruction + one user message.
+    Used for question generation, scoring, and email drafting.
+    Returns raw text or None on failure.
     """
     settings = get_settings()
-    client = _build_groq_client()
+    if not settings.gemini_api_key:
+        logger.error("GEMINI_API_KEY not configured")
+        return None
 
-    kwargs: dict = {
-        "model": MODEL,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "timeout": settings.groq_timeout_seconds,
+    url = f"{GEMINI_URL}?key={settings.gemini_api_key}"
+
+    gen_config: dict = {
+        "temperature":     temperature,
+        "maxOutputTokens": max_tokens,
     }
     if json_mode:
-        kwargs["response_format"] = {"type": "json_object"}
+        gen_config["responseMimeType"] = "application/json"
+
+    payload = {
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents":          [{"role": "user", "parts": [{"text": user_content}]}],
+        "generationConfig":  gen_config,
+    }
 
     for attempt in range(1, 3):
         try:
-            response = await client.chat.completions.create(**kwargs)
-            return response.choices[0].message.content
-        except Exception as error:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(url, json=payload)
+
+            if response.status_code == 200:
+                data       = response.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        return parts[0].get("text", "")
+                logger.error("Gemini returned empty candidates", extra={"body": str(data)[:300]})
+                return None
+
             logger.error(
-                "Groq API call failed",
-                extra={"attempt": attempt, "error": str(error), "model": MODEL},
+                "Gemini API error",
+                extra={"attempt": attempt, "status": response.status_code, "body": response.text[:300]},
             )
+            if attempt == 1:
+                await asyncio.sleep(settings.groq_retry_delay_seconds)
+
+        except Exception as error:
+            logger.error("Gemini call failed", extra={"attempt": attempt, "error": str(error)})
             if attempt == 1:
                 await asyncio.sleep(settings.groq_retry_delay_seconds)
 
     return None
 
 
-# ── Gemini Flash 2.0 — interview conversation ──────────────────────────────────
+# ── Core Gemini caller — multi-turn conversation ───────────────────────────────
 
 async def _call_gemini_conversation(
     system_prompt: str,
@@ -75,8 +96,8 @@ async def _call_gemini_conversation(
     temperature: float = 0.75,
 ) -> str | None:
     """
-    Call Gemini Flash 2.0 for the interview conversation agent.
-    contents: Gemini-format list [{role: "user"|"model", parts: [{text: "..."}]}]
+    Multi-turn Gemini call for the interview conversation agent.
+    contents: Gemini-format [{role: "user"|"model", parts: [{text: "..."}]}]
     Returns raw text (JSON string) or None on failure.
     """
     settings = get_settings()
@@ -87,8 +108,8 @@ async def _call_gemini_conversation(
     url     = f"{GEMINI_URL}?key={settings.gemini_api_key}"
     payload = {
         "systemInstruction": {"parts": [{"text": system_prompt}]},
-        "contents": contents,
-        "generationConfig": {
+        "contents":          contents,
+        "generationConfig":  {
             "temperature":      temperature,
             "maxOutputTokens":  max_tokens,
             "responseMimeType": "application/json",
@@ -115,12 +136,12 @@ async def _call_gemini_conversation(
                 extra={"attempt": attempt, "status": response.status_code, "body": response.text[:300]},
             )
             if attempt == 1:
-                await asyncio.sleep(3)
+                await asyncio.sleep(settings.groq_retry_delay_seconds)
 
         except Exception as error:
             logger.error("Gemini call failed", extra={"attempt": attempt, "error": str(error)})
             if attempt == 1:
-                await asyncio.sleep(3)
+                await asyncio.sleep(settings.groq_retry_delay_seconds)
 
     return None
 
@@ -181,11 +202,9 @@ async def generate_interview_questions(
         f"Generate exactly {question_count} interview questions."
     )
 
-    raw_response = await _call_groq_with_retry(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+    raw_response = await _call_gemini(
+        system_prompt=system_prompt,
+        user_content=user_prompt,
         max_tokens=3000,
         temperature=0.7,
         json_mode=True,
@@ -198,12 +217,12 @@ async def generate_interview_questions(
         parsed = json.loads(raw_response)
         questions = parsed.get("questions", [])
         if not isinstance(questions, list):
-            logger.error("Groq returned unexpected questions format", extra={"raw": raw_response[:200]})
+            logger.error("Gemini returned unexpected questions format", extra={"raw": raw_response[:200]})
             return None
         return questions
     except json.JSONDecodeError as error:
         logger.error(
-            "Failed to parse Groq question generation response",
+            "Failed to parse Gemini question generation response",
             extra={"error": str(error), "raw": raw_response[:200]},
         )
         return None
@@ -212,7 +231,7 @@ async def generate_interview_questions(
 # ── 2. Adaptive next question ──────────────────────────────────────────────────
 
 def _format_candidate_context(ctx: dict) -> str:
-    """Format the candidate_context dict into a readable string for the Groq prompt."""
+    """Format the candidate_context dict into a readable string for the prompt."""
     if not ctx:
         return "No documents submitted."
 
@@ -265,7 +284,7 @@ async def generate_adaptive_next_question(
         for entry in transcript
     )
 
-    ctx_text = _format_candidate_context(candidate_context or {})
+    ctx_text   = _format_candidate_context(candidate_context or {})
     first_name = candidate_name.split()[0] if candidate_name else "the candidate"
 
     system_prompt = (
@@ -296,13 +315,12 @@ async def generate_adaptive_next_question(
         "Generate the single best next question:"
     )
 
-    return await _call_groq_with_retry(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+    return await _call_gemini(
+        system_prompt=system_prompt,
+        user_content=user_prompt,
         max_tokens=200,
         temperature=0.75,
+        json_mode=False,
     )
 
 
@@ -326,7 +344,6 @@ async def score_candidate(
     """
     # Support both old Q&A format and new conversation format
     if transcript and transcript[0].get("role"):
-        # New conversation format: [{role: 'ai'|'candidate', content, action?}]
         pairs = []
         for i, msg in enumerate(transcript):
             if msg.get("role") == "ai" and msg.get("action") in (None, "continue"):
@@ -344,10 +361,9 @@ async def score_candidate(
             for i, entry in enumerate(transcript)
         )
 
-    ctx_text = _format_candidate_context(candidate_context or {})
+    ctx_text      = _format_candidate_context(candidate_context or {})
     has_documents = bool(candidate_context)
 
-    # Hardcode the candidate name — never infer from context or training data
     safe_name = candidate_name.strip() if candidate_name else ""
     name_instruction = (
         f"CRITICAL: The candidate's name is '{safe_name}'. "
@@ -358,7 +374,6 @@ async def score_candidate(
         "Do not use any candidate name in your assessment — use 'the candidate' throughout."
     )
 
-    # Extract required skills for gap analysis
     skills_text = ", ".join(skills) if skills else "see job description"
 
     system_prompt = (
@@ -392,9 +407,6 @@ async def score_candidate(
         "Return valid JSON only. No preamble. No explanation. No markdown."
     )
 
-    focus_area_scores = {area: 0 for area in focus_areas}
-
-    # Build name reference for the example sentence
     name_ref = safe_name if safe_name else "The candidate"
 
     user_prompt = (
@@ -408,7 +420,7 @@ async def score_candidate(
         f"Full Interview Transcript:\n{transcript_text}\n\n"
         "Produce a JSON assessment with EXACTLY these fields:\n"
         "- overall_score: integer 0-100. Must be below 40 if candidate lacks core required skills.\n"
-        f"- score_breakdown: object with integer 0-100 for each of: {list(focus_area_scores.keys())}. "
+        f"- score_breakdown: object with integer 0-100 for each of: {list({area: 0 for area in focus_areas}.keys())}. "
         "Each score must reflect only demonstrated evidence, not potential.\n"
         f"- executive_summary: 4-5 sentences. Cite specific lines from CV or transcript quotes. "
         f"Compare required skills vs demonstrated skills explicitly. "
@@ -435,11 +447,9 @@ async def score_candidate(
         "A candidate missing core required skills must be No or Strong No.\n"
     )
 
-    raw_response = await _call_groq_with_retry(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+    raw_response = await _call_gemini(
+        system_prompt=system_prompt,
+        user_content=user_prompt,
         max_tokens=2500,
         temperature=0.3,
         json_mode=True,
@@ -452,7 +462,7 @@ async def score_candidate(
         return json.loads(raw_response)
     except json.JSONDecodeError as error:
         logger.error(
-            "Failed to parse Groq scoring response",
+            "Failed to parse Gemini scoring response",
             extra={"error": str(error), "raw": raw_response[:200]},
         )
         return None
@@ -480,7 +490,6 @@ async def generate_candidate_email(
     """
     first_name = candidate_name.split()[0] if candidate_name else "there"
 
-    # ── Tone system — structurally different, not just different adjectives ────
     tone_structures = {
         "professional": (
             "PROFESSIONAL TONE RULES:\n"
@@ -509,12 +518,10 @@ async def generate_candidate_email(
     }
     tone_guidance = tone_structures.get(tone.lower(), tone_structures["professional"])
 
-    # ── Signal extraction — force specificity, reject generic bullets ─────────
     strengths_raw   = "\n".join(f"- {s}" for s in key_strengths)  if key_strengths  else "(none provided)"
     concerns_raw    = "\n".join(f"- {c}" for c in areas_of_concern) if areas_of_concern else "(none provided)"
     summary_full    = executive_summary[:2000] if executive_summary else ""
 
-    # Build footer block for the email
     footer_lines = [company_name] if company_name else []
     if company_email:
         footer_lines.append(company_email)
@@ -522,7 +529,6 @@ async def generate_candidate_email(
         footer_lines.append(company_website)
     footer_text = "\n".join(footer_lines)
 
-    # Assessment context block — always included
     if summary_full or key_strengths or areas_of_concern:
         assessment_block = (
             f"=== CANDIDATE ASSESSMENT DATA ===\n"
@@ -633,11 +639,9 @@ async def generate_candidate_email(
         f"{instructions}"
     )
 
-    raw = await _call_groq_with_retry(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt},
-        ],
+    raw = await _call_gemini(
+        system_prompt=system_prompt,
+        user_content=user_prompt,
         max_tokens=900,
         temperature=0.65,
         json_mode=True,
@@ -653,7 +657,7 @@ async def generate_candidate_email(
             "body":    str(parsed.get("body",    "")).strip(),
         }
     except json.JSONDecodeError as error:
-        logger.error("Failed to parse Groq email response", extra={"error": str(error), "raw": raw[:200]})
+        logger.error("Failed to parse Gemini email response", extra={"error": str(error), "raw": raw[:200]})
         return None
 
 
@@ -679,14 +683,12 @@ def get_first_interview_message(
             f"Ready to pick up where we left off?"
         )
     else:
-        # Opening always kicks off with personal info collection.
-        # First step: confirm full name.
         message = "To get started, could you confirm your full name for me?"
 
     return {
-        "message": message,
-        "action": "continue",
-        "requirement_id": None,
+        "message":           message,
+        "action":            "continue",
+        "requirement_id":    None,
         "requirement_label": None,
     }
 
@@ -720,7 +722,6 @@ async def generate_conversation_response(
     """
     first_name = candidate_name.split()[0] if candidate_name else "the candidate"
 
-    # Compute pending vs collected requirements
     required_items  = [r for r in candidate_requirements if r.get("required")]
     optional_items  = [r for r in candidate_requirements if not r.get("required")]
     pending         = [r for r in required_items if r.get("id") not in collected_requirement_ids]
@@ -742,10 +743,8 @@ async def generate_conversation_response(
         or "None yet."
     )
 
-    # Count how many candidate turns have happened so far
     candidate_turn_count = sum(1 for m in conversation if m.get("role") == "candidate")
 
-    # Format role context lines
     skills_text     = ", ".join(skills) if skills else "see job description"
     seniority_text  = experience_level.replace("_", " ").title() if experience_level and experience_level != "any" else "Not specified"
     department_line = f"Department: {department}\n" if department else ""
@@ -946,7 +945,7 @@ async def generate_conversation_response(
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as error:
-        logger.error("Failed to parse Groq conversation response",
+        logger.error("Failed to parse Gemini conversation response",
                      extra={"error": str(error), "raw": raw[:200]})
         return None
 
@@ -956,8 +955,8 @@ async def generate_conversation_response(
         action = "continue"
 
     return {
-        "message": str(parsed.get("message", "")).strip(),
-        "action": action,
-        "requirement_id": parsed.get("requirement_id"),
+        "message":           str(parsed.get("message", "")).strip(),
+        "action":            action,
+        "requirement_id":    parsed.get("requirement_id"),
         "requirement_label": parsed.get("requirement_label"),
     }

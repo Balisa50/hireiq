@@ -570,9 +570,18 @@ export default function CandidateReportPage() {
     finally { setStatusUpdating(false); }
   }, [interview]);
 
-  const downloadPdf = useCallback(() => {
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+
+  const downloadPdf = useCallback(async () => {
     if (!interview) return;
-    window.open(candidatesAPI.getPdfReportUrl(interview.id), "_blank");
+    setPdfDownloading(true);
+    try {
+      await candidatesAPI.downloadPdfReport(interview.id, interview.candidate_name);
+    } catch {
+      // swallow — user can retry
+    } finally {
+      setPdfDownloading(false);
+    }
   }, [interview]);
 
   const handleDelete = useCallback(async () => {
@@ -679,7 +688,7 @@ export default function CandidateReportPage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {isScored && (
-            <Button variant="secondary" size="sm" onClick={downloadPdf}>
+            <Button variant="secondary" size="sm" onClick={downloadPdf} isLoading={pdfDownloading}>
               <Download className="w-3.5 h-3.5" /> PDF Report
             </Button>
           )}
@@ -845,7 +854,7 @@ export default function CandidateReportPage() {
           {/* Bottom PDF button */}
           <div className="flex items-center gap-3">
             {isScored && (
-              <Button variant="secondary" onClick={downloadPdf}>
+              <Button variant="secondary" onClick={downloadPdf} isLoading={pdfDownloading}>
                 <Download className="w-4 h-4" /> Download PDF Report
               </Button>
             )}
