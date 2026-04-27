@@ -127,7 +127,7 @@ async def start_interview_session(
         .select("id, status")
         .eq("job_id", job["id"])
         .eq("candidate_email", request.candidate_email.lower())
-        .in_("status", ["completed", "scored", "shortlisted", "rejected"])
+        .in_("status", ["pending_review", "completed", "scored", "shortlisted", "rejected"])
         .execute()
     )
 
@@ -349,6 +349,84 @@ async def submit_candidate_link(request: SubmitLinkRequest) -> dict:
     return {"saved": True}
 
 
+@router.post("/public/confirm/{interview_id}", response_model=dict)
+async def confirm_candidate_submission(interview_id: str) -> dict:
+    """
+    Candidate explicitly confirms their application after reviewing on the review screen.
+    Transitions pending_review → completed → scored.
+    Idempotent: if already completed/scored, returns success without re-running scoring.
+    """
+    iv_result = (
+        supabase.table("interviews")
+        .select("*, jobs(title, job_description, focus_areas, companies(company_name))")
+        .eq("id", interview_id)
+        .execute()
+    )
+
+    if not iv_result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    interview = iv_result.data[0]
+    current_status = interview.get("status", "")
+
+    # Idempotent — already confirmed
+    if current_status in ("completed", "scored", "shortlisted", "rejected", "accepted"):
+        return {"confirmed": True}
+
+    if current_status != "pending_review":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Interview is not pending review. It may still be in progress.",
+        )
+
+    # Mark as completed
+    supabase.table("interviews").update({
+        "status":        "completed",
+        "completed_at":  datetime.now(timezone.utc).isoformat(),
+        "last_saved_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", interview_id).execute()
+
+    job               = interview.get("jobs", {}) or {}
+    company           = (job.get("companies") or {})
+    candidate_context = interview.get("candidate_context") or None
+    candidate_name    = interview.get("candidate_name", "")
+
+    assessment = await score_candidate(
+        job_title=job.get("title", ""),
+        company_name=company.get("company_name", ""),
+        job_description=job.get("job_description", ""),
+        focus_areas=job.get("focus_areas", []),
+        transcript=interview.get("transcript") or [],
+        candidate_name=candidate_name,
+        candidate_context=candidate_context,
+        experience_level=job.get("experience_level", "any"),
+        skills=job.get("skills") or [],
+    )
+
+    if assessment:
+        concerns      = assessment.get("areas_of_concern") or []
+        red_flags     = assessment.get("red_flags") or []
+        identity_flag = assessment.get("identity_flag")
+        if identity_flag:
+            red_flags.insert(0, f"IDENTITY: {identity_flag}")
+        if red_flags:
+            concerns = red_flags + concerns
+
+        supabase.table("interviews").update({
+            "overall_score":                   assessment.get("overall_score"),
+            "score_breakdown":                 assessment.get("score_breakdown"),
+            "executive_summary":               assessment.get("executive_summary"),
+            "key_strengths":                   assessment.get("key_strengths"),
+            "areas_of_concern":                concerns,
+            "recommended_follow_up_questions": assessment.get("recommended_follow_up_questions"),
+            "hiring_recommendation":           assessment.get("hiring_recommendation"),
+            "document_interview_alignment":    assessment.get("document_interview_alignment"),
+            "status":                          "scored",
+        }).eq("id", interview_id).execute()
+
+    return {"confirmed": True}
+
+
 @router.post("/public/message")
 async def send_interview_message(request: SendMessageRequest) -> dict:
     """
@@ -463,46 +541,13 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
     final_conv = updated_conv + [ai_entry]
 
     if ai_response["action"] == "complete":
-        # Mark completed and score
+        # Mark as pending_review — candidate reviews before we score.
+        # Scoring happens only after the candidate explicitly confirms via /public/confirm/{id}.
         supabase.table("interviews").update({
             "transcript":    final_conv,
-            "status":        "completed",
-            "completed_at":  datetime.now(timezone.utc).isoformat(),
+            "status":        "pending_review",
             "last_saved_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", str(request.interview_id)).execute()
-
-        assessment = await score_candidate(
-            job_title=job.get("title", ""),
-            company_name=company_name,
-            job_description=job.get("job_description", ""),
-            focus_areas=job.get("focus_areas", []),
-            transcript=final_conv,
-            candidate_name=candidate_name,
-            candidate_context=candidate_context,
-            experience_level=job.get("experience_level", "any"),
-            skills=job.get("skills") or [],
-        )
-        if assessment:
-            # Merge red_flags into areas_of_concern so they surface in the UI
-            concerns = assessment.get("areas_of_concern") or []
-            red_flags = assessment.get("red_flags") or []
-            identity_flag = assessment.get("identity_flag")
-            if identity_flag:
-                red_flags.insert(0, f"IDENTITY: {identity_flag}")
-            if red_flags:
-                concerns = red_flags + concerns  # red flags first
-
-            supabase.table("interviews").update({
-                "overall_score":                   assessment.get("overall_score"),
-                "score_breakdown":                 assessment.get("score_breakdown"),
-                "executive_summary":               assessment.get("executive_summary"),
-                "key_strengths":                   assessment.get("key_strengths"),
-                "areas_of_concern":                concerns,
-                "recommended_follow_up_questions": assessment.get("recommended_follow_up_questions"),
-                "hiring_recommendation":           assessment.get("hiring_recommendation"),
-                "document_interview_alignment":    assessment.get("document_interview_alignment"),
-                "status":                          "scored",
-            }).eq("id", str(request.interview_id)).execute()
     else:
         supabase.table("interviews").update({
             "transcript":    final_conv,

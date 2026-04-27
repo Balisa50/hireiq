@@ -459,6 +459,18 @@ export const interviewAPI = {
   },
 
   /**
+   * Candidate explicitly confirms their application from the review screen.
+   * Triggers completion and AI scoring on the backend.
+   */
+  async confirmSubmission(interviewId: string): Promise<{ confirmed: boolean }> {
+    return apiFetch<{ confirmed: boolean }>(
+      `/api/interviews/public/confirm/${interviewId}`,
+      { method: "POST" },
+      false,
+    );
+  },
+
+  /**
    * Conversational interview driver — send a candidate message, receive AI response.
    * Pass empty string as candidateMessage for the first call (AI greets first)
    * or for resuming an existing session.

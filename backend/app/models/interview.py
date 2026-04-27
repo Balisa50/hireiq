@@ -149,7 +149,7 @@ class UpdateCandidateStatusRequest(BaseModel):
     @field_validator("status")
     @classmethod
     def validate_status(cls, status: str) -> str:
-        valid_statuses = {"shortlisted", "rejected", "accepted", "in_progress", "completed", "scored"}
+        valid_statuses = {"shortlisted", "rejected", "accepted", "in_progress", "pending_review", "completed", "scored"}
         if status not in valid_statuses:
             raise ValueError(f"Status must be one of: {valid_statuses}")
         return status

@@ -658,14 +658,21 @@ async def generate_conversation_response(
     first_name = candidate_name.split()[0] if candidate_name else "the candidate"
 
     # Compute pending vs collected requirements
-    required_items = [r for r in candidate_requirements if r.get("required")]
-    pending = [r for r in required_items if r.get("id") not in collected_requirement_ids]
+    required_items  = [r for r in candidate_requirements if r.get("required")]
+    optional_items  = [r for r in candidate_requirements if not r.get("required")]
+    pending         = [r for r in required_items if r.get("id") not in collected_requirement_ids]
     already_collected = [r for r in required_items if r.get("id") in collected_requirement_ids]
+    optional_pending  = [r for r in optional_items if r.get("id") not in collected_requirement_ids]
 
     pending_lines = (
         "\n".join(f"  - {r['label']} ({'file upload' if r.get('type') == 'file' else 'link'}) [id: {r['id']}]"
                   for r in pending)
         or "None — all required items collected."
+    )
+    optional_lines = (
+        "\n".join(f"  - {r['label']} ({'file upload' if r.get('type') == 'file' else 'link'}) [id: {r['id']}] — optional"
+                  for r in optional_pending)
+        or "None."
     )
     collected_lines = (
         "\n".join(f"  ✓ {r['label']}" for r in already_collected)
@@ -714,7 +721,8 @@ async def generate_conversation_response(
         "Role assessment: cover the most relevant areas from the job description. Ask role-specific, "
         "experience-based questions. Never generic. Never textbook. Always earned from what the "
         "candidate just said.\n\n"
-        f"Required documents: {pending_lines}\n"
+        f"Required documents still pending (MUST collect all before closing):\n{pending_lines}\n"
+        f"Optional documents (ask at a natural moment — never force):\n{optional_lines}\n"
         f"Already collected: {collected_lines}\n\n"
 
         "---\n\n"
@@ -723,8 +731,16 @@ async def generate_conversation_response(
         "If the candidate mentions something that corresponds to a required document, request it immediately.\n"
         "You may collect two documents back to back if the flow supports it.\n"
         "Never batch-request multiple documents in one message.\n"
-        "You must collect ALL documents in the pending list before closing.\n"
+        "You must collect ALL required documents before closing.\n"
         "After a document is uploaded or a link is submitted, affirm briefly and continue.\n\n"
+        "OPTIONAL DOCUMENTS — strict rules:\n"
+        "  - Ask for each optional document once, at a natural moment in the conversation.\n"
+        "  - If the candidate says they do not have it, says 'I don't have one', declines, or does not respond "
+        "to a second prompt, accept it immediately. 'No problem, that's fine.' Then move on.\n"
+        "  - Never ask for an optional document more than once.\n"
+        "  - Never pressure, repeat, or imply the candidate should have submitted it.\n\n"
+        "REQUIRED DOCUMENTS — if candidate cannot provide after two attempts:\n"
+        "  - Say: 'Noted. We may follow up on that separately.' Then move on. Never loop.\n\n"
         "Accepted formats for any document: PDF, Word (.doc, .docx), images (.jpg, .png). "
         "Never reject a submission based on file format.\n\n"
 
