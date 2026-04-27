@@ -61,10 +61,6 @@ function Hero() {
   return (
     <section className="pt-14 min-h-screen flex items-center bg-canvas">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-24 text-center">
-        <p className="text-[13px] tracking-widest text-muted uppercase mb-6">
-          AI-Powered Hiring
-        </p>
-
         <h1
           className="text-5xl sm:text-6xl font-bold leading-[1.1] text-ink mb-6"
           style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
