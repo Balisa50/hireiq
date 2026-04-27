@@ -4,7 +4,7 @@ import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import Sidebar from "@/components/layout/Sidebar";
-import { pingBackendHealth } from "@/lib/api";
+import { pingBackendHealth, authAPI } from "@/lib/api";
 import Skeleton from "@/components/ui/Skeleton";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -12,7 +12,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.replace("/login");
+    // Only redirect to /login if loading is done AND there is genuinely no
+    // stored token. A failed API call (network error, cold-start) must not
+    // bounce the user to login — that is handled by auth-context retries.
+    if (!isLoading && !isAuthenticated && !authAPI.isAuthenticated()) {
+      router.replace("/login");
+    }
   }, [isAuthenticated, isLoading, router]);
 
   // Keep Render warm — ping every 4 minutes
