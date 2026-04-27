@@ -35,9 +35,9 @@ function Navbar() {
 
         <div className="hidden md:flex items-center gap-7">
           {[
-            { label: "Features",    href: "#features" },
+            { label: "Features",     href: "#features" },
             { label: "How it works", href: "#how-it-works" },
-            { label: "Pricing",     href: "#pricing" },
+            { label: "Pricing",      href: "#pricing" },
           ].map(({ label, href }) => (
             <a key={label} href={href} className="text-sm text-sub hover:text-ink transition-colors">
               {label}
@@ -70,7 +70,7 @@ function Hero() {
         </h1>
 
         <p className="text-base text-sub max-w-xl mx-auto mb-10 leading-relaxed">
-          HireIQ interviews every candidate with adaptive AI and delivers ranked, scored reports to your team. You only meet the people worth your time.
+          Every candidate gets an AI interview. You get a ranked shortlist. You only meet the people worth your time.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -87,10 +87,6 @@ function Hero() {
             See how it works
           </a>
         </div>
-
-        <p className="text-[13px] text-muted mt-6">
-          Free to start · No credit card required
-        </p>
       </div>
     </section>
   );
@@ -102,22 +98,22 @@ const STEPS = [
   {
     number: "01",
     title: "Post a job",
-    description: "Paste your job description. HireIQ generates a tailored set of interview questions focused on the skills that actually matter for the role.",
+    description: "Paste your job description. HireIQ generates a tailored interview — behavioural, technical, situational — calibrated to the role.",
   },
   {
     number: "02",
-    title: "Share the interview link",
-    description: "Every job gets a unique link. Post it anywhere. LinkedIn, your careers page, job boards. Candidates click and start immediately. No scheduling.",
+    title: "Share the link",
+    description: "One link per job. Post it anywhere. Candidates start immediately.",
   },
   {
     number: "03",
     title: "AI interviews every applicant",
-    description: "Candidates answer questions at their own pace. The AI listens, asks adaptive follow-ups, and keeps the conversation honest and on track.",
+    description: "The AI listens, asks follow-ups on weak answers, and keeps the conversation honest.",
   },
   {
     number: "04",
     title: "Review ranked reports",
-    description: "Log in to see every candidate ranked by score. Full AI analysis: strengths, concerns, recommended questions, and a one-click PDF report.",
+    description: "Every completed interview becomes a scored report. Open your dashboard to a shortlist.",
   },
 ];
 
@@ -127,12 +123,11 @@ function HowItWorks() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-16">
           <h2
-            className="text-3xl sm:text-4xl font-bold text-ink mb-4"
+            className="text-3xl sm:text-4xl font-bold text-ink"
             style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
           >
             From job post to shortlist in hours
           </h2>
-          <p className="text-sub">Four steps. No integration required. Works with any job board.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
@@ -158,23 +153,23 @@ function HowItWorks() {
 const FEATURES = [
   {
     icon: MessageSquare,
-    title: "Adaptive AI interviews",
-    description: "Our AI asks probing follow-ups based on each answer, just like your best interviewer would. No two sessions are identical.",
+    title: "Adaptive interviews",
+    description: "The AI probes vague answers and follows threads that matter. Every session is different.",
   },
   {
     icon: BarChart3,
-    title: "Instant scored reports",
-    description: "Every completed interview generates a full executive summary, score breakdown by skill, strengths, concerns, and a hiring recommendation.",
+    title: "Scored reports",
+    description: "Strengths, concerns, skill breakdown, and a hiring recommendation — for every candidate.",
   },
   {
     icon: Clock,
-    title: "Save 80% of screen time",
-    description: "Stop spending your day reading CVs and phone-screening candidates. HireIQ pre-qualifies everyone so you meet only the top tier.",
+    title: "No scheduling",
+    description: "Candidates interview on their own time. Your team sees results, not calendar invites.",
   },
   {
     icon: Shield,
-    title: "Bias-reduced screening",
-    description: "Candidates are evaluated on answers, not names, schools, or photos. Consistent criteria applied to every single applicant.",
+    title: "Consistent criteria",
+    description: "Same questions, same standard, every time. Decisions stay on the work.",
   },
 ];
 
@@ -183,12 +178,9 @@ function Features() {
     <section id="features" className="py-24 border-t border-border bg-canvas">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-semibold text-ink mb-4">
-            Everything you need to hire faster
+          <h2 className="text-3xl sm:text-4xl font-semibold text-ink">
+            Built for the whole pipeline
           </h2>
-          <p className="text-sub max-w-md mx-auto">
-            Built for founders, HR teams, and hiring managers who are drowning in applicants.
-          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -206,8 +198,6 @@ function Features() {
 }
 
 // ── FEATURE DEEP DIVE ─────────────────────────────────────────────────────────
-
-/* ── Mock UI components ── */
 
 function MockQuestions() {
   const qs = [
@@ -264,7 +254,7 @@ function MockInterview() {
         </div>
         <div className="ml-9 flex items-center gap-2 text-[12px] text-muted">
           <div className="w-1.5 h-1.5 rounded-full bg-warn animate-pulse" />
-          AI is reading your answer
+          Reading your answer
         </div>
       </div>
     </div>
@@ -273,10 +263,10 @@ function MockInterview() {
 
 function MockReport() {
   const rows = [
-    { rank: 1, name: "Alex Winters",    role: "Senior Engineer",     score: 91, status: "Shortlisted", statusColor: "text-success" },
-    { rank: 2, name: "Priyanka Singh",  role: "Senior Engineer",     score: 84, status: "Shortlisted", statusColor: "text-success" },
-    { rank: 3, name: "Marcus O'Brien",  role: "Senior Engineer",     score: 72, status: "Scored",      statusColor: "text-sub" },
-    { rank: 4, name: "Yuki Tanaka",     role: "Senior Engineer",     score: 61, status: "Scored",      statusColor: "text-sub" },
+    { rank: 1, name: "Alex Winters",   role: "Senior Engineer", score: 91, status: "Shortlisted", statusColor: "text-success" },
+    { rank: 2, name: "Priyanka Singh", role: "Senior Engineer", score: 84, status: "Shortlisted", statusColor: "text-success" },
+    { rank: 3, name: "Marcus O'Brien", role: "Senior Engineer", score: 72, status: "Scored",      statusColor: "text-sub" },
+    { rank: 4, name: "Yuki Tanaka",    role: "Senior Engineer", score: 61, status: "Scored",      statusColor: "text-sub" },
   ];
   return (
     <div className="bg-white border border-border rounded-[4px] overflow-hidden shadow-sm select-none pointer-events-none">
@@ -306,24 +296,24 @@ const DEEP_FEATURES = [
   {
     label:       "Question generation",
     title:       "Questions that actually test the role",
-    description: "Paste your job description and HireIQ writes a full interview in seconds. Behavioural, technical, and situational questions calibrated to the exact seniority and skills you need. You can edit, remove, or reorder before publishing.",
-    bullets:     ["Calibrated to seniority level", "Multiple question types", "Edit before you publish"],
+    description: "Paste your job description. HireIQ writes the interview — behavioural, technical, and situational, calibrated to seniority. Edit or reorder before you publish.",
+    bullets:     ["Calibrated to seniority", "Multiple question types", "Editable before publishing"],
     mock:        <MockQuestions />,
     reverse:     false,
   },
   {
     label:       "The interview",
     title:       "An AI that listens and pushes back",
-    description: "Candidates interview at their own pace. No scheduling, no ghosting. The AI follows up on vague answers, probes for depth, and keeps the conversation on track without being robotic.",
-    bullets:     ["Adaptive follow-ups on weak answers", "Works on any device, any timezone", "Auto-saves progress. Candidates can resume"],
+    description: "Candidates interview at their own pace. The AI follows up on vague answers, probes for depth, and keeps the conversation on track.",
+    bullets:     ["Adaptive follow-ups", "Handles deflection and drift", "Consistent across every candidate"],
     mock:        <MockInterview />,
     reverse:     true,
   },
   {
     label:       "Ranked reports",
-    title:       "Open your dashboard to a ranked shortlist",
-    description: "Every completed interview becomes a structured report: overall score, per-skill breakdown, key strengths, red flags, and a hiring recommendation. Download as PDF or review in the dashboard.",
-    bullets:     ["Objective scoring across all candidates", "Exportable PDF reports", "One-click status management"],
+    title:       "Open your dashboard to a shortlist",
+    description: "Every completed interview becomes a structured report: score, skill breakdown, strengths, red flags, hiring recommendation. PDF export included.",
+    bullets:     ["Objective scoring", "Per-skill breakdown", "PDF export"],
     mock:        <MockReport />,
     reverse:     false,
   },
@@ -333,25 +323,12 @@ function FeatureDeepDive() {
   return (
     <section id="feature-detail" className="py-24 border-t border-border bg-white">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-20">
-          <h2
-            className="text-3xl sm:text-4xl font-bold text-ink mb-4"
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-          >
-            Built for the way hiring actually works
-          </h2>
-          <p className="text-sub max-w-lg mx-auto">
-            Every step of the process, from posting to shortlisting, designed to save time without cutting corners.
-          </p>
-        </div>
-
         <div className="space-y-24">
           {DEEP_FEATURES.map(({ label, title, description, bullets, mock, reverse }) => (
             <div
               key={label}
               className={`grid grid-cols-1 md:grid-cols-2 gap-12 items-center ${reverse ? "md:[direction:rtl]" : ""}`}
             >
-              {/* Text */}
               <div className={reverse ? "[direction:ltr]" : ""}>
                 <p className="text-[11px] font-semibold text-muted uppercase tracking-widest mb-4">
                   {label}
@@ -373,7 +350,6 @@ function FeatureDeepDive() {
                 </ul>
               </div>
 
-              {/* Mock UI */}
               <div className={`${reverse ? "[direction:ltr]" : ""} rounded-[4px] overflow-hidden`}>
                 {mock}
               </div>
@@ -391,10 +367,9 @@ const PLANS = [
   {
     name: "Starter",
     price: "Free",
-    sub: "forever",
-    description: "For small teams just getting started.",
-    features: ["2 active jobs", "Up to 50 interviews / month", "AI scoring and reports", "PDF report downloads"],
-    cta: "Get started free",
+    sub: "",
+    features: ["2 active jobs", "50 interviews / month", "AI scoring and reports", "PDF exports"],
+    cta: "Get started",
     href: "/signup",
     highlight: false,
   },
@@ -402,9 +377,8 @@ const PLANS = [
     name: "Growth",
     price: "$1",
     sub: "/ month",
-    description: "For teams hiring consistently at scale.",
     features: ["Unlimited jobs", "Unlimited interviews", "Branded interview page", "Custom intro message", "CSV export", "Priority support"],
-    cta: "Start free trial",
+    cta: "Get started",
     href: "/signup",
     highlight: true,
   },
@@ -412,8 +386,7 @@ const PLANS = [
     name: "Enterprise",
     price: "Custom",
     sub: "",
-    description: "For large teams with compliance needs.",
-    features: ["Everything in Growth", "SSO / SAML", "Dedicated account manager", "Custom data retention", "SLA guarantee", "GDPR DPA"],
+    features: ["Everything in Growth", "SSO / SAML", "Dedicated account manager", "Custom data retention", "SLA", "GDPR DPA"],
     cta: "Contact sales",
     href: "mailto:sales@hireiq.app",
     highlight: false,
@@ -426,16 +399,15 @@ function Pricing() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-14">
           <h2
-            className="text-3xl sm:text-4xl font-bold text-ink mb-4"
+            className="text-3xl sm:text-4xl font-bold text-ink"
             style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
           >
-            Simple, transparent pricing
+            Pricing
           </h2>
-          <p className="text-sub">Start free. Scale as you grow. No surprise fees.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
-          {PLANS.map(({ name, price, sub, description, features, cta, href, highlight }) => (
+          {PLANS.map(({ name, price, sub, features, cta, href, highlight }) => (
             <div
               key={name}
               className={`rounded-[4px] p-6 flex flex-col ${
@@ -444,15 +416,11 @@ function Pricing() {
                   : "border border-border bg-white"
               }`}
             >
-              {highlight && (
-                <p className="text-[13px] text-muted mb-3">Most popular</p>
-              )}
               <h3 className="text-base font-semibold text-ink">{name}</h3>
-              <div className="flex items-baseline gap-1 mt-2 mb-1">
+              <div className="flex items-baseline gap-1 mt-2 mb-6">
                 <span className="text-3xl font-bold text-ink">{price}</span>
                 {sub && <span className="text-sm text-sub">{sub}</span>}
               </div>
-              <p className="text-sm text-sub mb-6">{description}</p>
 
               <ul className="space-y-2.5 flex-1 mb-8">
                 {features.map((f) => (
@@ -494,8 +462,8 @@ function Footer() {
           </Link>
 
           <div className="flex items-center gap-6 text-[13px] text-sub">
-            <Link href="/privacy" className="hover:text-ink transition-colors">Privacy Policy</Link>
-            <Link href="/terms"   className="hover:text-ink transition-colors">Terms of Service</Link>
+            <Link href="/privacy" className="hover:text-ink transition-colors">Privacy</Link>
+            <Link href="/terms"   className="hover:text-ink transition-colors">Terms</Link>
             <a href="mailto:hello@hireiq.app" className="hover:text-ink transition-colors">Contact</a>
           </div>
 
