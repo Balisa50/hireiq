@@ -38,6 +38,7 @@ from app.services.groq_service import (
 )
 from app.services.pdf_service import generate_candidate_report_pdf
 from app.services import file_service
+from app.services import github_service
 import bleach
 
 logger = logging.getLogger("hireiq.interviews_router")
@@ -320,6 +321,21 @@ async def submit_candidate_link(request: SubmitLinkRequest) -> dict:
     existing_files = interview.get("submitted_files") or []
     new_context    = file_service.build_candidate_context(existing_files, updated_links)
 
+    # ── GitHub deep analysis ──────────────────────────────────────────────────
+    # If the submitted URL is a GitHub link, fetch repo data and embed the
+    # analysis into candidate_context so the AI scorer has real evidence.
+    url_lower = request.url.lower()
+    if "github.com/" in url_lower:
+        try:
+            gh_data = await github_service.fetch_github_profile(request.url)
+            gh_text = github_service.format_github_for_context(gh_data)
+            new_context["github_analysis"] = gh_text
+            new_context["github_url"]      = request.url
+            logger.info("GitHub analysis complete", extra={"username": gh_data.get("username")})
+        except Exception as exc:
+            logger.warning("GitHub analysis failed silently", extra={"error": str(exc)})
+            new_context["github_url"] = request.url
+
     supabase.table("interviews").update({
         "submitted_links":   updated_links,
         "candidate_context": new_context,
@@ -459,14 +475,25 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
             transcript=final_conv,
             candidate_name=candidate_name,
             candidate_context=candidate_context,
+            experience_level=job.get("experience_level", "any"),
+            skills=job.get("skills") or [],
         )
         if assessment:
+            # Merge red_flags into areas_of_concern so they surface in the UI
+            concerns = assessment.get("areas_of_concern") or []
+            red_flags = assessment.get("red_flags") or []
+            identity_flag = assessment.get("identity_flag")
+            if identity_flag:
+                red_flags.insert(0, f"IDENTITY: {identity_flag}")
+            if red_flags:
+                concerns = red_flags + concerns  # red flags first
+
             supabase.table("interviews").update({
                 "overall_score":                   assessment.get("overall_score"),
                 "score_breakdown":                 assessment.get("score_breakdown"),
                 "executive_summary":               assessment.get("executive_summary"),
                 "key_strengths":                   assessment.get("key_strengths"),
-                "areas_of_concern":                assessment.get("areas_of_concern"),
+                "areas_of_concern":                concerns,
                 "recommended_follow_up_questions": assessment.get("recommended_follow_up_questions"),
                 "hiring_recommendation":           assessment.get("hiring_recommendation"),
                 "document_interview_alignment":    assessment.get("document_interview_alignment"),

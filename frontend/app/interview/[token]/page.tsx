@@ -3,23 +3,23 @@
 /**
  * HireIQ Candidate Interview — Conversational experience
  *
- * Screens: loading → auth → conversation → complete | error
+ * Screens: loading → auth → conversation → review → complete | error
  *
  * The AI drives the entire conversation — no static Q&A, no "Next Question" button.
- * Inline file/link cards appear when the AI requests documents.
- * Auth via Google OAuth (env vars required) or email + name form.
+ * File/link uploads live in the bottom input bar (not buried in message bubbles).
+ * Auth via Google OAuth or email + name form.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
-import { CheckCircle2, FileText, Link2, Upload, Send, X, AlertCircle } from "lucide-react";
+import { Paperclip, Link2, Send, AlertCircle, CheckCircle2 } from "lucide-react";
 import { interviewAPI } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import type { JobPublicInfo } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type Screen = "loading" | "auth" | "conversation" | "complete" | "error";
+type Screen = "loading" | "auth" | "conversation" | "review" | "complete" | "error";
 
 interface ConversationMessage {
   id: string;
@@ -30,7 +30,7 @@ interface ConversationMessage {
   action?: "continue" | "request_file" | "request_link" | "complete";
   requirement_id?: string | null;
   requirement_label?: string | null;
-  /** Card state — lives only on the AI message that requested the item */
+  /** Completion state for the inline badge — set after bar-level upload/link */
   cardStatus?: "idle" | "uploading" | "complete" | "error";
   cardProgress?: number;
   cardFileName?: string;
@@ -48,6 +48,43 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const PERSONAL_RE =
+  /\b(your name|full name|email address|phone number|phone|location|where are you|currently based|currently employed|employment status|working at|confirm your)\b/i;
+
+// ── Review helpers ─────────────────────────────────────────────────────────────
+
+interface PersonalDetail { label: string; value: string }
+
+function extractPersonalDetails(
+  messages: ConversationMessage[],
+  name: string,
+  email: string,
+): PersonalDetail[] {
+  const details: PersonalDetail[] = [];
+  if (name)  details.push({ label: "Name",  value: name });
+  if (email) details.push({ label: "Email", value: email });
+
+  const PATTERNS: { label: string; re: RegExp }[] = [
+    { label: "Phone",      re: /phone|number/i },
+    { label: "Location",   re: /location|based|city|country|where are you/i },
+    { label: "Employment", re: /current.*employ|working at|current.*role|current.*position/i },
+  ];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role !== "ai" || msg.isTyping || !msg.content) continue;
+    for (const { label, re } of PATTERNS) {
+      if (!details.find((d) => d.label === label) && re.test(msg.content) && msg.content.length < 200) {
+        const next = messages[i + 1];
+        if (next?.role === "candidate" && next.content.trim()) {
+          details.push({ label, value: next.content.trim() });
+        }
+      }
+    }
+  }
+  return details;
 }
 
 // ── Mark (HireIQ logo) ─────────────────────────────────────────────────────────
@@ -216,188 +253,11 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
   );
 }
 
-// ── File Upload Card (inline in AI message) ────────────────────────────────────
+// ── AI Message Bubble ──────────────────────────────────────────────────────────
+// Displays text only. File/link interaction is in the bottom bar.
+// Shows a completion badge after the user submits the requested item.
 
-interface FileUploadCardProps {
-  message: ConversationMessage;
-  interviewId: string;
-  requirementId: string;
-  requirementLabel: string;
-  onComplete: (msgId: string, fileName: string, fileSize: number) => void;
-  onProgress: (msgId: string, pct: number, fileName?: string) => void;
-  onError: (msgId: string, error: string) => void;
-}
-
-function FileUploadCard({ message, interviewId, requirementId, requirementLabel, onComplete, onProgress, onError }: FileUploadCardProps) {
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = async (file: File) => {
-    const MAX = 10 * 1024 * 1024;
-    if (file.size > MAX) { onError(message.id, "File exceeds 10 MB. Please choose a smaller file."); return; }
-
-    const ALLOWED = ["application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "image/jpeg", "image/png", "text/plain"];
-    if (!ALLOWED.includes(file.type) && !file.name.match(/\.(pdf|docx?|jpg|jpeg|png|txt)$/i)) {
-      onError(message.id, "Invalid file type. Use PDF, Word, JPEG, or PNG.");
-      return;
-    }
-
-    onProgress(message.id, 0, file.name);
-    try {
-      await interviewAPI.uploadFile(
-        interviewId, requirementId, requirementLabel, requirementId, file,
-        (pct) => onProgress(message.id, pct, file.name),
-      );
-      onComplete(message.id, file.name, file.size);
-    } catch (e) {
-      onError(message.id, e instanceof Error ? e.message : "Upload failed.");
-    }
-  };
-
-  if (message.cardStatus === "complete") {
-    return (
-      <div className="mt-3 flex items-center gap-2.5 bg-green-50 border border-success/20 rounded-[4px] px-4 py-2.5">
-        <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-        <span className="text-[13px] text-ink truncate flex-1">{message.cardFileName}</span>
-        {message.cardFileSize && (
-          <span className="text-[11px] text-muted shrink-0">{formatSize(message.cardFileSize)}</span>
-        )}
-      </div>
-    );
-  }
-
-  if (message.cardStatus === "uploading") {
-    return (
-      <div className="mt-3 space-y-1.5 px-1">
-        <div className="flex justify-between text-[12px] text-sub">
-          <span className="truncate">{message.cardFileName ?? "Uploading…"}</span>
-          <span>{message.cardProgress ?? 0}%</span>
-        </div>
-        <div className="h-1.5 bg-border rounded-full overflow-hidden">
-          <div className="h-full bg-ink rounded-full transition-all duration-150"
-            style={{ width: `${message.cardProgress ?? 0}%` }} />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.txt"
-        className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
-      />
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
-        className="mt-3 w-full border-2 border-dashed border-border rounded-[4px] px-4 py-4 text-center hover:border-ink transition-colors cursor-pointer group"
-      >
-        <Upload className="w-5 h-5 text-muted mx-auto mb-1.5 group-hover:text-ink transition-colors" />
-        <p className="text-[13px] text-sub group-hover:text-ink transition-colors">
-          Drop file here or <span className="underline underline-offset-2">browse</span>
-        </p>
-        <p className="text-[11px] text-muted mt-0.5">PDF, Word, JPEG, PNG · max 10 MB</p>
-        {message.cardStatus === "error" && (
-          <p className="text-[12px] text-danger mt-1.5 flex items-center justify-center gap-1">
-            <X className="w-3 h-3" />{message.cardError}
-          </p>
-        )}
-      </button>
-    </>
-  );
-}
-
-// ── Link Input Card (inline in AI message) ─────────────────────────────────────
-
-interface LinkInputCardProps {
-  message: ConversationMessage;
-  interviewId: string;
-  requirementId: string;
-  requirementLabel: string;
-  onComplete: (msgId: string, url: string) => void;
-  onError: (msgId: string, error: string) => void;
-}
-
-function LinkInputCard({ message, interviewId, requirementId, requirementLabel, onComplete, onError }: LinkInputCardProps) {
-  const [url, setUrl] = useState(message.cardUrl ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const handleSubmit = async () => {
-    const cleaned = url.trim();
-    if (!cleaned.startsWith("http://") && !cleaned.startsWith("https://")) {
-      onError(message.id, "URL must start with http:// or https://");
-      return;
-    }
-    setSaving(true);
-    try {
-      await interviewAPI.submitLink(interviewId, requirementId, requirementLabel, cleaned);
-      onComplete(message.id, cleaned);
-    } catch (e) {
-      onError(message.id, e instanceof Error ? e.message : "Submission failed.");
-    } finally { setSaving(false); }
-  };
-
-  if (message.cardStatus === "complete") {
-    return (
-      <div className="mt-3 flex items-center gap-2.5 bg-green-50 border border-success/20 rounded-[4px] px-4 py-2.5">
-        <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-        <a href={message.cardUrl} target="_blank" rel="noopener noreferrer"
-          className="text-[13px] text-ink underline underline-offset-2 truncate flex-1 hover:text-muted transition-colors">
-          {message.cardUrl}
-        </a>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="flex gap-2">
-        <input
-          type="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
-          placeholder="https://"
-          className={`flex-1 bg-white border rounded-[4px] px-3 py-2 text-[13px] text-ink outline-none transition-colors focus:border-ink placeholder:text-muted ${message.cardStatus === "error" ? "border-danger" : "border-border"}`}
-        />
-        <button
-          onClick={handleSubmit}
-          disabled={saving || !url.trim()}
-          className="px-3 py-2 bg-[#1A1714] text-white text-[13px] font-medium rounded-[4px] hover:bg-[#2d2926] transition-colors disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap"
-        >
-          {saving ? <Spinner className="w-3.5 h-3.5" /> : null}
-          Add
-        </button>
-      </div>
-      {message.cardStatus === "error" && (
-        <p className="text-[12px] text-danger">{message.cardError}</p>
-      )}
-    </div>
-  );
-}
-
-// ── AI Message ─────────────────────────────────────────────────────────────────
-
-interface AIMessageProps {
-  message: ConversationMessage;
-  interviewId: string;
-  onFileComplete: (msgId: string, fileName: string, fileSize: number) => void;
-  onFileProgress: (msgId: string, pct: number, fileName?: string) => void;
-  onFileError: (msgId: string, error: string) => void;
-  onLinkComplete: (msgId: string, url: string) => void;
-  onLinkError: (msgId: string, error: string) => void;
-}
-
-function AIMessageBubble({ message, interviewId, onFileComplete, onFileProgress, onFileError, onLinkComplete, onLinkError }: AIMessageProps) {
-  const showCard = message.action === "request_file" || message.action === "request_link";
-  const cardDone = message.cardStatus === "complete";
-
+function AIMessageBubble({ message }: { message: ConversationMessage }) {
   return (
     <div className="flex items-start gap-3">
       {/* Avatar */}
@@ -412,7 +272,8 @@ function AIMessageBubble({ message, interviewId, onFileComplete, onFileProgress,
       {/* Content */}
       <div className="flex-1 min-w-0">
         {message.isTyping ? (
-          <span className="text-[16px] text-muted animate-pulse" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>_</span>
+          <span className="text-[16px] text-muted animate-pulse"
+            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>_</span>
         ) : (
           <p className="text-[16px] text-ink leading-[1.75]"
             style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
@@ -420,29 +281,26 @@ function AIMessageBubble({ message, interviewId, onFileComplete, onFileProgress,
           </p>
         )}
 
-        {/* Inline file card — FileUploadCard handles idle / uploading / error / complete */}
-        {showCard && !message.isTyping && message.action === "request_file" && (
-          <FileUploadCard
-            message={message}
-            interviewId={interviewId}
-            requirementId={message.requirement_id ?? ""}
-            requirementLabel={message.requirement_label ?? "file"}
-            onComplete={onFileComplete}
-            onProgress={onFileProgress}
-            onError={onFileError}
-          />
+        {/* File completion badge */}
+        {message.cardStatus === "complete" && message.action === "request_file" && (
+          <div className="mt-3 flex items-center gap-2.5 bg-green-50 border border-success/20 rounded-[4px] px-4 py-2.5">
+            <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+            <span className="text-[13px] text-ink truncate flex-1">{message.cardFileName}</span>
+            {message.cardFileSize != null && (
+              <span className="text-[11px] text-muted shrink-0">{formatSize(message.cardFileSize)}</span>
+            )}
+          </div>
         )}
 
-        {/* Inline link card — LinkInputCard handles idle / saving / error / complete */}
-        {showCard && !message.isTyping && message.action === "request_link" && (
-          <LinkInputCard
-            message={message}
-            interviewId={interviewId}
-            requirementId={message.requirement_id ?? ""}
-            requirementLabel={message.requirement_label ?? "link"}
-            onComplete={onLinkComplete}
-            onError={onLinkError}
-          />
+        {/* Link completion badge */}
+        {message.cardStatus === "complete" && message.action === "request_link" && (
+          <div className="mt-3 flex items-center gap-2.5 bg-green-50 border border-success/20 rounded-[4px] px-4 py-2.5">
+            <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+            <a href={message.cardUrl} target="_blank" rel="noopener noreferrer"
+              className="text-[13px] text-ink underline underline-offset-2 truncate flex-1 hover:text-muted transition-colors">
+              {message.cardUrl}
+            </a>
+          </div>
         )}
       </div>
     </div>
@@ -475,7 +333,6 @@ function TopBar({ company, title, progress }: { company: string; title: string; 
       <div className="max-w-[680px] mx-auto px-4 h-12 flex items-center justify-between gap-4">
         <span className="text-[12px] text-muted truncate">{company}</span>
         <span className="text-[12px] text-muted truncate hidden sm:block">{title}</span>
-        {/* Progress bar */}
         <div className="w-24 h-1 bg-border rounded-full overflow-hidden shrink-0">
           <div className="h-full bg-ink rounded-full transition-all duration-700 ease-out"
             style={{ width: `${progress}%` }} />
@@ -498,22 +355,41 @@ export default function InterviewPage() {
   const [googleLoading, setGoogleLoading]     = useState(false);
   const [authGlobalError, setAuthGlobalError] = useState("");
   const [candidateName, setCandidateName]     = useState("");
+  const [candidateEmail, setCandidateEmail]   = useState("");
 
   // Interview session
-  const [interviewId, setInterviewId]           = useState("");
-  const [messages, setMessages]                 = useState<ConversationMessage[]>([]);
-  const [inputValue, setInputValue]             = useState("");
-  const [isWaitingForAI, setIsWaitingForAI]     = useState(false);
-  const [aiError, setAiError]                   = useState("");
-  const [hasCardPending, setHasCardPending]     = useState(false);
-  const [progressPct, setProgressPct]           = useState(0);
+  const [interviewId, setInterviewId]       = useState("");
+  const [messages, setMessages]             = useState<ConversationMessage[]>([]);
+  const [inputValue, setInputValue]         = useState("");
+  const [isWaitingForAI, setIsWaitingForAI] = useState(false);
+  const [aiError, setAiError]               = useState("");
+  const [progressPct, setProgressPct]       = useState(0);
 
-  const messagesEndRef  = useRef<HTMLDivElement>(null);
-  const inputRef        = useRef<HTMLTextAreaElement>(null);
-  const lastShownTime   = useRef<number>(0); // for timestamp display logic
-  const isStartingRef   = useRef(false);     // gate — prevents handleStartWithCredentials running twice
-  // Holds Google session — state so changes re-trigger the drain effect
+  // Bar-level upload / link state
+  const [linkValue, setLinkValue]         = useState("");
+  const [barError, setBarError]           = useState("");
+  const [isUploading, setIsUploading]     = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadFileName, setUploadFileName] = useState("");
+  const pageFileRef = useRef<HTMLInputElement>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef       = useRef<HTMLTextAreaElement>(null);
+  const lastShownTime  = useRef<number>(0);
+  const isStartingRef  = useRef(false);
   const [pendingOAuth, setPendingOAuth] = useState<{ name: string; email: string } | null>(null);
+
+  // ── Derive pending action from last AI message ─────────────────────────────
+  const lastAiMsg = useMemo(
+    () => messages.filter((m) => m.role === "ai" && !m.isTyping).at(-1),
+    [messages],
+  );
+  const pendingAction: "continue" | "request_file" | "request_link" =
+    lastAiMsg?.cardStatus !== "complete" &&
+    (lastAiMsg?.action === "request_file" || lastAiMsg?.action === "request_link")
+      ? lastAiMsg.action!
+      : "continue";
+  const hasCardPending = pendingAction !== "continue";
 
   // ── Load job info ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -535,15 +411,11 @@ export default function InterviewPage() {
       });
   }, [token]);
 
-  // Show auth screen once job info loaded
   useEffect(() => {
     if ((screen as string) === "welcome" && jobInfo) setScreen("auth");
   }, [screen, jobInfo]);
 
   // ── Supabase OAuth state change ───────────────────────────────────────────
-  // Run once. Supabase v2 PKCE flow fires SIGNED_IN during code-exchange on
-  // page load — often before screen reaches "auth". We park the session in a
-  // ref and process it as soon as the auth screen is ready.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
@@ -556,9 +428,6 @@ export default function InterviewPage() {
           const email = session.user.email ?? "";
           if (!fullName || !email) return;
           setGoogleLoading(false);
-          // Always park in state — the drain effect below handles both
-          // cases: auth screen already visible, or not yet.
-          // (Can't check `screen` here — closure captures initial value.)
           setPendingOAuth({ name: fullName, email });
         }
       }
@@ -567,9 +436,7 @@ export default function InterviewPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Drain pending OAuth session whenever auth screen is ready OR session arrives ──
-  // Runs when screen becomes "auth" OR when pendingOAuth is set — whichever
-  // happens last. This fixes both race directions.
+  // ── Drain pending OAuth whenever auth screen is ready OR session arrives ───
   useEffect(() => {
     if (screen === "auth" && pendingOAuth && !interviewId) {
       const { name, email } = pendingOAuth;
@@ -584,22 +451,21 @@ export default function InterviewPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // ── Track pending card ─────────────────────────────────────────────────────
-  useEffect(() => {
-    const pending = messages.some(
-      (m) => m.role === "ai" &&
-        (m.action === "request_file" || m.action === "request_link") &&
-        m.cardStatus !== "complete",
-    );
-    setHasCardPending(pending);
-  }, [messages]);
-
   // ── Progress ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const candidateMsgs = messages.filter((m) => m.role === "candidate").length;
     const total = jobInfo?.question_count ?? 10;
     setProgressPct(Math.min(88, Math.round((candidateMsgs / total) * 100)));
   }, [messages, jobInfo]);
+
+  // ── Clear bar state when pending action changes ────────────────────────────
+  useEffect(() => {
+    setBarError("");
+    setIsUploading(false);
+    setUploadProgress(0);
+    setUploadFileName("");
+    setLinkValue("");
+  }, [pendingAction]);
 
   // ── Google OAuth ───────────────────────────────────────────────────────────
   const handleGoogleAuth = useCallback(async () => {
@@ -610,7 +476,6 @@ export default function InterviewPage() {
         provider: "google",
         options: { redirectTo: window.location.href },
       });
-      // Redirect happens — onAuthStateChange picks up the session
     } catch {
       setAuthGlobalError("Google sign-in is not configured yet. Please use the email form.");
       setGoogleLoading(false);
@@ -620,8 +485,6 @@ export default function InterviewPage() {
   // ── Start interview with name + email ─────────────────────────────────────
   const handleStartWithCredentials = useCallback(async (name: string, email: string) => {
     if (!jobInfo) return;
-    // Guard: Supabase fires INITIAL_SESSION + SIGNED_IN back-to-back.
-    // Without this, the function runs twice and the opening message appears twice.
     if (isStartingRef.current) return;
     isStartingRef.current = true;
     setIsAuthLoading(true);
@@ -629,11 +492,10 @@ export default function InterviewPage() {
     try {
       const r = await interviewAPI.startInterview(token, name, email);
       setCandidateName(name);
+      setCandidateEmail(email);
       setInterviewId(r.interview_id);
 
-      // Load existing conversation if resuming
       if (r.resumed && r.transcript?.length) {
-        // Re-hydrate messages from stored conversation (new conversation format)
         const hydrated: ConversationMessage[] = (r.transcript as unknown[]).map((raw) => {
           const entry = raw as Record<string, unknown>;
           return {
@@ -644,15 +506,15 @@ export default function InterviewPage() {
             action:            entry.action as ConversationMessage["action"],
             requirement_id:    (entry.requirement_id as string | null) ?? null,
             requirement_label: (entry.requirement_label as string | null) ?? null,
-            cardStatus:        (entry.action === "request_file" || entry.action === "request_link") ? "complete" as const : undefined,
+            cardStatus:        (entry.action === "request_file" || entry.action === "request_link")
+              ? ("complete" as const)
+              : undefined,
           };
         });
         setMessages(hydrated);
       }
 
       setScreen("conversation");
-
-      // Get first message (or resume message)
       await kickoffConversation(r.interview_id, r.resumed, r.transcript ?? []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
@@ -661,7 +523,7 @@ export default function InterviewPage() {
       } else {
         setAuthGlobalError(msg);
       }
-      isStartingRef.current = false; // allow retry on error
+      isStartingRef.current = false;
     } finally {
       setIsAuthLoading(false);
     }
@@ -669,7 +531,6 @@ export default function InterviewPage() {
 
   // ── Kick off conversation (first AI message) ───────────────────────────────
   const kickoffConversation = useCallback(async (ivId: string, resumed: boolean, existingConv: unknown[]) => {
-    // If resuming with existing messages: the backend returns the last AI message on empty candidate_message
     const thinkingId = nanoid();
     setMessages((prev) => {
       const base = resumed && existingConv.length ? prev : [];
@@ -681,20 +542,52 @@ export default function InterviewPage() {
     try {
       const resp = await interviewAPI.sendMessage(ivId, "");
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
-        id:               nanoid(),
-        role:             "ai",
-        content:          resp.message,
-        timestamp:        new Date().toISOString(),
-        action:           resp.action,
-        requirement_id:   resp.requirement_id,
+        id:                nanoid(),
+        role:              "ai",
+        content:           resp.message,
+        timestamp:         new Date().toISOString(),
+        action:            resp.action,
+        requirement_id:    resp.requirement_id,
         requirement_label: resp.requirement_label,
-        cardStatus:       (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
+        cardStatus:        (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
       }]));
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
       setAiError("Couldn't start the interview. Please refresh.");
     }
   }, []);
+
+  // ── Shared: post auto candidate message + get next AI reply ───────────────
+  const sendAutoMessage = useCallback(async (text: string) => {
+    setIsWaitingForAI(true);
+    const thinkingId = nanoid();
+    setMessages((prev) => [
+      ...prev,
+      { id: nanoid(), role: "candidate", content: text, timestamp: new Date().toISOString() },
+      { id: thinkingId, role: "ai", content: "", timestamp: new Date().toISOString(), isTyping: true },
+    ]);
+    try {
+      const resp = await interviewAPI.sendMessage(interviewId, text);
+      setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
+        id:                nanoid(),
+        role:              "ai",
+        content:           resp.message,
+        timestamp:         new Date().toISOString(),
+        action:            resp.action,
+        requirement_id:    resp.requirement_id,
+        requirement_label: resp.requirement_label,
+        cardStatus:        (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
+      }]));
+      if (resp.action === "complete") {
+        setProgressPct(100);
+        setTimeout(() => setScreen("review"), 3500);
+      }
+    } catch {
+      setAiError("Couldn't continue the interview. Please try again.");
+    } finally {
+      setIsWaitingForAI(false);
+    }
+  }, [interviewId]);
 
   // ── Send candidate message ─────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
@@ -705,40 +598,33 @@ export default function InterviewPage() {
     setAiError("");
     setIsWaitingForAI(true);
 
-    const now = new Date().toISOString();
+    const now   = new Date().toISOString();
     const nowMs = Date.now();
     const showTs = (nowMs - lastShownTime.current) > 60_000;
     if (showTs) lastShownTime.current = nowMs;
 
-    const candidateMsg: ConversationMessage = {
-      id: nanoid(), role: "candidate", content: text, timestamp: now,
-    };
     const thinkingId = nanoid();
-
     setMessages((prev) => [
       ...prev,
-      candidateMsg,
+      { id: nanoid(), role: "candidate", content: text, timestamp: now },
       { id: thinkingId, role: "ai", content: "", timestamp: now, isTyping: true },
     ]);
 
     try {
       const resp = await interviewAPI.sendMessage(interviewId, text);
-
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
-        id:               nanoid(),
-        role:             "ai",
-        content:          resp.message,
-        timestamp:        new Date().toISOString(),
-        action:           resp.action,
-        requirement_id:   resp.requirement_id,
+        id:                nanoid(),
+        role:              "ai",
+        content:           resp.message,
+        timestamp:         new Date().toISOString(),
+        action:            resp.action,
+        requirement_id:    resp.requirement_id,
         requirement_label: resp.requirement_label,
-        cardStatus:       (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
+        cardStatus:        (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
       }]));
-
       if (resp.action === "complete") {
         setProgressPct(100);
-        // Transition to complete screen after the candidate reads the final message
-        setTimeout(() => setScreen("complete"), 3500);
+        setTimeout(() => setScreen("review"), 3500);
       }
     } catch (err: unknown) {
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
@@ -749,93 +635,75 @@ export default function InterviewPage() {
     }
   }, [inputValue, isWaitingForAI, hasCardPending, interviewId]);
 
-  // After file upload completes: send automated candidate message to continue conversation
-  const handleFileComplete = useCallback(async (msgId: string, fileName: string, fileSize: number) => {
-    setMessages((prev) => prev.map((m) =>
-      m.id === msgId
-        ? { ...m, cardStatus: "complete", cardFileName: fileName, cardFileSize: fileSize }
-        : m,
-    ));
+  // ── Bar-level file upload ──────────────────────────────────────────────────
+  const handlePageFile = useCallback(async (file: File) => {
+    if (!lastAiMsg) return;
+    const MAX = 10 * 1024 * 1024;
+    if (file.size > MAX) { setBarError("File exceeds 10 MB. Please choose a smaller file."); return; }
+    const ALLOWED = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "image/jpeg", "image/png", "text/plain",
+    ];
+    if (!ALLOWED.includes(file.type) && !file.name.match(/\.(pdf|docx?|jpg|jpeg|png|txt)$/i)) {
+      setBarError("Invalid type. Use PDF, Word, JPEG, or PNG.");
+      return;
+    }
 
-    // Find requirement label for the automated message
-    const msg = messages.find((m) => m.id === msgId);
-    const label = msg?.requirement_label ?? "document";
+    setBarError("");
+    setIsUploading(true);
+    setUploadFileName(file.name);
+    setUploadProgress(0);
 
-    // Auto-send: trigger next AI message
-    const autoText = `I've uploaded my ${label}.`;
-    setIsWaitingForAI(true);
-    const thinkingId = nanoid();
-    setMessages((prev) => [
-      ...prev,
-      { id: nanoid(), role: "candidate", content: autoText, timestamp: new Date().toISOString() },
-      { id: thinkingId, role: "ai", content: "", timestamp: new Date().toISOString(), isTyping: true },
-    ]);
+    const msgId    = lastAiMsg.id;
+    const reqId    = lastAiMsg.requirement_id ?? "";
+    const reqLabel = lastAiMsg.requirement_label ?? "file";
+
     try {
-      const resp = await interviewAPI.sendMessage(interviewId, autoText);
-      setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
-        id: nanoid(), role: "ai", content: resp.message, timestamp: new Date().toISOString(),
-        action: resp.action, requirement_id: resp.requirement_id, requirement_label: resp.requirement_label,
-        cardStatus: (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
-      }]));
-      if (resp.action === "complete") {
-        setProgressPct(100);
-        setTimeout(() => setScreen("complete"), 3500);
-      }
-    } catch { setAiError("Couldn't continue the interview. Please try again."); }
-    finally { setIsWaitingForAI(false); }
-  }, [messages, interviewId]);
+      await interviewAPI.uploadFile(
+        interviewId, reqId, reqLabel, reqId, file,
+        (pct) => setUploadProgress(pct),
+      );
+      setIsUploading(false);
+      setMessages((prev) => prev.map((m) =>
+        m.id === msgId
+          ? { ...m, cardStatus: "complete", cardFileName: file.name, cardFileSize: file.size }
+          : m,
+      ));
+      await sendAutoMessage(`I've uploaded my ${reqLabel}.`);
+    } catch (e) {
+      setIsUploading(false);
+      setBarError(e instanceof Error ? e.message : "Upload failed. Please try again.");
+    }
+  }, [lastAiMsg, interviewId, sendAutoMessage]);
 
-  const handleFileProgress = useCallback((msgId: string, pct: number, fileName?: string) => {
-    setMessages((prev) => prev.map((m) =>
-      m.id === msgId
-        ? { ...m, cardStatus: "uploading", cardProgress: pct, cardFileName: fileName ?? m.cardFileName }
-        : m,
-    ));
-  }, []);
+  // ── Bar-level link submit ──────────────────────────────────────────────────
+  const handlePageLink = useCallback(async () => {
+    if (!lastAiMsg) return;
+    const cleaned = linkValue.trim();
+    if (!cleaned.startsWith("http://") && !cleaned.startsWith("https://")) {
+      setBarError("URL must start with http:// or https://");
+      return;
+    }
 
-  const handleFileError = useCallback((msgId: string, error: string) => {
-    setMessages((prev) => prev.map((m) =>
-      m.id === msgId ? { ...m, cardStatus: "error", cardError: error } : m,
-    ));
-  }, []);
+    setBarError("");
+    const msgId    = lastAiMsg.id;
+    const reqId    = lastAiMsg.requirement_id ?? "";
+    const reqLabel = lastAiMsg.requirement_label ?? "link";
 
-  const handleLinkComplete = useCallback(async (msgId: string, url: string) => {
-    setMessages((prev) => prev.map((m) =>
-      m.id === msgId ? { ...m, cardStatus: "complete", cardUrl: url } : m,
-    ));
-
-    const msg = messages.find((m) => m.id === msgId);
-    const label = msg?.requirement_label ?? "link";
-    const autoText = `Here's my ${label}: ${url}`;
-    setIsWaitingForAI(true);
-    const thinkingId = nanoid();
-    setMessages((prev) => [
-      ...prev,
-      { id: nanoid(), role: "candidate", content: autoText, timestamp: new Date().toISOString() },
-      { id: thinkingId, role: "ai", content: "", timestamp: new Date().toISOString(), isTyping: true },
-    ]);
     try {
-      const resp = await interviewAPI.sendMessage(interviewId, autoText);
-      setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
-        id: nanoid(), role: "ai", content: resp.message, timestamp: new Date().toISOString(),
-        action: resp.action, requirement_id: resp.requirement_id, requirement_label: resp.requirement_label,
-        cardStatus: (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
-      }]));
-      if (resp.action === "complete") {
-        setProgressPct(100);
-        setTimeout(() => setScreen("complete"), 3500);
-      }
-    } catch { setAiError("Couldn't continue the interview. Please try again."); }
-    finally { setIsWaitingForAI(false); }
-  }, [messages, interviewId]);
+      await interviewAPI.submitLink(interviewId, reqId, reqLabel, cleaned);
+      setMessages((prev) => prev.map((m) =>
+        m.id === msgId ? { ...m, cardStatus: "complete", cardUrl: cleaned } : m,
+      ));
+      setLinkValue("");
+      await sendAutoMessage(`Here's my ${reqLabel}: ${cleaned}`);
+    } catch (e) {
+      setBarError(e instanceof Error ? e.message : "Submission failed. Please try again.");
+    }
+  }, [lastAiMsg, linkValue, interviewId, sendAutoMessage]);
 
-  const handleLinkError = useCallback((msgId: string, error: string) => {
-    setMessages((prev) => prev.map((m) =>
-      m.id === msgId ? { ...m, cardStatus: "error", cardError: error } : m,
-    ));
-  }, []);
-
-  // ── Keyboard handler for textarea ─────────────────────────────────────────
+  // ── Keyboard handler ───────────────────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -886,6 +754,117 @@ export default function InterviewPage() {
     );
   }
 
+  // ── Review screen ──────────────────────────────────────────────────────────
+  if (screen === "review") {
+    const personalDetails = extractPersonalDetails(messages, candidateName, candidateEmail);
+    const submittedDocs   = messages.filter(
+      (m) => m.role === "ai" && m.cardStatus === "complete",
+    );
+    const keyAnswers = messages.filter((m, i) => {
+      if (m.role !== "candidate") return false;
+      if ((m.content.split(" ").length) < 10) return false;
+      const prevAi = messages.slice(0, i).filter((x) => x.role === "ai").at(-1);
+      if (prevAi && PERSONAL_RE.test(prevAi.content ?? "")) return false;
+      return true;
+    }).slice(0, 3);
+
+    return (
+      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-start px-4 py-12">
+        <div className="max-w-[520px] w-full space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <Mark className="w-7 h-7 text-ink mx-auto" />
+            <h1 className="text-[26px] font-bold text-ink leading-tight"
+              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+              Review your application
+            </h1>
+            <p className="text-[13px] text-sub">
+              Take a moment to confirm everything before we send it to{" "}
+              <strong>{jobInfo?.company_name}</strong>.
+            </p>
+          </div>
+
+          {/* Personal details */}
+          {personalDetails.length > 0 && (
+            <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+              <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
+                <h2 className="text-[11px] font-semibold text-sub uppercase tracking-wider">Your Details</h2>
+              </div>
+              <div className="divide-y divide-border">
+                {personalDetails.map(({ label, value }) => (
+                  <div key={label} className="px-5 py-3 flex items-baseline justify-between gap-4">
+                    <span className="text-[12px] text-muted shrink-0">{label}</span>
+                    <span className="text-[13px] text-ink text-right">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Documents submitted */}
+          {submittedDocs.length > 0 && (
+            <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+              <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
+                <h2 className="text-[11px] font-semibold text-sub uppercase tracking-wider">Documents Submitted</h2>
+              </div>
+              <div className="divide-y divide-border">
+                {submittedDocs.map((m) => (
+                  <div key={m.id} className="px-5 py-3 flex items-center gap-3">
+                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+                    <span className="text-[13px] text-ink truncate flex-1">
+                      {m.cardFileName ?? m.cardUrl}
+                    </span>
+                    {m.cardFileSize != null && (
+                      <span className="text-[11px] text-muted shrink-0">{formatSize(m.cardFileSize)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Key answers */}
+          {keyAnswers.length > 0 && (
+            <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+              <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
+                <h2 className="text-[11px] font-semibold text-sub uppercase tracking-wider">Your Answers</h2>
+              </div>
+              <div className="divide-y divide-border">
+                {keyAnswers.map((m, idx) => (
+                  <div key={m.id} className="px-5 py-3">
+                    <p className="text-[11px] text-muted mb-1">Answer {idx + 1}</p>
+                    <p className="text-[13px] text-ink leading-relaxed line-clamp-3">{m.content}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={() => setScreen("complete")}
+              className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3.5 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors"
+            >
+              Submit Application →
+            </button>
+            <button
+              onClick={() => setScreen("conversation")}
+              className="w-full bg-transparent border border-border rounded-[4px] px-4 py-3 text-[13px] text-sub hover:text-ink hover:border-ink transition-colors"
+            >
+              ← Go back and continue
+            </button>
+          </div>
+
+          <p className="text-[11px] text-muted text-center pb-4">
+            By submitting, you confirm all answers are genuinely your own.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Complete screen ────────────────────────────────────────────────────────
   if (screen === "complete") {
     const firstName = candidateName.trim().split(" ")[0] || candidateName;
     return (
@@ -922,29 +901,30 @@ export default function InterviewPage() {
         progress={progressPct}
       />
 
+      {/* Hidden page-level file input */}
+      <input
+        ref={pageFileRef}
+        type="file"
+        accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.txt"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handlePageFile(f);
+          e.target.value = "";
+        }}
+      />
+
       {/* Message list */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-[680px] mx-auto px-4 py-8 space-y-6 pb-40">
           {messages.map((msg, i) => {
             if (msg.role === "ai") {
-              return (
-                <AIMessageBubble
-                  key={msg.id}
-                  message={msg}
-                  interviewId={interviewId}
-                  onFileComplete={handleFileComplete}
-                  onFileProgress={handleFileProgress}
-                  onFileError={handleFileError}
-                  onLinkComplete={handleLinkComplete}
-                  onLinkError={handleLinkError}
-                />
-              );
+              return <AIMessageBubble key={msg.id} message={msg} />;
             }
-            // Candidate message — show timestamp if > 60s since last shown
-            const msgTime = new Date(msg.timestamp).getTime();
-            const prevMsg = messages[i - 1];
+            const msgTime  = new Date(msg.timestamp).getTime();
+            const prevMsg  = messages[i - 1];
             const prevTime = prevMsg ? new Date(prevMsg.timestamp).getTime() : 0;
-            const showTs = (msgTime - prevTime) > 60_000;
+            const showTs   = (msgTime - prevTime) > 60_000;
             return (
               <CandidateMessageBubble
                 key={msg.id}
@@ -958,22 +938,87 @@ export default function InterviewPage() {
         </div>
       </div>
 
-      {/* Fixed bottom input */}
+      {/* Fixed bottom input bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg)] border-t border-border">
         <div className="max-w-[680px] mx-auto px-4 py-3">
-          {aiError && (
+          {/* Error line (AI or bar) */}
+          {(aiError || barError) && (
             <p className="text-[12px] text-danger mb-2 flex items-center gap-1">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />{aiError}
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              {aiError || barError}
             </p>
           )}
 
-          {hasCardPending ? (
-            /* When an upload / link card is active, collapse the input completely
-               so the card above is fully visible and clickable on mobile */
-            <p className="text-[12px] text-muted text-center py-1">
-              Scroll up to complete the request above, then continue.
-            </p>
-          ) : (
+          {/* FILE ATTACH BAR */}
+          {pendingAction === "request_file" && (
+            isUploading ? (
+              /* Progress bar during upload */
+              <div className="space-y-1.5 py-1">
+                <div className="flex justify-between text-[12px] text-sub">
+                  <span className="truncate">{uploadFileName}</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-ink rounded-full transition-all duration-150"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              /* Clickable attach zone */
+              <button
+                type="button"
+                onClick={() => { setBarError(""); pageFileRef.current?.click(); }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) { setBarError(""); handlePageFile(f); }
+                }}
+                className="w-full flex items-center gap-3 border-2 border-dashed border-border rounded-[4px] px-4 py-3 hover:border-ink transition-colors group cursor-pointer"
+              >
+                <Paperclip className="w-4 h-4 text-muted group-hover:text-ink transition-colors shrink-0" />
+                <span className="text-[13px] text-sub group-hover:text-ink transition-colors text-left">
+                  Attach {lastAiMsg?.requirement_label ?? "document"}
+                  <span className="ml-2 text-[11px] text-muted font-normal">
+                    PDF, Word, JPEG, PNG · max 10 MB
+                  </span>
+                </span>
+              </button>
+            )
+          )}
+
+          {/* LINK INPUT BAR */}
+          {pendingAction === "request_link" && (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 flex items-center gap-2 bg-white border border-border rounded-[4px] px-3 py-2.5 focus-within:border-ink transition-colors">
+                <Link2 className="w-4 h-4 text-muted shrink-0" />
+                <input
+                  type="url"
+                  value={linkValue}
+                  onChange={(e) => { setLinkValue(e.target.value); setBarError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handlePageLink(); }}
+                  placeholder={`Paste your ${lastAiMsg?.requirement_label ?? "link"} here…`}
+                  disabled={isWaitingForAI}
+                  autoFocus
+                  className="flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-muted disabled:opacity-50"
+                />
+              </div>
+              <button
+                onClick={handlePageLink}
+                disabled={!linkValue.trim() || isWaitingForAI}
+                className="w-9 h-9 rounded-[4px] bg-[#1A1714] text-white flex items-center justify-center hover:bg-[#2d2926] transition-colors disabled:opacity-30 shrink-0"
+              >
+                {isWaitingForAI
+                  ? <Spinner className="w-3.5 h-3.5" />
+                  : <Send className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          )}
+
+          {/* NORMAL TEXTAREA */}
+          {pendingAction === "continue" && (
             <>
               <div className="flex items-end gap-2">
                 <textarea
