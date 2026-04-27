@@ -1,17 +1,18 @@
 """
-HireIQ email service.
-Sends candidate notification emails via SMTP (Gmail app passwords or any SMTP relay).
-Gracefully no-ops when SMTP credentials are not configured.
+HireIQ email service — powered by Resend.
+All platform emails route through a single Resend API key stored in RESEND_API_KEY.
+Companies never configure email settings. The from address shows the company name
+alongside HireIQ so candidates recognise who sent the email.
 """
 
-import smtplib
 import logging
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import httpx
 
 from app.config import get_settings
 
 logger = logging.getLogger("hireiq.email")
+
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
 async def send_candidate_email(
@@ -19,36 +20,29 @@ async def send_candidate_email(
     to_name: str,
     subject: str,
     body: str,
-    from_name: str = "",
+    company_name: str = "",
 ) -> bool:
     """
-    Send a plain-text + HTML email to a candidate.
-    Returns True on success, False if SMTP is unconfigured or the send fails.
-    The caller decides whether to surface an error to the recruiter.
+    Send a candidate notification email via Resend.
+    The from display name is "{company_name} via HireIQ" so the candidate
+    immediately knows who contacted them.
+    Returns True on success, False if API key is missing or the send fails.
     """
     settings = get_settings()
 
-    if not settings.smtp_user or not settings.smtp_password:
+    if not settings.resend_api_key:
         logger.warning(
-            "SMTP credentials not configured — candidate email not sent",
+            "RESEND_API_KEY not configured — candidate email not sent",
             extra={"to": to_email, "subject": subject},
         )
         return False
 
-    from_name  = (from_name or settings.smtp_from_name or "HireIQ").strip()
-    from_addr  = (settings.smtp_from_email or settings.smtp_user).strip()
-    to_display = f"{to_name} <{to_email}>" if to_name else to_email
+    # Build the from address
+    sender_name   = f"{company_name} via HireIQ" if company_name else "HireIQ"
+    from_address  = f"{sender_name} <{settings.resend_from_email}>"
+    to_address    = f"{to_name} <{to_email}>" if to_name else to_email
 
-    # ── Build message ──────────────────────────────────────────────────────────
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = f"{from_name} <{from_addr}>"
-    msg["To"]      = to_display
-
-    # Plain-text part
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-
-    # Minimal HTML part — preserve paragraph breaks, nothing more
+    # Build HTML body — preserve paragraph breaks, minimal styling
     html_paragraphs = "".join(
         f"<p>{para.replace(chr(10), '<br>')}</p>"
         for para in body.split("\n\n")
@@ -59,24 +53,51 @@ async def send_candidate_email(
         "'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.7;"
         "color:#1a1a1a;max-width:600px;margin:0 auto;padding:32px 24px;\">"
         f"{html_paragraphs}"
-        "<p style=\"margin-top:40px;font-size:12px;color:#9ca3af;\">Sent via HireIQ</p>"
+        "<p style=\"margin-top:40px;font-size:12px;color:#9ca3af;\">"
+        f"Sent via HireIQ on behalf of {company_name or 'the hiring team'}."
+        "</p>"
         "</body></html>"
     )
-    msg.attach(MIMEText(html, "html", "utf-8"))
 
-    # ── Send ───────────────────────────────────────────────────────────────────
+    payload = {
+        "from":    from_address,
+        "to":      [to_address],
+        "subject": subject,
+        "text":    body,
+        "html":    html,
+    }
+
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(settings.smtp_user, settings.smtp_password)
-            server.sendmail(from_addr, to_email, msg.as_string())
-        logger.info("Candidate email sent", extra={"to": to_email, "subject": subject})
-        return True
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                RESEND_API_URL,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {settings.resend_api_key}",
+                    "Content-Type":  "application/json",
+                },
+            )
+
+        if response.status_code in (200, 201):
+            logger.info(
+                "Candidate email sent via Resend",
+                extra={"to": to_email, "subject": subject},
+            )
+            return True
+
+        logger.error(
+            "Resend API returned an error",
+            extra={
+                "to":     to_email,
+                "status": response.status_code,
+                "body":   response.text[:300],
+            },
+        )
+        return False
+
     except Exception as error:
         logger.error(
-            "Failed to send candidate email",
-            extra={"to": to_email, "subject": subject, "error": str(error)},
+            "Failed to send candidate email via Resend",
+            extra={"to": to_email, "error": str(error)},
         )
         return False

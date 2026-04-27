@@ -415,87 +415,114 @@ async def generate_candidate_email(
     """
     first_name = candidate_name.split()[0] if candidate_name else "there"
 
-    tone_map = {
+    # ── Tone system — structurally different, not just different adjectives ────
+    tone_structures = {
         "professional": (
-            "Professional. Measured and clear. Sound like a senior HR professional who has seen "
-            "thousands of candidates. No warmth inflation. No filler."
+            "PROFESSIONAL TONE RULES:\n"
+            "- Three paragraphs, each with a clear single purpose.\n"
+            "- Formal but not cold. No contractions.\n"
+            "- Use the candidate's first name once, at the opening only.\n"
+            "- Sentences are complete and precise. No sentence fragments.\n"
+            "- Reads like a letter from a senior HR professional."
         ),
         "warm": (
-            "Warm but honest. Genuinely human. As if you have met this person and respect their "
-            "time. Not saccharine. Still clear and direct."
+            "WARM TONE RULES:\n"
+            "- Write as an individual, not an institution. Use contractions freely.\n"
+            "- Acknowledge their effort briefly and genuinely, not with a formula.\n"
+            "- One sentence that sounds like a real human wrote it, not a template.\n"
+            "- Less formal paragraph structure, more conversational flow.\n"
+            "- Should feel like it came from a person who remembers the conversation."
         ),
         "direct": (
-            "Direct. Short. No softening language. Every sentence earns its place. Firm but fair."
+            "DIRECT TONE RULES:\n"
+            "- 60 to 90 words maximum. Not a word more.\n"
+            "- State the decision in sentence one. No preamble, no 'I hope this finds you well'.\n"
+            "- One reason. One next step. Sign off.\n"
+            "- No filler words. No hedging. Firm, fair, fast.\n"
+            "- Reads like a message from someone who respects the candidate's time."
         ),
     }
-    tone_guidance = tone_map.get(tone.lower(), tone_map["professional"])
+    tone_guidance = tone_structures.get(tone.lower(), tone_structures["professional"])
 
-    # Pull one specific signal per category, not a list dump
-    top_strength = key_strengths[0] if key_strengths else ""
-    top_concern  = areas_of_concern[0] if areas_of_concern else ""
+    # ── Signal extraction — force specificity, reject generic bullets ─────────
+    strengths_raw  = "\n".join(f"- {s}" for s in key_strengths)  if key_strengths  else "(none)"
+    concerns_raw   = "\n".join(f"- {c}" for c in areas_of_concern) if areas_of_concern else "(none)"
+    summary_snippet = executive_summary[:600] if executive_summary else "(no summary)"
+
+    signal_instructions = (
+        "SIGNAL EXTRACTION — this is mandatory:\n"
+        "From the assessment data below, extract ONE signal that is specific to this actual candidate.\n"
+        "A good signal: a named technology, a quantified result, a specific project, a concrete skill demonstrated.\n"
+        "A bad signal: 'strong communication', 'relevant experience', 'good culture fit', any generic phrase.\n"
+        "If no specific signal exists in the data, use the most concrete available. Do not invent one.\n"
+        f"\nAssessment summary: {summary_snippet}\n"
+        f"Key strengths:\n{strengths_raw}\n"
+        f"Areas of concern:\n{concerns_raw}"
+    )
 
     if status == "shortlisted":
         instructions = (
             f"Write a shortlist notification for {first_name} ({candidate_name}).\n\n"
-            "Requirements:\n"
             f"- Say they are being shortlisted for {job_title} at {company_name}.\n"
-            f"- Reference ONE real specific signal from the assessment that stood out. "
-            f"Be specific, not generic. Signal: {top_strength}\n"
+            "- Use the extracted signal to reference ONE concrete thing that stood out. "
+            "This must be something specific to this candidate, not praise that could apply to anyone.\n"
             "- Tell them what happens next: the team will be in touch to arrange the next stage.\n"
-            "- Do NOT say 'we were impressed', 'exciting opportunity', or 'strong pool of candidates'.\n"
-            "- Do NOT overpromise about timelines.\n"
-            "- Close professionally.\n"
-            "- Total length: 100-160 words."
+            "- Do NOT say: 'we were impressed', 'exciting opportunity', 'strong pool of candidates', "
+            "'you stood out', 'we are delighted'.\n"
+            "- Do NOT overpromise on timelines.\n"
+            "- Target length: 100-160 words. Direct tone: 60-90 words.\n\n"
+            f"{signal_instructions}"
         )
     elif status == "rejected":
         instructions = (
-            f"Write a rejection email for {first_name} ({candidate_name}). "
-            "This is the most important email to get right. Candidates remember how they were rejected.\n\n"
-            "Requirements:\n"
+            f"Write a rejection email for {first_name} ({candidate_name}).\n\n"
             f"- Thank them for their time interviewing for {job_title} at {company_name}.\n"
-            "- Be completely clear this is a rejection. Do not soften it so much they have to re-read.\n"
-            f"- Give ONE honest, role-specific reason tied to the requirements, not a personal criticism. "
-            f"Reason: {top_concern}\n"
-            "- Do NOT say: 'keep your CV on file', 'we had many strong candidates', "
-            "'not a fit at this time', 'best of luck in your search'.\n"
-            "- Do NOT use the words: 'unfortunately', 'regret to inform', 'at this time'.\n"
-            "- Sound like a person, not HR software.\n"
-            "- Close with genuine respect. They invested real time.\n"
-            "- Total length: 90-140 words."
+            "- Be clear this is a rejection. Do not soften it so much they have to re-read to understand.\n"
+            "- Use the extracted signal to give ONE specific, role-based reason. "
+            "Not a personal criticism. Tied to the requirements of the role.\n"
+            "- BANNED phrases: 'unfortunately', 'regrettably', 'sadly', 'we regret to inform', "
+            "'it is with regret', 'we are sorry', 'not a fit', 'at this time', 'on this occasion', "
+            "'not successful', 'keep your CV on file', 'best of luck', 'we had many strong candidates', "
+            "'moving on', 'not moving forward'.\n"
+            "- Sound like a person who read their application, not HR software.\n"
+            "- Close with genuine respect. They gave real time to this.\n"
+            "- Target length: 90-140 words. Direct tone: 60-90 words.\n\n"
+            f"{signal_instructions}"
         )
     else:  # accepted
         instructions = (
             f"Write an offer progression email for {first_name} ({candidate_name}) "
             f"for {job_title} at {company_name}.\n\n"
-            "Requirements:\n"
             "- Confirm they have been selected to progress to the offer stage.\n"
             "- Be explicit about next steps: a member of the team will be in touch shortly "
-            "with formal offer details.\n"
-            "- Keep it clear and professional. This is not a celebration email, it is a signal.\n"
-            "- Do not say 'congratulations' or 'we are thrilled'.\n"
-            "- Total length: 80-130 words."
+            "with the formal offer and next stage details.\n"
+            "- This is a clear signal, not a celebration. Do not say 'congratulations', "
+            "'we are thrilled', 'delighted', or 'excited'.\n"
+            "- Target length: 80-130 words. Direct tone: 50-80 words.\n\n"
+            f"{signal_instructions}"
         )
 
     system_prompt = (
         f"You are writing a candidate notification email on behalf of the hiring team at {company_name}.\n\n"
-        f"Tone: {tone_guidance}\n\n"
-        "Email quality rules, non-negotiable:\n"
+        f"{tone_guidance}\n\n"
+        "NON-NEGOTIABLE QUALITY RULES:\n"
         "- No 'we were blown away'. No 'exciting opportunity'. No corporate filler.\n"
-        "- Sound like a sharp human who actually read the file.\n"
-        "- Specific where possible. Short. Every word earns its place.\n"
+        "- Sound like a sharp human who actually read this candidate's file.\n"
+        "- Every word earns its place. Cut anything that does not add information.\n"
         "- Never use em dashes. Use commas or periods.\n"
-        "- The subject line must be clear and direct. No clickbait.\n\n"
-        "Return valid JSON only. No markdown. No explanation.\n"
+        "- Subject line: clear, direct, no clickbait. Must immediately tell the candidate "
+        "whether this is good news or not.\n\n"
+        "Return valid JSON only. No markdown. No explanation. No preamble.\n"
         '{"subject": "...", "body": "..."}\n'
-        "The body must be plain text. Use blank lines between paragraphs. No HTML. No markdown."
+        "The body must be plain text. Blank lines between paragraphs. No HTML. No markdown.\n"
+        "The three tones must produce structurally different emails, not the same email "
+        "with different adjectives."
     )
 
     user_prompt = (
         f"Candidate: {candidate_name}\n"
-        f"Job: {job_title}\n"
-        f"Company: {company_name}\n"
-        + (f"Assessment context: {executive_summary[:400]}\n" if executive_summary else "")
-        + f"\n{instructions}"
+        f"Job: {job_title} at {company_name}\n\n"
+        f"{instructions}"
     )
 
     raw = await _call_groq_with_retry(

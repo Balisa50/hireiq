@@ -38,13 +38,11 @@ class Settings(BaseSettings):
     min_answer_chars: int = 50
     min_job_description_words: int = 100
 
-    # SMTP — candidate email notifications
-    smtp_host: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_password: str = ""
-    smtp_from_name: str = "HireIQ"
-    smtp_from_email: str = ""
+    # Resend — candidate email notifications
+    # Set RESEND_API_KEY in Render env vars. All platform emails route through it.
+    resend_api_key: str = ""
+    # Sending domain verified in Resend dashboard. Defaults to Resend test address.
+    resend_from_email: str = "onboarding@resend.dev"
 
     # Interview settings
     interview_link_expiry_days: int = 7
