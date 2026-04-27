@@ -29,7 +29,7 @@ function EmptyCandidates() {
         <path d="M42 34c8 1 14 7 14 16" />
       </svg>
       <h2 className="text-base font-medium text-ink mb-2">No candidates yet</h2>
-      <p className="text-sub text-sm max-w-xs mx-auto">Share your job interview links to start receiving interviews.</p>
+      <p className="text-sub text-sm max-w-xs mx-auto">Share your application links to start receiving candidates.</p>
     </div>
   );
 }
@@ -78,7 +78,7 @@ export default function CandidatesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-ink">Candidates</h1>
-        <p className="text-sub text-sm mt-1">All candidates ranked by AI score. Click any row to view the full report.</p>
+        <p className="text-sub text-sm mt-1">All applicants ranked by AI score. Click any row to view the full report.</p>
       </div>
 
       {/* Filters */}

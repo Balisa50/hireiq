@@ -113,7 +113,7 @@ export default function JobsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink">Jobs</h1>
-          <p className="text-sub text-sm mt-1">Manage your open positions and interview links.</p>
+          <p className="text-sub text-sm mt-1">Manage your open positions and application links.</p>
         </div>
         <Link href="/jobs/new">
           <Button><Plus className="w-4 h-4" /> New Job</Button>

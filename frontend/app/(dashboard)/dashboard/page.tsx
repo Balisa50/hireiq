@@ -45,7 +45,7 @@ function EmptyActivity() {
         <path d="M4 54c0-11 9-18 20-18s20 7 20 18" />
         <path d="M42 34c8 1 14 7 14 16" />
       </svg>
-      <p className="text-sm font-medium text-ink mb-1">No interviews yet.</p>
+      <p className="text-sm font-medium text-ink mb-1">No applications yet.</p>
       <Link href="/jobs" className="text-[13px] text-sub hover:text-ink transition-colors">
         Go to Jobs →
       </Link>
@@ -129,7 +129,7 @@ export default function DashboardPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-ink truncate">
                     <span className="font-medium">{a.candidate_name}</span>
-                    {" completed interview for "}
+                    {" applied for "}
                     <span className="font-medium">{a.job_title}</span>
                   </p>
                 </div>

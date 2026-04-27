@@ -498,7 +498,7 @@ function DeleteConfirmModal({
             <p className="text-[13px] text-sub mt-1 leading-relaxed">
               This will permanently remove{" "}
               <strong>{candidateName}</strong> and everything associated with
-              them — their interview, transcript, AI score report, and all
+              them — their application, transcript, AI score report, and all
               uploaded documents.{" "}
               <strong className="text-ink">This cannot be undone.</strong>
             </p>
@@ -741,7 +741,7 @@ export default function CandidateReportPage() {
       {!isScored && (
         <div className="bg-white border border-border rounded-[4px] p-8 text-center">
           <p className="text-sub text-sm">
-            This interview is still in progress. The AI assessment will appear once the candidate submits.
+            This application is still in progress. The AI assessment will appear once the candidate submits.
           </p>
         </div>
       )}
@@ -807,7 +807,7 @@ export default function CandidateReportPage() {
 
           {/* Follow-up questions */}
           {interview.recommended_follow_up_questions?.length ? (
-            <Card title="Recommended Human Interview Questions">
+            <Card title="Suggested In-Person Questions">
               <ol className="space-y-3">
                 {interview.recommended_follow_up_questions.map((q, i) => (
                   <li key={i} className="flex items-start gap-3 text-sm text-ink">
@@ -830,7 +830,7 @@ export default function CandidateReportPage() {
                   onClick={() => setTranscriptOpen((v) => !v)}
                   className="w-full px-6 py-4 flex items-center justify-between text-sm font-medium text-ink hover:bg-[var(--bg)] transition-colors"
                 >
-                  <span>View full interview transcript</span>
+                  <span>View full application transcript</span>
                   {transcriptOpen
                     ? <ChevronUp className="w-4 h-4 text-muted" />
                     : <ChevronDown className="w-4 h-4 text-muted" />}

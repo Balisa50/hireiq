@@ -75,8 +75,8 @@ export default function NotificationsPage() {
 
       <div className="bg-white border border-border rounded-[4px] px-6">
         <NotifRow
-          label="Interview completed"
-          description="Email when a candidate completes their interview, with their name and AI score."
+          label="Application completed"
+          description="Email when a candidate completes their application, with their name and AI score."
           checked={onComplete}
           onChange={setOnComplete}
         />
@@ -100,7 +100,7 @@ export default function NotificationsPage() {
         </NotifRow>
         <NotifRow
           label="Weekly hiring summary"
-          description="Every Monday: a summary of all interviews from the past week, scores, statuses, top candidates."
+          description="Every Monday: a summary of all applications from the past week, scores, statuses, top candidates."
           checked={weeklySummary}
           onChange={setWeeklySummary}
         />

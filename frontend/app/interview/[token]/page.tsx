@@ -247,7 +247,7 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
             disabled={isLoading || googleLoading}
             className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {isLoading ? <><Spinner /> Setting up your interview…</> : "Continue →"}
+            {isLoading ? <><Spinner /> Setting up your application…</> : "Continue →"}
           </button>
         </div>
       </div>
@@ -403,10 +403,10 @@ export default function InterviewPage() {
         const m = err.message.toLowerCase();
         setErrorMsg(
           m.includes("expired") || m.includes("longer active")
-            ? "This interview link has expired. Please contact the company for a new link."
+            ? "This application link has expired. Please contact the company for a new link."
             : m.includes("not found")
-            ? "This interview link is not valid. Please check the link and try again."
-            : "Something went wrong loading the interview. Please refresh.",
+            ? "This application link is not valid. Please check the link and try again."
+            : "Something went wrong. Please refresh.",
         );
         setScreen("error");
       });
@@ -546,7 +546,7 @@ export default function InterviewPage() {
       }]));
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
-      setAiError("Couldn't start the interview. Please refresh.");
+      setAiError("Couldn't start. Please refresh.");
     }
   }, []);
 
@@ -579,7 +579,7 @@ export default function InterviewPage() {
       }
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
-      setAiError("Couldn't continue the interview. Please try again.");
+      setAiError("Couldn't continue. Please try again.");
     } finally {
       setIsWaitingForAI(false);
     }
@@ -1015,7 +1015,7 @@ export default function InterviewPage() {
           {interviewComplete && screen === "conversation" && (
             <div className="flex flex-col items-center gap-3 py-4">
               <p className="text-[13px] text-muted text-center">
-                Your interview is complete. Review your application before submitting.
+                Your application is complete. Review it before submitting.
               </p>
               <button
                 onClick={() => setScreen("review")}
