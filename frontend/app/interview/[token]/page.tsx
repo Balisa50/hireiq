@@ -278,28 +278,6 @@ function AIMessageBubble({ message }: { message: ConversationMessage }) {
             {message.content}
           </p>
         )}
-
-        {/* File completion badge */}
-        {message.cardStatus === "complete" && message.action === "request_file" && (
-          <div className="mt-3 flex items-center gap-2.5 bg-green-50 border border-success/20 rounded-[4px] px-4 py-2.5">
-            <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-            <span className="text-[13px] text-ink truncate flex-1">{message.cardFileName}</span>
-            {message.cardFileSize != null && (
-              <span className="text-[11px] text-muted shrink-0">{formatSize(message.cardFileSize)}</span>
-            )}
-          </div>
-        )}
-
-        {/* Link completion badge */}
-        {message.cardStatus === "complete" && message.action === "request_link" && (
-          <div className="mt-3 flex items-center gap-2.5 bg-green-50 border border-success/20 rounded-[4px] px-4 py-2.5">
-            <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-            <a href={message.cardUrl} target="_blank" rel="noopener noreferrer"
-              className="text-[13px] text-ink underline underline-offset-2 truncate flex-1 hover:text-muted transition-colors">
-              {message.cardUrl}
-            </a>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -873,14 +851,31 @@ export default function InterviewPage() {
               </div>
               <div className="divide-y divide-border">
                 {submittedDocs.map((m) => (
-                  <div key={m.id} className="px-5 py-3 flex items-center gap-3">
-                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-                    <span className="text-[13px] text-ink truncate flex-1">
-                      {m.cardFileName ?? m.cardUrl}
-                    </span>
-                    {m.cardFileSize != null && (
-                      <span className="text-[11px] text-muted shrink-0">{formatSize(m.cardFileSize)}</span>
-                    )}
+                  <div key={m.id} className="px-5 py-3 flex items-start gap-3">
+                    <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      {/* Label from what the AI requested */}
+                      <p className="text-[12px] text-muted capitalize">
+                        {m.requirement_label ?? (m.action === "request_file" ? "Document" : "Link")}
+                      </p>
+                      {m.action === "request_file" ? (
+                        <p className="text-[13px] text-ink truncate mt-0.5">
+                          {m.cardFileName}
+                          {m.cardFileSize != null && (
+                            <span className="text-muted ml-2 text-[11px]">{formatSize(m.cardFileSize)}</span>
+                          )}
+                        </p>
+                      ) : (
+                        <a
+                          href={m.cardUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[13px] text-ink underline underline-offset-2 truncate block mt-0.5 hover:text-muted transition-colors"
+                        >
+                          {m.cardUrl}
+                        </a>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
