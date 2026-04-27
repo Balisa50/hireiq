@@ -81,7 +81,8 @@ async function apiFetch<T>(
         }
       } catch { /* JSON parse failed — use default */ }
 
-      if (response.status === 401) {
+      // Only redirect on 401 for authenticated requests — not for login/signup
+      if (response.status === 401 && requireAuth) {
         clearStoredToken();
         if (typeof window !== "undefined") window.location.href = "/login";
       }

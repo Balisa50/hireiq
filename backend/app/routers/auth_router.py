@@ -4,7 +4,8 @@ Handles company signup and login via Supabase Auth.
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.models.company import (
     CompanySignupRequest,
     CompanyLoginRequest,
@@ -15,6 +16,7 @@ from app.database import supabase
 
 logger = logging.getLogger("hireiq.auth_router")
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+_security = HTTPBearer()
 
 
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -162,6 +164,65 @@ async def log_in_company(request: CompanyLoginRequest) -> AuthResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Login failed: {error_str}",
         ) from error
+
+
+@router.post("/google", response_model=AuthResponse)
+async def google_oauth_login(
+    credentials: HTTPAuthorizationCredentials = Security(_security),
+) -> AuthResponse:
+    """
+    Exchange a Supabase Google OAuth access token for a HireIQ company session.
+    Auto-creates a company profile for first-time Google sign-ins.
+    """
+    token = credentials.credentials
+
+    # Verify token with Supabase
+    try:
+        user_response = supabase.auth.get_user(token)
+        if not user_response or not user_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid OAuth token.",
+            )
+        user = user_response.user
+        company_id = str(user.id)
+        email = user.email or ""
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.error("Google OAuth verification failed: %s", str(error))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OAuth token verification failed. Please try again.",
+        ) from error
+
+    # Get or create the company profile
+    result = supabase.table("companies").select("*").eq("id", company_id).execute()
+
+    if result.data:
+        company = CompanyResponse(**result.data[0])
+    else:
+        # First-time Google sign-in — auto-create a profile
+        metadata = user.user_metadata or {}
+        display_name = (
+            metadata.get("full_name")
+            or metadata.get("name")
+            or email.split("@")[0]
+        )
+        insert = supabase.table("companies").insert({
+            "id": company_id,
+            "email": email,
+            "company_name": display_name,
+        }).execute()
+        if not insert.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create company profile. Please try again.",
+            )
+        company = CompanyResponse(**insert.data[0])
+        logger.info("Auto-created company profile for Google user %s", company_id)
+
+    return AuthResponse(access_token=token, company=company)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
