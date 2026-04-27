@@ -772,13 +772,10 @@ def get_first_interview_message(
     else:
         # Fresh start — greet by name, set context, invite naturally
         message = (
-            f"Hi {first_name}, thanks for taking the time today. "
-            f"I'm reaching out on behalf of {company} — I'll be walking you through "
-            f"a short conversation about the {role} role. "
-            f"Nothing too formal, just want to get a sense of who you are and what "
-            f"you've been working on. "
-            f"To kick things off, walk me through your most recent role and what you "
-            f"were actually doing day to day."
+            f"Hi there, thanks for applying for the {role} role at {company}. "
+            f"I'll be guiding you through a short screening conversation — "
+            f"it won't take long. "
+            f"To get us started, could you confirm your full name?"
         )
 
     return {
