@@ -10,11 +10,12 @@ import Skeleton from "@/components/ui/Skeleton";
 // ── Status ────────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  shortlisted: { label: "Shortlisted", color: "text-success" },
-  rejected:    { label: "Rejected",    color: "text-muted" },
-  scored:      { label: "Scored",      color: "text-sub" },
-  completed:   { label: "Completed",   color: "text-sub" },
-  in_progress: { label: "In Progress", color: "text-warn" },
+  shortlisted:   { label: "Shortlisted",   color: "text-success" },
+  rejected:      { label: "Rejected",      color: "text-muted" },
+  scored:        { label: "Scored",        color: "text-sub" },
+  completed:     { label: "Completed",     color: "text-sub" },
+  in_progress:   { label: "In Progress",   color: "text-warn" },
+  auto_rejected: { label: "Auto-Rejected", color: "text-danger" },
 };
 
 // ── Empty state ───────────────────────────────────────────────────────────────
@@ -37,11 +38,12 @@ function EmptyCandidates() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS = [
-  { value: "",            label: "All Statuses" },
-  { value: "scored",      label: "Scored" },
-  { value: "shortlisted", label: "Shortlisted" },
-  { value: "rejected",    label: "Rejected" },
-  { value: "in_progress", label: "In Progress" },
+  { value: "",              label: "All Statuses" },
+  { value: "scored",        label: "Scored" },
+  { value: "shortlisted",   label: "Shortlisted" },
+  { value: "rejected",      label: "Rejected" },
+  { value: "in_progress",   label: "In Progress" },
+  { value: "auto_rejected", label: "Auto-Rejected" },
 ];
 
 export default function CandidatesPage() {

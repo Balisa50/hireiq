@@ -128,6 +128,7 @@ class InterviewResponse(BaseModel):
     started_at: datetime
     completed_at: Optional[datetime] = None
     last_saved_at: datetime
+    knockout_reason: Optional[str] = None
 
 
 class CandidateSummary(BaseModel):

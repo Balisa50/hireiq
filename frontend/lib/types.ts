@@ -149,6 +149,7 @@ export interface Interview {
   started_at: string;
   completed_at: string | null;
   last_saved_at: string;
+  knockout_reason?: string | null;
 }
 
 export type InterviewStatus =
@@ -156,7 +157,9 @@ export type InterviewStatus =
   | "completed"
   | "scored"
   | "shortlisted"
-  | "rejected";
+  | "rejected"
+  | "auto_rejected"
+  | "accepted";
 
 export interface CandidateSummary {
   id: string;

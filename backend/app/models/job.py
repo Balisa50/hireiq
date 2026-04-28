@@ -33,10 +33,16 @@ class CandidateRequirement(BaseModel):
 class GeneratedQuestion(BaseModel):
     id: str
     question: str
-    type: str
+    type: str                    # text | yes_no | number | rating | behavioral | experience | file | link
     focus_area: str
-    what_it_reveals: str
-    severity: str = "standard"   # "surface" | "standard" | "deep"
+    what_it_reveals: str = ""
+    severity: str = "standard"   # surface | standard | deep
+    # Knockout / screening fields (optional)
+    knockout_enabled: bool = False
+    knockout_expected_answer: Optional[str] = None   # yes_no questions: "yes" or "no"
+    knockout_min_value: Optional[float] = None       # number questions: inclusive minimum
+    knockout_max_value: Optional[float] = None       # number questions: inclusive maximum
+    knockout_rejection_reason: str = ""
 
 
 class CreateJobRequest(BaseModel):

@@ -19,9 +19,22 @@ import Input from "@/components/ui/Input";
 
 type Step = "form" | "questions" | "published";
 type Severity = "surface" | "standard" | "deep";
+type ScreeningType = "yes_no" | "number" | "text";
 
 interface QuestionWithSeverity extends GeneratedQuestion {
   severity: Severity;
+}
+
+interface ScreeningQuestion {
+  id: string;
+  question: string;
+  type: ScreeningType;
+  severity: Severity;
+  knockout_enabled: boolean;
+  knockout_expected_answer?: "yes" | "no";
+  knockout_min_value?: string;
+  knockout_max_value?: string;
+  knockout_rejection_reason: string;
 }
 
 function wordCount(t: string) { return t.trim().split(/\s+/).filter(Boolean).length; }
@@ -124,6 +137,64 @@ function SeverityDial({ value, onChange }: { value: Severity; onChange: (v: Seve
   );
 }
 
+// ── Screening question presets ────────────────────────────────────────────────
+const SCREENING_PRESETS: Array<{ key: string; label: string; template: Partial<ScreeningQuestion> }> = [
+  {
+    key: "work_auth",
+    label: "Work authorization",
+    template: {
+      question: "Are you legally authorized to work in this country without employer sponsorship?",
+      type: "yes_no",
+      severity: "surface",
+      knockout_enabled: true,
+      knockout_expected_answer: "yes",
+      knockout_rejection_reason: "Candidate requires sponsorship, which is not available for this role.",
+    },
+  },
+  {
+    key: "salary",
+    label: "Salary expectation",
+    template: {
+      question: "What is your expected annual salary?",
+      type: "number",
+      severity: "surface",
+      knockout_enabled: false,
+    },
+  },
+  {
+    key: "experience",
+    label: "Years of experience",
+    template: {
+      question: "How many years of relevant professional experience do you have?",
+      type: "number",
+      severity: "surface",
+      knockout_enabled: true,
+      knockout_min_value: "2",
+      knockout_rejection_reason: "Does not meet the minimum experience requirement for this role.",
+    },
+  },
+  {
+    key: "notice",
+    label: "Notice period",
+    template: {
+      question: "How many weeks notice are you required to give your current employer?",
+      type: "number",
+      severity: "surface",
+      knockout_enabled: false,
+    },
+  },
+  {
+    key: "reloc",
+    label: "Willing to relocate",
+    template: {
+      question: "Are you willing to relocate for this role?",
+      type: "yes_no",
+      severity: "surface",
+      knockout_enabled: false,
+    },
+  },
+];
+
 // ── Skills tag input ───────────────────────────────────────────────────────────
 function SkillsInput({ skills, onChange }: { skills: string[]; onChange: (v: string[]) => void }) {
   const [draft, setDraft] = useState("");
@@ -199,6 +270,32 @@ export default function NewJobPage() {
   const [activePresets, setActivePresets]   = useState<Set<string>>(new Set());
   const [presetRequired, setPresetRequired] = useState<Record<string, boolean>>({});
   const [customReqs, setCustomReqs]         = useState<Array<{ id: string; label: string; type: "file" | "link"; required: boolean }>>([]);
+
+  // ── Screening / knockout questions ────────────────────────────────────────────
+  const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([]);
+
+  const addScreeningQuestion = useCallback((template?: Partial<ScreeningQuestion>) => {
+    setScreeningQuestions((p) => [...p, {
+      id: `sq-${Date.now()}`,
+      question: "",
+      type: "yes_no",
+      severity: "surface",
+      knockout_enabled: false,
+      knockout_expected_answer: "yes",
+      knockout_min_value: "",
+      knockout_max_value: "",
+      knockout_rejection_reason: "",
+      ...template,
+    }]);
+  }, []);
+
+  const updateScreeningQ = useCallback((id: string, updates: Partial<ScreeningQuestion>) => {
+    setScreeningQuestions((p) => p.map((q) => q.id === id ? { ...q, ...updates } : q));
+  }, []);
+
+  const removeScreeningQ = useCallback((id: string) => {
+    setScreeningQuestions((p) => p.filter((q) => q.id !== id));
+  }, []);
 
   // ── Severity Engine state ─────────────────────────────────────────────────────
   const [generatedQuestions, setGeneratedQuestions] = useState<QuestionWithSeverity[]>([]);
@@ -299,13 +396,33 @@ export default function NewJobPage() {
     setIsPublishing(true);
     setApiError("");
     try {
+      // Merge screening (knockout) questions at the start + AI-generated questions after
+      const mergedQuestions = [
+        ...screeningQuestions
+          .filter((q) => q.question.trim())
+          .map((q) => ({
+            id:                       q.id,
+            question:                 q.question,
+            type:                     q.type,
+            focus_area:               "Screening",
+            what_it_reveals:          "",
+            severity:                 q.severity,
+            knockout_enabled:         q.knockout_enabled,
+            knockout_expected_answer: q.knockout_expected_answer ?? null,
+            knockout_min_value:       q.knockout_min_value ? parseFloat(q.knockout_min_value) : null,
+            knockout_max_value:       q.knockout_max_value ? parseFloat(q.knockout_max_value) : null,
+            knockout_rejection_reason: q.knockout_rejection_reason,
+          })),
+        ...generatedQuestions,
+      ];
+
       const job = await jobsAPI.publishJob({
         title, department, location,
         employment_type:  employmentType,
         job_description:  jobDescription,
         question_count:   questionCount,
         focus_areas:      focusAreas,
-        questions:        generatedQuestions,
+        questions:        mergedQuestions,
         candidate_requirements: buildRequirements(),
         experience_level: experienceLevel,
         work_arrangement: workArrangement,
@@ -363,7 +480,7 @@ export default function NewJobPage() {
               setJobDescription(""); setSkills([]); setPublishedToken("");
               setActivePresets(new Set()); setCustomReqs([]);
               setSalaryDisclosed(false); setSalaryMin(""); setSalaryMax("");
-              setGeneratedQuestions([]);
+              setGeneratedQuestions([]); setScreeningQuestions([]);
             }} className="text-sub hover:text-ink transition-colors">
               Post another job
             </button>
@@ -596,7 +713,149 @@ export default function NewJobPage() {
         </div>
       </Card>
 
-      {/* 5. Application settings */}
+      {/* 5. Screening questions */}
+      <Card title="Screening Questions" subtitle="Asked first, before AI questions. Enable knockout to auto-reject candidates who don't qualify.">
+        {/* Preset quick-adds */}
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">Quick add</p>
+          <div className="flex flex-wrap gap-2">
+            {SCREENING_PRESETS.map((preset) => (
+              <button
+                key={preset.key}
+                type="button"
+                onClick={() => addScreeningQuestion(preset.template)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[4px] border border-border bg-white text-[13px] text-sub hover:border-ink hover:text-ink transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />{preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Question list */}
+        {screeningQuestions.length > 0 && (
+          <div className="space-y-3">
+            {screeningQuestions.map((q) => (
+              <div key={q.id} className="border border-border rounded-[4px] p-4 space-y-3 bg-[var(--bg)]">
+                {/* Question text + remove */}
+                <div className="flex items-start gap-2">
+                  <input
+                    value={q.question}
+                    onChange={(e) => updateScreeningQ(q.id, { question: e.target.value })}
+                    placeholder="e.g. Are you authorized to work in the UK without sponsorship?"
+                    className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeScreeningQ(q.id)}
+                    className="text-muted hover:text-danger transition-colors mt-2 shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Type + knockout toggle + severity */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <select
+                    value={q.type}
+                    onChange={(e) => updateScreeningQ(q.id, { type: e.target.value as ScreeningType })}
+                    className="bg-white border border-border rounded-[4px] px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-ink transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="yes_no">Yes / No</option>
+                    <option value="number">Number</option>
+                    <option value="text">Free text</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => updateScreeningQ(q.id, { knockout_enabled: !q.knockout_enabled })}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[4px] border text-[13px] font-medium transition-colors ${
+                      q.knockout_enabled
+                        ? "bg-red-50 border-danger/40 text-danger"
+                        : "bg-white border-border text-muted hover:border-sub hover:text-sub"
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${q.knockout_enabled ? "bg-danger" : "bg-border"}`} />
+                    Knockout
+                  </button>
+
+                  <SeverityDial value={q.severity} onChange={(v) => updateScreeningQ(q.id, { severity: v })} />
+                </div>
+
+                {/* Knockout config */}
+                {q.knockout_enabled && (
+                  <div className="space-y-2.5 pt-0.5">
+                    {q.type === "yes_no" && (
+                      <div className="flex items-center gap-3">
+                        <span className="text-[13px] text-sub">Must answer:</span>
+                        <div className="flex items-center border border-border rounded-[4px] overflow-hidden text-[13px] font-medium">
+                          <button
+                            type="button"
+                            onClick={() => updateScreeningQ(q.id, { knockout_expected_answer: "yes" })}
+                            className={`px-3 py-1.5 transition-colors ${q.knockout_expected_answer === "yes" ? "bg-ink text-white" : "bg-white text-muted hover:text-sub"}`}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateScreeningQ(q.id, { knockout_expected_answer: "no" })}
+                            className={`px-3 py-1.5 transition-colors ${q.knockout_expected_answer === "no" ? "bg-ink text-white" : "bg-white text-muted hover:text-sub"}`}
+                          >
+                            No
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {q.type === "number" && (
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] text-sub">Min:</span>
+                          <input
+                            type="number"
+                            value={q.knockout_min_value ?? ""}
+                            onChange={(e) => updateScreeningQ(q.id, { knockout_min_value: e.target.value })}
+                            placeholder="—"
+                            className="w-24 bg-white border border-border rounded-[4px] px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-ink transition-colors text-center"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] text-sub">Max:</span>
+                          <input
+                            type="number"
+                            value={q.knockout_max_value ?? ""}
+                            onChange={(e) => updateScreeningQ(q.id, { knockout_max_value: e.target.value })}
+                            placeholder="—"
+                            className="w-24 bg-white border border-border rounded-[4px] px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-ink transition-colors text-center"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] text-sub shrink-0">Rejection reason:</span>
+                      <input
+                        value={q.knockout_rejection_reason}
+                        onChange={(e) => updateScreeningQ(q.id, { knockout_rejection_reason: e.target.value })}
+                        placeholder="Shown internally. e.g. 'Does not meet experience requirement'"
+                        className="flex-1 bg-white border border-border rounded-[4px] px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => addScreeningQuestion()}
+          className="flex items-center gap-2 text-[13px] text-sub hover:text-ink transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Add custom screening question
+        </button>
+      </Card>
+
+      {/* 6. Application settings */}
       <Card title="Application Settings">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
