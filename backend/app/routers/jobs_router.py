@@ -153,7 +153,8 @@ async def publish_job(
             "questions":              [q.model_dump() for q in request.questions],
             "candidate_requirements": [r.model_dump() for r in request.candidate_requirements],
             "status":                 "active",
-            # Basic info extras
+            # Section 1
+            "job_visibility":         request.job_visibility,
             "experience_level":       request.experience_level,
             "work_arrangement":       request.work_arrangement,
             "openings":               request.openings,

@@ -256,7 +256,8 @@ export const jobsAPI = {
     focus_areas?: string[];
     questions?: GeneratedQuestion[];
     candidate_requirements?: CandidateRequirement[];
-    // Basic info extras
+    // Section 1
+    job_visibility?: string;
     experience_level?: string;
     work_arrangement?: string;
     openings?: number;

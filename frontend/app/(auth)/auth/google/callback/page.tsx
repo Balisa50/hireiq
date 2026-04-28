@@ -7,6 +7,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function GoogleCallbackPage() {
   const [status, setStatus] = useState<"loading" | "error">("loading");
+  const [loadingMsg, setLoadingMsg] = useState("Signing you in…");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -17,28 +18,48 @@ export default function GoogleCallbackPage() {
       if (handled) return;
       handled = true;
 
-      try {
-        // Register / fetch the company profile on the backend
-        const res = await fetch(`${API_BASE}/api/auth/google`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
+      // Retry up to 4 times — Render free tier cold-starts can take ~50s.
+      // We wait progressively longer between attempts so a warm server
+      // responds on attempt 1 and a cold server gets enough time.
+      const delays = [0, 3000, 8000, 15000];
+      const msgs   = ["Signing you in…", "Almost there…", "Waking up the server…", "Just a moment more…"];
+      setLoadingMsg(msgs[0]);
+      let lastErr: string = "Failed to sign in. Please try again.";
 
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({})) as { detail?: string };
-          throw new Error(body.detail ?? "Failed to sign in. Please try again.");
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        if (delays[attempt] > 0) {
+          setLoadingMsg(msgs[attempt] ?? msgs[msgs.length - 1]);
+          await new Promise((r) => setTimeout(r, delays[attempt]));
         }
+        try {
+          const res = await fetch(`${API_BASE}/api/auth/google`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            signal: AbortSignal.timeout(55_000),
+          });
 
-        // Persist the Supabase JWT — auth-context + backend both use this
-        localStorage.setItem("hireiq_token", token);
-        window.location.href = "/dashboard";
-      } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : "Something went wrong.");
-        setStatus("error");
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({})) as { detail?: string };
+            lastErr = body.detail ?? lastErr;
+            // 4xx errors are definitive — no point retrying
+            if (res.status >= 400 && res.status < 500) break;
+            continue;
+          }
+
+          // Success — persist token and redirect
+          localStorage.setItem("hireiq_token", token);
+          window.location.href = "/dashboard";
+          return;
+        } catch {
+          // Network error / timeout — try again
+        }
       }
+
+      setErrorMsg(lastErr);
+      setStatus("error");
     }
 
     // ── Path A: PKCE code exchange ──────────────────────────────────────────
@@ -93,7 +114,7 @@ export default function GoogleCallbackPage() {
 
   return (
     <div className="w-full max-w-sm text-center">
-      <p className="text-sm text-sub">Signing you in…</p>
+      <p className="text-sm text-sub">{loadingMsg}</p>
     </div>
   );
 }
