@@ -62,22 +62,53 @@ def _extract_qa_pairs(transcript: list[dict]) -> list[dict]:
     ]
 
 
+_DIM_LABELS: dict[str, str] = {
+    "relevance":        "Relevance",
+    "completeness":     "Completeness",
+    "clarity":          "Clarity",
+    "red_flag_penalty": "Red Flag Penalty",
+}
+
+
 def _build_score_bars_html(score_breakdown: dict) -> str:
-    """Build HTML for per-focus-area score bars."""
+    """Build HTML for per-dimension score bars."""
     bars = ""
-    for area, score in score_breakdown.items():
-        color = "#22c55e" if score >= 80 else "#f59e0b" if score >= 60 else "#ef4444"
-        bars += f"""
-        <div class="score-bar-item">
-            <div class="score-bar-label">
-                <span>{area}</span>
-                <span class="score-badge" style="color: {color};">{score}/100</span>
+    for raw_key, score in score_breakdown.items():
+        try:
+            score_int = int(score)
+        except (TypeError, ValueError):
+            score_int = 0
+
+        label = _DIM_LABELS.get(raw_key) or raw_key.replace("_", " ").title()
+
+        if raw_key == "red_flag_penalty":
+            # Penalty bar — red, shown inverted (higher is worse)
+            pct   = min(score_int * 2, 100)   # scale 0-50 to 0-100 for display
+            color = "#ef4444"
+            bars += f"""
+            <div class="score-bar-item">
+                <div class="score-bar-label">
+                    <span>{label}</span>
+                    <span class="score-badge" style="color: {color};">-{score_int} pts</span>
+                </div>
+                <div class="score-bar-track">
+                    <div class="score-bar-fill" style="width: {pct}%; background: {color}; opacity: 0.7;"></div>
+                </div>
             </div>
-            <div class="score-bar-track">
-                <div class="score-bar-fill" style="width: {score}%; background: {color};"></div>
+            """
+        else:
+            color = "#22c55e" if score_int >= 80 else "#f59e0b" if score_int >= 60 else "#ef4444"
+            bars += f"""
+            <div class="score-bar-item">
+                <div class="score-bar-label">
+                    <span>{label}</span>
+                    <span class="score-badge" style="color: {color};">{score_int}/100</span>
+                </div>
+                <div class="score-bar-track">
+                    <div class="score-bar-fill" style="width: {score_int}%; background: {color};"></div>
+                </div>
             </div>
-        </div>
-        """
+            """
     return bars
 
 
@@ -320,7 +351,7 @@ def generate_candidate_report_pdf(
                 <div class="header-brand">HireIQ</div>
                 <div class="header-meta">
                     <strong>{company_name}</strong><br>
-                    Candidate Assessment Report<br>
+                    Application Report<br>
                     {interview_date}
                 </div>
             </div>
@@ -367,14 +398,14 @@ def generate_candidate_report_pdf(
             </div>
 
             <div class="section">
-                <h3>Recommended Human Interview Questions</h3>
+                <h3>Suggested In-Person Questions</h3>
                 <ul class="bullet-list followup-list">
                     {_format_list_items(recommended_follow_up_questions)}
                 </ul>
             </div>
 
             <div class="section">
-                <h3>Full Interview Transcript</h3>
+                <h3>Full Application Transcript</h3>
                 {transcript_html}
             </div>
 
