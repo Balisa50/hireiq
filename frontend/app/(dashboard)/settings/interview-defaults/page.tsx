@@ -95,7 +95,7 @@ export default function InterviewDefaultsPage() {
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-ink">Custom intro message for candidates</label>
           <textarea value={introMessage} onChange={(e) => setIntroMessage(e.target.value)} rows={3}
-            placeholder="Optional message shown before candidates start. e.g. 'Thank you for applying. This interview takes around 20 minutes.'"
+            placeholder="Optional message shown before candidates start. e.g. 'Thank you for applying. This application takes around 20 minutes.'"
             className="w-full bg-white border border-border rounded-[4px] px-4 py-3 text-sm text-ink outline-none resize-none placeholder:text-muted transition-colors focus:border-ink"
             maxLength={1000} />
           <p className="text-[13px] text-muted text-right">{introMessage.length}/1000</p>

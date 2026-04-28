@@ -270,7 +270,7 @@ export const jobsAPI = {
       typeof window !== "undefined"
         ? window.location.origin
         : process.env.NEXT_PUBLIC_FRONTEND_URL ?? "";
-    return `${base}/interview/${linkToken}`;
+    return `${base}/apply/${linkToken}`;
   },
 };
 

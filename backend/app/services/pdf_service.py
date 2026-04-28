@@ -117,6 +117,39 @@ def _format_list_items(items: list[str]) -> str:
     return "".join(f"<li>{item}</li>" for item in items)
 
 
+def _build_docs_html(submitted_files: list[dict], submitted_links: list[dict]) -> str:
+    """Build HTML for submitted documents section."""
+    if not submitted_files and not submitted_links:
+        return "<p style='color:#9ca3af;font-size:13px;'>No documents submitted.</p>"
+
+    items = ""
+    for f in submitted_files:
+        label = f.get("requirement_label") or f.get("label") or "Document"
+        name  = f.get("file_name") or f.get("original_name") or "File"
+        items += f"""
+        <div class="doc-item">
+            <span class="doc-check">✓</span>
+            <div>
+                <span class="doc-label">{label}</span>
+                <span class="doc-name">{name}</span>
+            </div>
+        </div>
+        """
+    for lnk in submitted_links:
+        label = lnk.get("requirement_label") or lnk.get("label") or "Link"
+        url   = lnk.get("url") or ""
+        items += f"""
+        <div class="doc-item">
+            <span class="doc-check">✓</span>
+            <div>
+                <span class="doc-label">{label}</span>
+                <span class="doc-name">{url}</span>
+            </div>
+        </div>
+        """
+    return items
+
+
 def generate_candidate_report_pdf(
     candidate_name: str,
     candidate_email: str,
@@ -132,6 +165,8 @@ def generate_candidate_report_pdf(
     recommended_follow_up_questions: list[str],
     hiring_recommendation: str,
     transcript: list[dict],
+    submitted_files: list[dict] | None = None,
+    submitted_links: list[dict] | None = None,
 ) -> bytes:
     """
     Generate a professional PDF candidate report.
@@ -139,6 +174,9 @@ def generate_candidate_report_pdf(
     """
     try:
         from weasyprint import HTML, CSS
+
+        submitted_files  = submitted_files  or []
+        submitted_links  = submitted_links  or []
 
         score_color = (
             "#22c55e" if overall_score >= 80
@@ -331,6 +369,26 @@ def generate_candidate_report_pdf(
                 white-space: pre-wrap;
             }}
 
+            .doc-item {{
+                display: flex; align-items: flex-start;
+                gap: 10px; padding: 8px 0;
+                border-bottom: 1px solid #f1f5f9;
+            }}
+            .doc-item:last-child {{ border-bottom: none; }}
+            .doc-check {{
+                color: #22c55e; font-weight: 700;
+                font-size: 14px; flex-shrink: 0; margin-top: 1px;
+            }}
+            .doc-label {{
+                display: block; font-size: 11px;
+                font-weight: 600; text-transform: uppercase;
+                letter-spacing: 0.5px; color: #6b7280; margin-bottom: 2px;
+            }}
+            .doc-name {{
+                display: block; font-size: 12px; color: #374151;
+                word-break: break-all;
+            }}
+
             .footer {{
                 background: #f8fafc;
                 padding: 20px 40px;
@@ -376,6 +434,11 @@ def generate_candidate_report_pdf(
             <div class="section">
                 <h3>AI Executive Summary</h3>
                 <p class="executive-summary">{executive_summary}</p>
+            </div>
+
+            <div class="section">
+                <h3>Documents Submitted</h3>
+                {_build_docs_html(submitted_files, submitted_links)}
             </div>
 
             <div class="section">

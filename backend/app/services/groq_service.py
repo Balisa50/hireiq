@@ -7,7 +7,7 @@ If Gemini fails for any reason the system retries once on Groq.
 Candidates never see an error caused by a single model outage.
 
 Functions:
-  1. generate_interview_questions    -- structured question generation
+  1. generate_application_questions  -- structured question generation
   2. generate_adaptive_next_question -- single follow-up question
   3. score_candidate                 -- full assessment (new 4-dimension scoring)
   4. generate_candidate_email        -- candidate notification email drafts
@@ -349,16 +349,35 @@ async def generate_interview_questions(
         )
 
     system_prompt = (
-        "You are an experienced recruiter generating application questions for a specific role. "
-        "Your questions help applicants describe their background clearly and specifically. "
-        "Mix question types: experience-based, situational, motivational, and role-specific. "
-        "The first question must always be a warm professional opener. The last question must "
-        "always be an open invitation for the applicant to share anything else relevant. "
-        "Never ask questions answerable with yes or no. Never ask cliches. "
-        "Every question must help the applicant demonstrate genuine capability. "
-        "Return a JSON object with a single key 'questions' containing an array of question "
-        "objects each with fields: id (string, q1/q2/etc), question (string), type (string), "
-        "focus_area (string), what_it_reveals (string)."
+        "You are a senior talent acquisition specialist generating application questions for a specific role. "
+        "Your questions help candidates demonstrate genuine capability — not rehearsed answers. "
+        "\n\n"
+        "QUESTION TYPE VOCABULARY — pick the most appropriate type for each question:\n"
+        "  behavioral       — STAR-format past experience ('Tell me about a time when…')\n"
+        "  situational      — hypothetical scenarios ('How would you handle…')\n"
+        "  motivational     — why this role/company/field ('What draws you to…')\n"
+        "  experience_depth — probing existing expertise ('Walk me through your experience with…')\n"
+        "  technical        — role-specific knowledge or process ('How do you approach…')\n"
+        "  values_culture   — alignment with working style/values ('Describe the environment where you thrive')\n"
+        "  achievement      — specific accomplishments ('What is the project you are most proud of')\n"
+        "  challenge        — how they handle adversity ('Describe a significant challenge you faced')\n"
+        "  leadership       — influence or management ('Describe a time you led without formal authority')\n"
+        "  collaboration    — teamwork and communication ('How do you work with difficult colleagues')\n"
+        "  ambition         — career goals and growth mindset ('Where do you see yourself in 3 years')\n"
+        "  analytical       — problem-solving and reasoning ('Walk me through how you would analyse this')\n"
+        "  open_invitation  — closing catch-all ('Is there anything else you want us to know')\n"
+        "\n"
+        "RULES:\n"
+        "- The first question must be a warm professional opener (motivational or experience_depth).\n"
+        "- The last question must always be open_invitation.\n"
+        "- Never use yes/no questions. Never use clichés ('Where do you see yourself in 5 years').\n"
+        "- Every question must require a substantive, specific answer.\n"
+        "- Distribute types across the question set — do not repeat the same type more than twice.\n"
+        "- Each question must directly relate to the job description and focus areas.\n"
+        "\n"
+        "Return a JSON object with a single key 'questions' containing an array of question objects "
+        "each with fields: id (string, q1/q2/etc), question (string), type (string — from the vocabulary above), "
+        "focus_area (string), what_it_reveals (string — 1 sentence explaining what a strong answer demonstrates)."
     )
 
     user_prompt = (

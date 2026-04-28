@@ -1108,10 +1108,10 @@ async def download_candidate_report_pdf(
     interview = result.data[0]
     verify_company_owns_resource(interview["company_id"], company_id, "interview")
 
-    if interview.get("status") not in ("scored", "shortlisted", "rejected"):
+    if interview.get("status") not in ("scored", "shortlisted", "rejected", "accepted"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Report is not yet available. The interview has not been scored.",
+            detail="Report is not yet available. The application has not been scored yet.",
         )
 
     job     = interview.get("jobs") or {}
@@ -1136,6 +1136,8 @@ async def download_candidate_report_pdf(
             recommended_follow_up_questions=interview.get("recommended_follow_up_questions", []),
             hiring_recommendation=interview.get("hiring_recommendation", ""),
             transcript=interview.get("transcript", []),
+            submitted_files=interview.get("submitted_files", []),
+            submitted_links=interview.get("submitted_links", []),
         )
     except RuntimeError as error:
         logger.error("PDF generation error", extra={"interview_id": interview_id, "error": str(error)})
