@@ -591,6 +591,7 @@ async def score_candidate(
     candidate_context: dict | None = None,
     experience_level: str = "any",
     skills: list[str] | None = None,
+    ai_deterrent_enabled: bool = False,
 ) -> dict | None:
     """
     Generate a complete applicant assessment from the full application transcript
@@ -671,6 +672,29 @@ async def score_candidate(
         "For each required skill: Present (with evidence) / Partial (weak evidence) / Absent.\n\n"
 
         f"{name_instruction}\n\n"
+
+        + (
+            "AI RESPONSE DETECTION — ENHANCED PENALTY (deterrent was shown to this candidate):\n"
+            "This candidate was explicitly warned that AI detection is active and AI-generated "
+            "responses receive a stronger score penalty.\n"
+            "HARD RULES — all must be applied:\n"
+            "1. If ANY answer shows signs of AI generation (generic phrasing, no personal specificity, "
+            "template-like structure, no concrete examples, hedging like 'I believe' / 'It is important to'), "
+            "set red_flag_penalty to 45-50 regardless of other factors.\n"
+            "2. Cap overall_score at 45 for any candidate with confirmed AI-generated responses.\n"
+            "3. List each AI-flagged answer in red_flags with a brief reason (e.g. 'Q3: generic structure, "
+            "no specific example, template phrasing detected').\n"
+            "4. Set hiring_recommendation to 'No' or 'Strong No' if two or more responses appear AI-generated.\n"
+            "AI-generated responses after seeing a deterrent are equivalent to submission fraud — "
+            "score accordingly. Do not soften this.\n\n"
+            if ai_deterrent_enabled else
+            "AI RESPONSE DETECTION — STANDARD:\n"
+            "AI detection is always active. If any answer appears AI-generated (generic phrasing, "
+            "no personal specificity, no concrete examples), flag it in red_flags and apply a "
+            "red_flag_penalty of up to 20. AI detection alone should not cause automatic rejection — "
+            "use professional judgment on severity.\n\n"
+        ) +
+
         "Return valid JSON only. No preamble. No explanation. No markdown."
     )
 
