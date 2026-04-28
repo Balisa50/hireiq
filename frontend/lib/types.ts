@@ -11,10 +11,26 @@ export interface Company {
   company_size: string | null;
   website_url: string | null;
   logo_url: string | null;
+  timezone: string;
+  language: string;
   default_question_count: number;
   default_focus_areas: string[];
   custom_intro_message: string | null;
+  default_severity: string;
+  auto_close_on_limit: boolean;
+  default_deadline_days: number | null;
+  data_retention_days: number;
+  sender_name: string | null;
+  reply_to_email: string | null;
+  email_footer: string | null;
+  email_signature: string | null;
+  brand_color: string;
+  closing_message: string | null;
   email_notifications: boolean;
+  notify_on_application: boolean;
+  notify_on_scored: boolean;
+  notify_daily_digest: boolean;
+  notify_weekly_summary: boolean;
   created_at: string;
 }
 

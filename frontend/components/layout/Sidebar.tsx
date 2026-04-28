@@ -4,9 +4,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Briefcase, Users,
-  Building2, Settings, Bell, CreditCard, UserPlus,
-  LogOut, ChevronDown, Menu, X,
+  LayoutDashboard, Briefcase, Users, Building2,
+  Settings, LogOut, ChevronDown, Menu, X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { clsx } from "clsx";
@@ -84,7 +83,11 @@ function SidebarContent({ onNav }: { onNav?: () => void }) {
   }, [company?.company_name]);
 
   const isActive = useCallback(
-    (href: string) => pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/")),
+    (href: string) => {
+      if (href === "/dashboard") return pathname === href;
+      if (href === "/settings") return pathname === href || pathname.startsWith("/settings/");
+      return pathname === href || pathname.startsWith(href + "/");
+    },
     [pathname],
   );
 
@@ -108,12 +111,8 @@ function SidebarContent({ onNav }: { onNav?: () => void }) {
         <NavItem href="/jobs"       label="Jobs"        icon={Briefcase}       active={isActive("/jobs")}       onClick={onNav} />
         <NavItem href="/candidates" label="Candidates"  icon={Users}           active={isActive("/candidates")} onClick={onNav} />
 
-        <SectionLabel>Settings</SectionLabel>
-        <NavItem href="/settings/profile"            label="Company Profile"      icon={Building2}  active={isActive("/settings/profile")}            onClick={onNav} />
-        <NavItem href="/settings/interview-defaults" label="Application Defaults" icon={Settings}   active={isActive("/settings/interview-defaults")} onClick={onNav} />
-        <NavItem href="/settings/notifications"      label="Notifications"        icon={Bell}       active={isActive("/settings/notifications")}      onClick={onNav} />
-        <NavItem href="/settings/team"               label="Team"                 icon={UserPlus}   active={isActive("/settings/team")}               onClick={onNav} />
-        <NavItem href="/settings/billing"            label="Billing"              icon={CreditCard} active={isActive("/settings/billing")}            onClick={onNav} />
+        <SectionLabel>Account</SectionLabel>
+        <NavItem href="/settings" label="Settings" icon={Settings} active={isActive("/settings")} onClick={onNav} />
       </nav>
 
       {/* Profile section */}

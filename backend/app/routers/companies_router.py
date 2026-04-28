@@ -46,7 +46,11 @@ async def update_my_company_profile(
     update_data = request.model_dump(exclude_none=True)
 
     # Sanitize all text fields
-    for field in ("company_name", "custom_intro_message", "website_url"):
+    for field in (
+        "company_name", "custom_intro_message", "website_url",
+        "sender_name", "reply_to_email", "email_footer", "email_signature",
+        "closing_message", "logo_url",
+    ):
         if field in update_data:
             update_data[field] = _sanitize_text(update_data[field])
 

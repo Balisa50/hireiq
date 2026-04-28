@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.models.company import (
     CompanySignupRequest,
     CompanyLoginRequest,
+    ChangePasswordRequest,
     AuthResponse,
     CompanyResponse,
 )
@@ -232,3 +233,50 @@ async def log_out_company() -> None:
         supabase.auth.sign_out()
     except Exception as error:
         logger.warning("Logout error (non-fatal)", extra={"error": str(error)})
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    request: ChangePasswordRequest,
+    credentials: HTTPAuthorizationCredentials = Security(_security),
+) -> None:
+    """
+    Change the authenticated user's password.
+    Verifies the current password first, then updates via Supabase Admin API.
+    """
+    token = credentials.credentials
+
+    # Resolve user from token
+    try:
+        user_response = supabase.auth.get_user(token)
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session.")
+        user = user_response.user
+        user_email = user.email or ""
+        user_id = str(user.id)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session verification failed.",
+        ) from error
+
+    # Verify current password
+    try:
+        supabase.auth.sign_in_with_password({"email": user_email, "password": request.current_password})
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+
+    # Update password via admin API
+    try:
+        supabase.auth.admin.update_user_by_id(user_id, {"password": request.new_password})
+    except Exception as error:
+        logger.error("Password update failed for user %s: %s", user_id[:8], str(error))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update password. Please try again.",
+        ) from error
