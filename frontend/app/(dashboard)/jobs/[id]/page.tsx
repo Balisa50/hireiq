@@ -15,11 +15,13 @@ import Button from "@/components/ui/Button";
 import ScoreBadge from "@/components/ui/ScoreBadge";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  scored:      { label: "Scored",      color: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
-  shortlisted: { label: "Shortlisted", color: "text-green-400 bg-green-400/10 border-green-400/20" },
-  rejected:    { label: "Rejected",    color: "text-red-400 bg-red-400/10 border-red-400/20" },
-  completed:   { label: "Completed",   color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" },
-  in_progress: { label: "In Progress", color: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
+  scored:        { label: "Scored",        color: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
+  shortlisted:   { label: "Shortlisted",   color: "text-green-400 bg-green-400/10 border-green-400/20" },
+  accepted:      { label: "Accepted",      color: "text-sky-400 bg-sky-400/10 border-sky-400/20" },
+  rejected:      { label: "Rejected",      color: "text-red-400 bg-red-400/10 border-red-400/20" },
+  auto_rejected: { label: "Auto-Rejected", color: "text-red-400 bg-red-400/10 border-red-400/20" },
+  completed:     { label: "Completed",     color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" },
+  in_progress:   { label: "In Progress",   color: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
 };
 
 function StatusBadge({ status }: { status: string }) {
