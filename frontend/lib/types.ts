@@ -30,6 +30,7 @@ export interface GeneratedQuestion {
   type: string;
   focus_area: string;
   what_it_reveals: string;
+  severity?: "surface" | "standard" | "deep";
 }
 
 // ── Candidate requirements ────────────────────────────────────────────────────

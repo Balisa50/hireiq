@@ -2,9 +2,9 @@
 
 import React, { useState, useCallback, useRef, KeyboardEvent } from "react";
 import Link from "next/link";
-import { Check, AlertCircle, CheckCircle2, Plus, FileText, Link2, X } from "lucide-react";
+import { Check, AlertCircle, CheckCircle2, Plus, FileText, Link2, X, Zap } from "lucide-react";
 import { jobsAPI } from "@/lib/api";
-import type { CandidateRequirement } from "@/lib/types";
+import type { CandidateRequirement, GeneratedQuestion } from "@/lib/types";
 import {
   FOCUS_AREAS,
   EMPLOYMENT_TYPES,
@@ -17,7 +17,12 @@ import {
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
-type Step = "form" | "published";
+type Step = "form" | "questions" | "published";
+type Severity = "surface" | "standard" | "deep";
+
+interface QuestionWithSeverity extends GeneratedQuestion {
+  severity: Severity;
+}
 
 function wordCount(t: string) { return t.trim().split(/\s+/).filter(Boolean).length; }
 
@@ -34,7 +39,7 @@ function Card({ title, subtitle, children }: { title: string; subtitle?: string;
   );
 }
 
-// ── Select wrapper ────────────────────────────────────────────────────────────
+// ── Select wrapper ─────────────────────────────────────────────────────────────
 function Select({
   label, value, onChange, children, required,
 }: {
@@ -57,7 +62,7 @@ function Select({
   );
 }
 
-// ── Required / Optional pill toggle ──────────────────────────────────────────
+// ── Required / Optional toggle ─────────────────────────────────────────────────
 function RequiredToggle({ required, onChange }: { required: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-center bg-[var(--bg)] border border-border rounded-[4px] text-[12px] font-medium overflow-hidden shrink-0">
@@ -73,7 +78,53 @@ function RequiredToggle({ required, onChange }: { required: boolean; onChange: (
   );
 }
 
-// ── Skills tag input ──────────────────────────────────────────────────────────
+// ── Severity dial ──────────────────────────────────────────────────────────────
+const SEVERITY_CONFIG: Record<Severity, { label: string; description: string; color: string; activeClass: string }> = {
+  surface: {
+    label:       "Surface",
+    description: "Ask once, accept any answer, move on",
+    color:       "#6b7280",
+    activeClass: "bg-[#6b7280] text-white border-[#6b7280]",
+  },
+  standard: {
+    label:       "Standard",
+    description: "One follow-up if answer is vague",
+    color:       "#3b82f6",
+    activeClass: "bg-[#3b82f6] text-white border-[#3b82f6]",
+  },
+  deep: {
+    label:       "Deep",
+    description: "Probes until something specific and real",
+    color:       "#7c3aed",
+    activeClass: "bg-[#7c3aed] text-white border-[#7c3aed]",
+  },
+};
+
+function SeverityDial({ value, onChange }: { value: Severity; onChange: (v: Severity) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      {(["surface", "standard", "deep"] as Severity[]).map((s) => {
+        const cfg = SEVERITY_CONFIG[s];
+        const active = value === s;
+        return (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onChange(s)}
+            title={cfg.description}
+            className={`px-2 py-0.5 rounded-[3px] text-[11px] font-semibold border transition-all ${
+              active ? cfg.activeClass : "bg-white text-muted border-border hover:border-sub hover:text-sub"
+            }`}
+          >
+            {cfg.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Skills tag input ───────────────────────────────────────────────────────────
 function SkillsInput({ skills, onChange }: { skills: string[]; onChange: (v: string[]) => void }) {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -86,17 +137,9 @@ function SkillsInput({ skills, onChange }: { skills: string[]; onChange: (v: str
   }, [skills, onChange]);
 
   const handleKey = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addSkill(draft);
-    } else if (e.key === "Backspace" && !draft && skills.length > 0) {
-      onChange(skills.slice(0, -1));
-    }
+    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addSkill(draft); }
+    else if (e.key === "Backspace" && !draft && skills.length > 0) onChange(skills.slice(0, -1));
   }, [draft, skills, addSkill, onChange]);
-
-  const removeSkill = useCallback((s: string) => {
-    onChange(skills.filter((x) => x !== s));
-  }, [skills, onChange]);
 
   return (
     <div
@@ -106,7 +149,7 @@ function SkillsInput({ skills, onChange }: { skills: string[]; onChange: (v: str
       {skills.map((s) => (
         <span key={s} className="inline-flex items-center gap-1 bg-[var(--bg)] border border-border text-[12px] text-ink font-medium px-2 py-0.5 rounded-[4px]">
           {s}
-          <button type="button" onClick={(e) => { e.stopPropagation(); removeSkill(s); }}
+          <button type="button" onClick={(e) => { e.stopPropagation(); onChange(skills.filter((x) => x !== s)); }}
             className="text-muted hover:text-danger transition-colors">
             <X className="w-3 h-3" />
           </button>
@@ -118,7 +161,7 @@ function SkillsInput({ skills, onChange }: { skills: string[]; onChange: (v: str
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={handleKey}
         onBlur={() => addSkill(draft)}
-        placeholder={skills.length === 0 ? "e.g. React, Python, SQL , press Enter or comma to add" : "Add more…"}
+        placeholder={skills.length === 0 ? "e.g. React, Python, SQL — press Enter or comma to add" : "Add more…"}
         className="flex-1 min-w-[180px] text-[13px] text-ink bg-transparent outline-none placeholder:text-muted"
       />
     </div>
@@ -128,64 +171,61 @@ function SkillsInput({ skills, onChange }: { skills: string[]; onChange: (v: str
 export default function NewJobPage() {
   const [step, setStep] = useState<Step>("form");
 
-  // ── Basic info ──────────────────────────────────────────────────────────────
-  const [title, setTitle]               = useState("");
-  const [department, setDepartment]     = useState("");
-  const [location, setLocation]         = useState("");
+  // ── Basic info ────────────────────────────────────────────────────────────────
+  const [title, setTitle]                       = useState("");
+  const [department, setDepartment]             = useState("");
+  const [location, setLocation]                 = useState("");
   const [employmentType, setEmploymentType]     = useState("full_time");
   const [experienceLevel, setExperienceLevel]   = useState("any");
   const [workArrangement, setWorkArrangement]   = useState("on_site");
   const [openings, setOpenings]                 = useState(1);
 
-  // ── Job description ─────────────────────────────────────────────────────────
+  // ── Job description ───────────────────────────────────────────────────────────
   const [jobDescription, setJobDescription] = useState("");
   const [skills, setSkills]                 = useState<string[]>([]);
 
-  // ── Interview settings ──────────────────────────────────────────────────────
+  // ── Application settings ──────────────────────────────────────────────────────
   const [questionCount, setQuestionCount] = useState(8);
   const [focusAreas, setFocusAreas]       = useState<string[]>(["Technical Skills", "Problem Solving", "Communication"]);
 
-  // ── Compensation ────────────────────────────────────────────────────────────
+  // ── Compensation ──────────────────────────────────────────────────────────────
   const [salaryDisclosed, setSalaryDisclosed] = useState(false);
   const [salaryMin, setSalaryMin]             = useState("");
   const [salaryMax, setSalaryMax]             = useState("");
   const [salaryCurrency, setSalaryCurrency]   = useState("USD");
   const [salaryPeriod, setSalaryPeriod]       = useState("year");
 
-  // ── Candidate requirements ──────────────────────────────────────────────────
-  const [activePresets, setActivePresets] = useState<Set<string>>(new Set());
+  // ── Candidate requirements ────────────────────────────────────────────────────
+  const [activePresets, setActivePresets]   = useState<Set<string>>(new Set());
   const [presetRequired, setPresetRequired] = useState<Record<string, boolean>>({});
-  const [customReqs, setCustomReqs] = useState<Array<{ id: string; label: string; type: "file" | "link"; required: boolean }>>([]);
+  const [customReqs, setCustomReqs]         = useState<Array<{ id: string; label: string; type: "file" | "link"; required: boolean }>>([]);
 
-  // ── UI state ────────────────────────────────────────────────────────────────
-  const [isPublishing, setIsPublishing]       = useState(false);
-  const [errors, setErrors]                   = useState<Record<string, string>>({});
-  const [apiError, setApiError]               = useState("");
-  const [publishedToken, setPublishedToken]   = useState("");
-  const [linkCopied, setLinkCopied]           = useState(false);
+  // ── Severity Engine state ─────────────────────────────────────────────────────
+  const [generatedQuestions, setGeneratedQuestions] = useState<QuestionWithSeverity[]>([]);
+  const [isGenerating, setIsGenerating]             = useState(false);
+  const [generateError, setGenerateError]           = useState("");
+
+  // ── UI state ──────────────────────────────────────────────────────────────────
+  const [isPublishing, setIsPublishing]   = useState(false);
+  const [errors, setErrors]               = useState<Record<string, string>>({});
+  const [apiError, setApiError]           = useState("");
+  const [publishedToken, setPublishedToken] = useState("");
+  const [linkCopied, setLinkCopied]       = useState(false);
 
   const wc = wordCount(jobDescription);
 
-  // ── Requirements helpers ────────────────────────────────────────────────────
+  // ── Requirements helpers ──────────────────────────────────────────────────────
   const buildRequirements = useCallback((): CandidateRequirement[] => {
     const result: CandidateRequirement[] = [];
     for (const preset of PRESET_REQUIREMENTS) {
-      if (activePresets.has(preset.id)) {
-        result.push({ ...preset, required: presetRequired[preset.id] ?? true });
-      }
+      if (activePresets.has(preset.id)) result.push({ ...preset, required: presetRequired[preset.id] ?? true });
     }
-    for (const c of customReqs) {
-      if (c.label.trim()) result.push(c);
-    }
+    for (const c of customReqs) { if (c.label.trim()) result.push(c); }
     return result;
   }, [activePresets, presetRequired, customReqs]);
 
   const togglePreset = useCallback((id: string) => {
-    setActivePresets((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+    setActivePresets((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }, []);
 
   const addCustomReq = useCallback(() => {
@@ -204,7 +244,11 @@ export default function NewJobPage() {
     setFocusAreas((prev) => prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]);
   }, []);
 
-  // ── Validation ──────────────────────────────────────────────────────────────
+  const updateQuestionSeverity = useCallback((id: string, severity: Severity) => {
+    setGeneratedQuestions((prev) => prev.map((q) => q.id === id ? { ...q, severity } : q));
+  }, []);
+
+  // ── Validation ────────────────────────────────────────────────────────────────
   const validate = useCallback((): boolean => {
     const e: Record<string, string> = {};
     if (!title.trim())       e.title      = "Job title is required.";
@@ -214,20 +258,46 @@ export default function NewJobPage() {
     if (!focusAreas.length)  e.focus      = "Select at least one focus area.";
     if (openings < 1 || openings > 99) e.openings = "Openings must be between 1 and 99.";
     if (salaryDisclosed) {
-      const min = parseInt(salaryMin, 10);
-      const max = parseInt(salaryMax, 10);
+      const min = parseInt(salaryMin, 10); const max = parseInt(salaryMax, 10);
       if (salaryMin && isNaN(min))  e.salary = "Salary min must be a number.";
       if (salaryMax && isNaN(max))  e.salary = "Salary max must be a number.";
-      if (!isNaN(min) && !isNaN(max) && max < min) e.salary = "Max salary must be greater than min.";
+      if (!isNaN(min) && !isNaN(max) && max < min) e.salary = "Max must be greater than min.";
     }
     setErrors(e);
     return !Object.keys(e).length;
   }, [title, department, location, wc, focusAreas, openings, salaryDisclosed, salaryMin, salaryMax]);
 
-  // ── Publish ─────────────────────────────────────────────────────────────────
-  const handlePublish = useCallback(async () => {
+  // ── Generate questions ────────────────────────────────────────────────────────
+  const handleGenerateQuestions = useCallback(async () => {
     if (!validate()) return;
-    setIsPublishing(true); setApiError("");
+    setIsGenerating(true);
+    setGenerateError("");
+    try {
+      const result = await jobsAPI.generateQuestions({
+        title, department, location,
+        employment_type:  employmentType,
+        job_description:  jobDescription,
+        question_count:   questionCount,
+        focus_areas:      focusAreas,
+        candidate_requirements: buildRequirements(),
+      });
+      const withSeverity: QuestionWithSeverity[] = result.questions.map((q: GeneratedQuestion) => ({
+        ...q,
+        severity: "standard" as Severity,
+      }));
+      setGeneratedQuestions(withSeverity);
+      setStep("questions");
+    } catch (e) {
+      setGenerateError(e instanceof Error ? e.message : "Failed to generate questions. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [validate, title, department, location, employmentType, jobDescription, questionCount, focusAreas, buildRequirements]);
+
+  // ── Publish ───────────────────────────────────────────────────────────────────
+  const handlePublish = useCallback(async () => {
+    setIsPublishing(true);
+    setApiError("");
     try {
       const job = await jobsAPI.publishJob({
         title, department, location,
@@ -235,7 +305,7 @@ export default function NewJobPage() {
         job_description:  jobDescription,
         question_count:   questionCount,
         focus_areas:      focusAreas,
-        questions:        [],
+        questions:        generatedQuestions,
         candidate_requirements: buildRequirements(),
         experience_level: experienceLevel,
         work_arrangement: workArrangement,
@@ -253,17 +323,19 @@ export default function NewJobPage() {
       setApiError(e instanceof Error ? e.message : "Failed to publish job.");
     } finally { setIsPublishing(false); }
   }, [
-    validate, title, department, location, employmentType, jobDescription,
-    questionCount, focusAreas, buildRequirements, experienceLevel, workArrangement,
-    openings, skills, salaryDisclosed, salaryMin, salaryMax, salaryCurrency, salaryPeriod,
+    title, department, location, employmentType, jobDescription,
+    questionCount, focusAreas, generatedQuestions, buildRequirements,
+    experienceLevel, workArrangement, openings, skills,
+    salaryDisclosed, salaryMin, salaryMax, salaryCurrency, salaryPeriod,
   ]);
 
   const copyLink = useCallback(async () => {
     await navigator.clipboard.writeText(jobsAPI.buildInterviewLink(publishedToken));
-    setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   }, [publishedToken]);
 
-  // ── PUBLISHED screen ────────────────────────────────────────────────────────
+  // ── PUBLISHED screen ──────────────────────────────────────────────────────────
   if (step === "published") {
     const link = jobsAPI.buildInterviewLink(publishedToken);
     return (
@@ -275,24 +347,23 @@ export default function NewJobPage() {
           <h1 className="text-xl font-semibold text-ink mb-2">Your job is live.</h1>
           <p className="text-sub text-sm mb-7 leading-relaxed">
             Share this link on LinkedIn, your careers page, or email it directly.
-            Candidates click and start their interview immediately , no account needed.
+            Applicants click it and start right away, no account needed.
           </p>
           <div className="flex items-center gap-2 mb-4">
             <input readOnly value={link} onClick={(e) => (e.target as HTMLInputElement).select()}
               className="flex-1 font-mono text-[13px] text-ink bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2.5 outline-none cursor-pointer" />
             <Button variant="secondary" size="sm" onClick={copyLink}>
-              {linkCopied
-                ? <><Check className="w-3.5 h-3.5 text-success" /> Copied!</>
-                : <><Check className="w-3.5 h-3.5" /> Copy</>}
+              {linkCopied ? <><Check className="w-3.5 h-3.5 text-success" /> Copied!</> : <><Check className="w-3.5 h-3.5" /> Copy</>}
             </Button>
           </div>
           <div className="flex items-center justify-center gap-6 text-[13px] mt-4">
-            <Link href="/jobs" className="text-sub hover:text-ink transition-colors">View this job</Link>
+            <Link href="/jobs" className="text-sub hover:text-ink transition-colors">View jobs</Link>
             <button onClick={() => {
               setStep("form"); setTitle(""); setDepartment(""); setLocation("");
               setJobDescription(""); setSkills([]); setPublishedToken("");
               setActivePresets(new Set()); setCustomReqs([]);
               setSalaryDisclosed(false); setSalaryMin(""); setSalaryMax("");
+              setGeneratedQuestions([]);
             }} className="text-sub hover:text-ink transition-colors">
               Post another job
             </button>
@@ -302,12 +373,107 @@ export default function NewJobPage() {
     );
   }
 
-  // ── FORM ────────────────────────────────────────────────────────────────────
+  // ── QUESTIONS + SEVERITY screen ────────────────────────────────────────────────
+  if (step === "questions") {
+    const deepCount     = generatedQuestions.filter((q) => q.severity === "deep").length;
+    const surfaceCount  = generatedQuestions.filter((q) => q.severity === "surface").length;
+    const standardCount = generatedQuestions.filter((q) => q.severity === "standard").length;
+
+    return (
+      <div className="max-w-2xl mx-auto space-y-5 pb-12">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-ink">Set severity levels</h1>
+            <p className="text-sub text-sm mt-1">
+              Control how hard the AI pushes on each question.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStep("form")}
+            className="text-[13px] text-sub hover:text-ink transition-colors shrink-0 mt-1"
+          >
+            Back
+          </button>
+        </div>
+
+        {/* Legend */}
+        <div className="bg-white border border-border rounded-[4px] p-4 space-y-2">
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest mb-3">Severity levels</p>
+          {(["surface", "standard", "deep"] as Severity[]).map((s) => {
+            const cfg = SEVERITY_CONFIG[s];
+            return (
+              <div key={s} className="flex items-start gap-3">
+                <span
+                  className="inline-block mt-0.5 px-2 py-0.5 rounded-[3px] text-[11px] font-semibold text-white shrink-0"
+                  style={{ background: cfg.color }}
+                >
+                  {cfg.label}
+                </span>
+                <p className="text-[13px] text-sub">{cfg.description}</p>
+              </div>
+            );
+          })}
+          <p className="text-[12px] text-muted pt-1">
+            Tip: set your most critical competency to Deep. The AI probes it relentlessly and it counts double in the score.
+          </p>
+        </div>
+
+        {apiError && (
+          <div className="rounded-[4px] bg-red-50 border border-danger/20 px-4 py-3 text-sm text-danger flex gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{apiError}
+          </div>
+        )}
+
+        {/* Questions */}
+        <div className="bg-white border border-border rounded-[4px] divide-y divide-border">
+          {generatedQuestions.map((q, i) => (
+            <div key={q.id} className="px-5 py-4 space-y-2.5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <span className="text-[11px] font-semibold text-muted mt-0.5 shrink-0 tabular-nums">
+                    Q{i + 1}
+                  </span>
+                  <p className="text-sm text-ink leading-relaxed">{q.question}</p>
+                </div>
+                <SeverityDial value={q.severity as Severity} onChange={(v) => updateQuestionSeverity(q.id, v)} />
+              </div>
+              <div className="flex items-center gap-2 pl-7">
+                <span className="text-[12px] text-muted">{q.focus_area}</span>
+                {q.severity === "deep" && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#7c3aed]">
+                    <Zap className="w-3 h-3" /> Double weight in score
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Summary */}
+        <p className="text-[13px] text-muted text-center">
+          {deepCount > 0 && <span className="font-semibold text-[#7c3aed]">{deepCount} Deep</span>}
+          {deepCount > 0 && standardCount > 0 && " · "}
+          {standardCount > 0 && <span>{standardCount} Standard</span>}
+          {(deepCount > 0 || standardCount > 0) && surfaceCount > 0 && " · "}
+          {surfaceCount > 0 && <span>{surfaceCount} Surface</span>}
+        </p>
+
+        <Button className="w-full" size="lg" onClick={handlePublish} isLoading={isPublishing} loadingText="Publishing…">
+          Publish Job →
+        </Button>
+      </div>
+    );
+  }
+
+  // ── FORM ──────────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-2xl mx-auto space-y-5 pb-12">
       <div>
         <h1 className="text-xl font-semibold text-ink">Create a job</h1>
-        <p className="text-sub text-sm mt-1">Fill in the details and HireIQ's AI will run an adaptive interview for every candidate.</p>
+        <p className="text-sub text-sm mt-1">
+          Fill in the details and HireIQ will run a smart application conversation for every candidate.
+        </p>
       </div>
 
       {apiError && (
@@ -316,24 +482,25 @@ export default function NewJobPage() {
         </div>
       )}
 
-      {/* ── 1. Basic information ─────────────────────────────────────────── */}
+      {generateError && (
+        <div className="rounded-[4px] bg-red-50 border border-danger/20 px-4 py-3 text-sm text-danger flex gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{generateError}
+        </div>
+      )}
+
+      {/* 1. Basic information */}
       <Card title="Basic information">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <Input label="Job Title" value={title} onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Senior Data Analyst" error={errors.title} required />
-
           <Input label="Department" value={department} onChange={(e) => setDepartment(e.target.value)}
             placeholder="e.g. Engineering" error={errors.department} required />
-
           <Select label="Employment Type" value={employmentType} onChange={setEmploymentType}>
             {EMPLOYMENT_TYPES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
           </Select>
-
           <Select label="Experience Level" value={experienceLevel} onChange={setExperienceLevel}>
             {EXPERIENCE_LEVELS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
           </Select>
-
-          {/* Openings */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-ink">Number of Openings</label>
             <input
@@ -346,13 +513,12 @@ export default function NewJobPage() {
         </div>
       </Card>
 
-      {/* ── 2. Location & work arrangement ──────────────────────────────── */}
+      {/* 2. Location */}
       <Card title="Location & Work Arrangement">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <Select label="Work Arrangement" value={workArrangement} onChange={setWorkArrangement}>
             {WORK_ARRANGEMENTS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
           </Select>
-
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-ink">
               Office Location <span className="text-danger">*</span>
@@ -367,42 +533,31 @@ export default function NewJobPage() {
         </div>
       </Card>
 
-      {/* ── 3. Compensation ─────────────────────────────────────────────── */}
-      <Card title="Compensation" subtitle="Disclosing salary increases qualified applicant rates by up to 30%.">
-        {/* Toggle */}
+      {/* 3. Compensation */}
+      <Card title="Compensation">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setSalaryDisclosed((v) => !v)}
-            className={`relative w-9 h-5 rounded-full transition-colors ${salaryDisclosed ? "bg-ink" : "bg-border"}`}
-          >
+          <button type="button" onClick={() => setSalaryDisclosed((v) => !v)}
+            className={`relative w-9 h-5 rounded-full transition-colors ${salaryDisclosed ? "bg-ink" : "bg-border"}`}>
             <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${salaryDisclosed ? "translate-x-4" : "translate-x-0"}`} />
           </button>
           <span className="text-sm text-ink font-medium">
-            {salaryDisclosed ? "Salary range disclosed to candidates" : "Don't disclose salary (hiring managers only)"}
+            {salaryDisclosed ? "Salary range disclosed to applicants" : "Don't disclose salary"}
           </span>
         </div>
-
         {salaryDisclosed && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="block text-sm font-medium text-ink">Min Salary</label>
-                <input
-                  type="number" min={0} value={salaryMin}
-                  onChange={(e) => setSalaryMin(e.target.value)}
+                <input type="number" min={0} value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)}
                   placeholder="e.g. 60000"
-                  className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
-                />
+                  className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted" />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-sm font-medium text-ink">Max Salary</label>
-                <input
-                  type="number" min={0} value={salaryMax}
-                  onChange={(e) => setSalaryMax(e.target.value)}
+                <input type="number" min={0} value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)}
                   placeholder="e.g. 90000"
-                  className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
-                />
+                  className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted" />
               </div>
             </div>
             {errors.salary && <p className="text-[13px] text-danger">{errors.salary}</p>}
@@ -418,9 +573,8 @@ export default function NewJobPage() {
         )}
       </Card>
 
-      {/* ── 4. Job description & skills ─────────────────────────────────── */}
+      {/* 4. Job description & skills */}
       <Card title="Job Description & Skills">
-        {/* Description */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-ink">Description <span className="text-danger">*</span></span>
@@ -428,39 +582,33 @@ export default function NewJobPage() {
           </div>
           <textarea
             value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} rows={9}
-            placeholder="Describe the role in detail , responsibilities, day-to-day work, what success looks like, and team context. The AI uses this to run a natural, relevant interview. Aim for 150+ words."
+            placeholder="Describe the role in detail: responsibilities, day-to-day work, what success looks like, team context. The AI uses this to run a relevant application conversation. Aim for 150+ words."
             className={`w-full bg-white border rounded-[4px] px-4 py-3 text-sm text-ink outline-none resize-none placeholder:text-muted transition-colors focus:border-ink ${errors.desc ? "border-danger" : "border-border"}`}
           />
           {errors.desc && <p className="text-[13px] text-danger mt-1">{errors.desc}</p>}
         </div>
-
-        {/* Skills */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-ink">
             Required Skills
-            <span className="ml-2 text-[12px] font-normal text-muted">optional , press Enter or comma to add each skill</span>
+            <span className="ml-2 text-[12px] font-normal text-muted">optional, press Enter or comma to add</span>
           </label>
           <SkillsInput skills={skills} onChange={setSkills} />
-          {skills.length > 0 && (
-            <p className="text-[12px] text-muted">{skills.length} skill{skills.length !== 1 ? "s" : ""} added , the AI will probe these during the interview.</p>
-          )}
         </div>
       </Card>
 
-      {/* ── 5. Interview settings ────────────────────────────────────────── */}
-      <Card title="Interview Settings">
+      {/* 5. Application settings */}
+      <Card title="Application Settings">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-ink">Depth of interview</label>
+            <label className="text-sm font-medium text-ink">Depth of application</label>
             <span className="text-sm font-semibold text-ink tabular-nums">{questionCount} questions</span>
           </div>
           <input type="range" min={5} max={15} value={questionCount}
             onChange={(e) => setQuestionCount(Number(e.target.value))} className="w-full" />
           <div className="flex justify-between text-[13px] text-muted">
-            <span>5 , Quick screen</span><span>15 , In-depth</span>
+            <span>5 — Quick screen</span><span>15 — In-depth</span>
           </div>
         </div>
-
         <div className="space-y-3">
           <label className="block text-sm font-medium text-ink">Focus areas</label>
           {errors.focus && <p className="text-[13px] text-danger">{errors.focus}</p>}
@@ -475,15 +623,11 @@ export default function NewJobPage() {
               );
             })}
           </div>
-          <p className="text-[13px] text-muted">
-            {focusAreas.length} area{focusAreas.length !== 1 ? "s" : ""} selected , the AI will probe these during the conversation.
-          </p>
         </div>
       </Card>
 
-      {/* ── 6. Candidate requirements ────────────────────────────────────── */}
-      <Card title="Candidate Requirements" subtitle="Choose what candidates must provide. The AI will request these naturally during the conversation.">
-        {/* Presets */}
+      {/* 6. Candidate requirements */}
+      <Card title="Candidate Requirements" subtitle="What applicants must provide. The AI collects these naturally during the conversation.">
         <div className="space-y-2">
           {PRESET_REQUIREMENTS.map((preset) => {
             const active = activePresets.has(preset.id);
@@ -494,12 +638,8 @@ export default function NewJobPage() {
                   className={`w-4 h-4 rounded-[2px] border-2 flex items-center justify-center shrink-0 transition-colors ${active ? "bg-ink border-ink" : "border-border bg-white"}`}>
                   {active && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
                 </button>
-                {preset.type === "file"
-                  ? <FileText className="w-3.5 h-3.5 text-muted shrink-0" />
-                  : <Link2 className="w-3.5 h-3.5 text-muted shrink-0" />}
-                <span className={`text-[13px] flex-1 ${active ? "text-ink font-medium" : "text-sub"}`}>
-                  {preset.label}
-                </span>
+                {preset.type === "file" ? <FileText className="w-3.5 h-3.5 text-muted shrink-0" /> : <Link2 className="w-3.5 h-3.5 text-muted shrink-0" />}
+                <span className={`text-[13px] flex-1 ${active ? "text-ink font-medium" : "text-sub"}`}>{preset.label}</span>
                 {active && (
                   <RequiredToggle
                     required={presetRequired[preset.id] ?? true}
@@ -511,32 +651,22 @@ export default function NewJobPage() {
           })}
         </div>
 
-        {/* Custom requirements */}
         {customReqs.length > 0 && (
           <div className="space-y-2 pt-1">
             {customReqs.map((req) => (
               <div key={req.id} className="flex flex-col bg-white border border-ink rounded-[4px] px-3 py-2.5 gap-2">
-                {/* Label input — full width on all screens */}
                 <input
-                  value={req.label}
-                  onChange={(e) => updateCustomReq(req.id, { label: e.target.value })}
+                  value={req.label} onChange={(e) => updateCustomReq(req.id, { label: e.target.value })}
                   placeholder="e.g. Writing sample"
                   className="w-full text-[13px] text-ink bg-transparent outline-none placeholder:text-muted"
                 />
-                {/* Controls row — type selector + required toggle + delete, never overflows */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <select
-                    value={req.type}
-                    onChange={(e) => updateCustomReq(req.id, { type: e.target.value as "file" | "link" })}
-                    className="text-[12px] text-sub bg-[var(--bg)] border border-border rounded-[4px] px-2 py-1 outline-none cursor-pointer shrink-0"
-                  >
+                  <select value={req.type} onChange={(e) => updateCustomReq(req.id, { type: e.target.value as "file" | "link" })}
+                    className="text-[12px] text-sub bg-[var(--bg)] border border-border rounded-[4px] px-2 py-1 outline-none cursor-pointer shrink-0">
                     <option value="file">File upload</option>
                     <option value="link">Link</option>
                   </select>
-                  <RequiredToggle
-                    required={req.required}
-                    onChange={(v) => updateCustomReq(req.id, { required: v })}
-                  />
+                  <RequiredToggle required={req.required} onChange={(v) => updateCustomReq(req.id, { required: v })} />
                   <button type="button" onClick={() => removeCustomReq(req.id)}
                     className="ml-auto p-1 text-muted hover:text-danger transition-colors shrink-0">
                     <X className="w-3.5 h-3.5" />
@@ -560,8 +690,8 @@ export default function NewJobPage() {
         )}
       </Card>
 
-      <Button className="w-full" size="lg" onClick={handlePublish} isLoading={isPublishing} loadingText="Publishing…">
-        Publish Job →
+      <Button className="w-full" size="lg" onClick={handleGenerateQuestions} isLoading={isGenerating} loadingText="Generating questions…">
+        Generate Questions →
       </Button>
     </div>
   );
