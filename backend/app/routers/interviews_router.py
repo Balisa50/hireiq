@@ -471,7 +471,7 @@ async def confirm_candidate_submission(interview_id: str) -> dict:
     """
     iv_result = (
         supabase.table("interviews")
-        .select("*, jobs(title, job_description, focus_areas, companies(company_name))")
+        .select("*, jobs(title, job_description, focus_areas, experience_level, skills, ai_deterrent_enabled, companies(company_name))")
         .eq("id", interview_id)
         .execute()
     )
@@ -508,12 +508,13 @@ async def confirm_candidate_submission(interview_id: str) -> dict:
         job_title=job.get("title", ""),
         company_name=company.get("company_name", ""),
         job_description=job.get("job_description", ""),
-        focus_areas=job.get("focus_areas", []),
+        focus_areas=job.get("focus_areas") or [],
         transcript=interview.get("transcript") or [],
         candidate_name=candidate_name,
         candidate_context=candidate_context,
         experience_level=job.get("experience_level", "any"),
         skills=job.get("skills") or [],
+        ai_deterrent_enabled=bool(job.get("ai_deterrent_enabled", True)),
     )
 
     if assessment:
@@ -817,7 +818,7 @@ async def submit_completed_interview(request: SubmitInterviewRequest) -> dict:
     """
     interview_result = (
         supabase.table("interviews")
-        .select("*, jobs(title, job_description, focus_areas, companies(company_name))")
+        .select("*, jobs(title, job_description, focus_areas, experience_level, skills, ai_deterrent_enabled, companies(company_name))")
         .eq("id", str(request.interview_id))
         .execute()
     )
@@ -840,30 +841,40 @@ async def submit_completed_interview(request: SubmitInterviewRequest) -> dict:
         "last_saved_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", str(request.interview_id)).execute()
 
-    # Score the interview — pass candidate_name and candidate_context for document cross-referencing
+    # Score the interview
     job               = interview.get("jobs", {}) or {}
     company           = (job.get("companies") or {})
     candidate_context = interview.get("candidate_context") or None
-    # Pull name from DB record — NEVER from transcript or AI context
     candidate_name    = interview.get("candidate_name", "")
 
     assessment = await score_candidate(
         job_title=job.get("title", ""),
         company_name=company.get("company_name", ""),
         job_description=job.get("job_description", ""),
-        focus_areas=job.get("focus_areas", []),
+        focus_areas=job.get("focus_areas") or [],
         transcript=transcript_dicts,
         candidate_name=candidate_name,
         candidate_context=candidate_context,
+        experience_level=job.get("experience_level", "any"),
+        skills=job.get("skills") or [],
+        ai_deterrent_enabled=bool(job.get("ai_deterrent_enabled", True)),
     )
 
     if assessment:
+        concerns      = assessment.get("areas_of_concern") or []
+        red_flags     = assessment.get("red_flags") or []
+        identity_flag = assessment.get("identity_flag")
+        if identity_flag:
+            red_flags.insert(0, f"IDENTITY: {identity_flag}")
+        if red_flags:
+            concerns = red_flags + concerns
+
         supabase.table("interviews").update({
             "overall_score":                    assessment.get("overall_score"),
             "score_breakdown":                  assessment.get("score_breakdown"),
             "executive_summary":                assessment.get("executive_summary"),
             "key_strengths":                    assessment.get("key_strengths"),
-            "areas_of_concern":                 assessment.get("areas_of_concern"),
+            "areas_of_concern":                 concerns,
             "recommended_follow_up_questions":  assessment.get("recommended_follow_up_questions"),
             "hiring_recommendation":            assessment.get("hiring_recommendation"),
             "document_interview_alignment":     assessment.get("document_interview_alignment"),
