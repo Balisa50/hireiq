@@ -180,6 +180,13 @@ export const authAPI = {
   isAuthenticated(): boolean { return !!getStoredAccessToken(); },
 
   getToken(): string | null { return getStoredAccessToken(); },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    return apiFetch<void>("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+  },
 };
 
 // ── Company API ───────────────────────────────────────────────────────────────
