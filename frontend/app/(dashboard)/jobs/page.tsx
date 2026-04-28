@@ -165,6 +165,7 @@ function JobRow({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function JobsPage() {
+  const router = useRouter();
   const [jobs, setJobs]               = useState<JobSummary[]>([]);
   const [isLoading, setIsLoading]     = useState(true);
   const [error, setError]             = useState("");
@@ -193,6 +194,7 @@ export default function JobsPage() {
       await jobsAPI.deleteJob(jobToDelete.id);
       setJobs((prev) => prev.filter((j) => j.id !== jobToDelete.id));
       setJobToDelete(null);
+      router.refresh(); // bust Next.js router cache so candidates page sees updated job list
     } catch {
       alert("Failed to delete job. Please try again.");
     } finally {

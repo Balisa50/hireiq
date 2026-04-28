@@ -411,6 +411,86 @@ async def generate_interview_questions(
         return None
 
 
+# ── 1b. Job pre-fill generation ───────────────────────────────────────────────
+
+async def generate_job_prefill(job_title: str, department: str) -> dict | None:
+    """
+    Given a job title and department, generate a complete job posting draft:
+    description, required skills, nice-to-have skills, eligibility criteria,
+    and 6–8 interview questions.
+
+    Returns a dict or None on failure.
+    """
+    system_prompt = (
+        "You are a senior HR specialist creating professional job postings. "
+        "Given only a job title and department, produce a realistic, detailed job posting draft. "
+        "\n\n"
+        "Return ONLY valid JSON with exactly these fields:\n"
+        "{\n"
+        '  "description": "<150-200 word professional job description covering key responsibilities, '
+        'day-to-day work, expectations, and team context>",\n'
+        '  "required_skills": ["<skill>", ...],   // 5-8 most critical skills\n'
+        '  "nice_to_have_skills": ["<skill>", ...], // 3-5 bonus skills\n'
+        '  "eligibility": {\n'
+        '    "min_education": "<one of: none|high_school|associate|bachelor|master|phd>",\n'
+        '    "min_experience_years": <integer 0-10>,\n'
+        '    "required_certifications": ["<cert>", ...],  // empty array if none\n'
+        '    "work_auth_required": <true|false>,\n'
+        '    "languages": ["English", ...]  // at minimum English\n'
+        "  },\n"
+        '  "questions": [  // exactly 7 interview questions\n'
+        "    {\n"
+        '      "id": "q1",\n'
+        '      "question": "<question text>",\n'
+        '      "type": "<behavioral|situational|motivational|experience_depth|technical|values_culture|achievement>",\n'
+        '      "focus_area": "<area this probes, e.g. Technical Skills, Communication, Leadership>",\n'
+        '      "what_it_reveals": "<1-sentence explanation>",\n'
+        '      "severity": "standard"\n'
+        "    },\n"
+        "    ...\n"
+        "  ]\n"
+        "}\n\n"
+        "QUESTION RULES: first question must be motivational (warm opener). "
+        "Last question must be open_invitation type asking if there is anything else they want to share. "
+        "Never repeat question types more than twice. All questions must be specific to the role."
+    )
+
+    user_prompt = f"Job Title: {job_title}\nDepartment: {department}"
+
+    raw = await _call_gemini(
+        system_prompt=system_prompt,
+        user_content=user_prompt,
+        max_tokens=3000,
+        temperature=0.65,
+        json_mode=True,
+    )
+
+    if not raw:
+        logger.info("generate_job_prefill: Gemini failed, trying Groq fallback")
+        raw = await _call_groq_single(
+            system_prompt=system_prompt,
+            user_content=user_prompt,
+            max_tokens=3000,
+            temperature=0.65,
+            json_mode=True,
+        )
+
+    if not raw:
+        return None
+
+    try:
+        parsed = json.loads(raw)
+        # Validate required top-level keys
+        required_keys = {"description", "required_skills", "nice_to_have_skills", "eligibility", "questions"}
+        if not required_keys.issubset(parsed.keys()):
+            logger.error(f"generate_job_prefill: missing keys. Got: {list(parsed.keys())}")
+            return None
+        return parsed
+    except json.JSONDecodeError as e:
+        logger.error(f"generate_job_prefill: JSON parse error: {e}. Raw[:200]: {raw[:200]}")
+        return None
+
+
 # ── 2. Adaptive next question ──────────────────────────────────────────────────
 
 def _format_candidate_context(ctx: dict) -> str:

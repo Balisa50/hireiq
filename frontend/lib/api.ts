@@ -6,10 +6,14 @@
  */
 
 import type {
+  AIPrefillResult,
   AuthResponse,
+  CandidateInfoConfig,
   CandidateRequirement,
   Company,
   DashboardStats,
+  DeiConfig,
+  EligibilityCriteria,
   GeneratedQuestion,
   Interview,
   JobPublicInfo,
@@ -219,6 +223,13 @@ export const jobsAPI = {
     return apiFetch<Job>(`/api/jobs/${jobId}`);
   },
 
+  async aiFillJob(data: { title: string; department: string }): Promise<AIPrefillResult> {
+    return apiFetch<AIPrefillResult>("/api/jobs/ai-prefill", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async generateQuestions(jobData: {
     title: string;
     department: string;
@@ -241,19 +252,38 @@ export const jobsAPI = {
     location: string;
     employment_type: string;
     job_description: string;
-    question_count: number;
-    focus_areas: string[];
-    questions: GeneratedQuestion[];
+    question_count?: number;
+    focus_areas?: string[];
+    questions?: GeneratedQuestion[];
     candidate_requirements?: CandidateRequirement[];
+    // Basic info extras
     experience_level?: string;
     work_arrangement?: string;
     openings?: number;
+    job_code?: string;
+    hiring_manager?: string;
+    // Location
+    relocation_considered?: boolean;
+    travel_required?: boolean;
+    // Compensation
     skills?: string[];
+    nice_to_have_skills?: string[];
     salary_min?: number;
     salary_max?: number;
     salary_currency?: string;
     salary_period?: string;
     salary_disclosed?: boolean;
+    equity_offered?: boolean;
+    benefits_summary?: string;
+    // Extended config
+    eligibility_criteria?: EligibilityCriteria;
+    candidate_info_config?: CandidateInfoConfig;
+    dei_config?: DeiConfig;
+    // AI deterrent
+    ai_deterrent_enabled?: boolean;
+    ai_deterrent_placement?: string;
+    ai_deterrent_message?: string;
+    // Controls
     application_deadline?: string;
     application_limit?: number;
     is_paused?: boolean;

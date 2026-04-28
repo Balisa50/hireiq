@@ -125,28 +125,68 @@ VALID_SALARY_CURRENCIES  = {"USD", "EUR", "GBP", "CAD", "AUD", "GHS", "GMD", "NG
 VALID_SALARY_PERIODS     = {"hour", "month", "year"}
 
 
+class AIPrefillRequest(BaseModel):
+    title: str
+    department: str
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Job title is required.")
+        return v
+
+    @field_validator("department")
+    @classmethod
+    def validate_department(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Department is required.")
+        return v
+
+
 class PublishJobRequest(BaseModel):
     title: str
     department: str
     location: str
     employment_type: str
     job_description: str
-    question_count: int
-    focus_areas: list[str]
+    question_count: int = 8
+    focus_areas: list[str] = []
     questions: list[GeneratedQuestion] = []
     candidate_requirements: list[CandidateRequirement] = []
 
-    # ── New fields ──────────────────────────────────────────────────────────
+    # ── Basic info extras ───────────────────────────────────────────────────
     experience_level: str = "any"
     work_arrangement: str = "on_site"
     openings: int = 1
+    job_code: Optional[str] = None
+    hiring_manager: Optional[str] = None
+    # ── Location ────────────────────────────────────────────────────────────
+    relocation_considered: bool = False
+    travel_required: bool = False
+    # ── Compensation ────────────────────────────────────────────────────────
     skills: list[str] = []
+    nice_to_have_skills: list[str] = []
     salary_min: Optional[int] = None
     salary_max: Optional[int] = None
     salary_currency: str = "USD"
     salary_period: str = "year"
-    salary_disclosed: bool = True
-    # Job-level controls
+    salary_disclosed: bool = False
+    equity_offered: bool = False
+    benefits_summary: Optional[str] = None
+    # ── Eligibility ─────────────────────────────────────────────────────────
+    eligibility_criteria: dict = {}
+    # ── Candidate info config ───────────────────────────────────────────────
+    candidate_info_config: dict = {}
+    # ── DEI ─────────────────────────────────────────────────────────────────
+    dei_config: dict = {}
+    # ── AI deterrent ────────────────────────────────────────────────────────
+    ai_deterrent_enabled: bool = True
+    ai_deterrent_placement: str = "before_questions"
+    ai_deterrent_message: Optional[str] = None
+    # ── Job-level controls ──────────────────────────────────────────────────
     application_deadline: Optional[date] = None
     application_limit: int = 0   # 0 = unlimited
     is_paused: bool = False
@@ -203,8 +243,8 @@ class JobResponse(BaseModel):
     location: Optional[str] = None
     employment_type: Optional[str] = None
     job_description: str
-    question_count: int
-    focus_areas: list[str]
+    question_count: int = 8
+    focus_areas: list[str] = []
     questions: list[dict]
     candidate_requirements: list[dict] = []
     interview_link_token: UUID
@@ -213,16 +253,35 @@ class JobResponse(BaseModel):
     updated_at: Optional[datetime] = None
     interview_count: int = 0
     average_score: Optional[float] = None
-    # Extended fields
+    # Basic info extras
     experience_level: str = "any"
     work_arrangement: str = "on_site"
     openings: int = 1
+    job_code: Optional[str] = None
+    hiring_manager: Optional[str] = None
+    # Location
+    relocation_considered: bool = False
+    travel_required: bool = False
+    # Compensation
     skills: list[str] = []
+    nice_to_have_skills: list[str] = []
     salary_min: Optional[int] = None
     salary_max: Optional[int] = None
     salary_currency: str = "USD"
     salary_period: str = "year"
-    salary_disclosed: bool = True
+    salary_disclosed: bool = False
+    equity_offered: bool = False
+    benefits_summary: Optional[str] = None
+    # Eligibility
+    eligibility_criteria: dict = {}
+    # Candidate info config
+    candidate_info_config: dict = {}
+    # DEI
+    dei_config: dict = {}
+    # AI deterrent
+    ai_deterrent_enabled: bool = True
+    ai_deterrent_placement: str = "before_questions"
+    ai_deterrent_message: Optional[str] = None
     # Job-level controls
     application_deadline: Optional[date] = None
     application_limit: int = 0

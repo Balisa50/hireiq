@@ -8,12 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth import get_authenticated_company_id, verify_company_owns_resource
 from app.database import supabase
 from app.models.job import (
+    AIPrefillRequest,
     CreateJobRequest,
     PublishJobRequest,
     JobResponse,
     JobSummary,
 )
-from app.services.groq_service import generate_interview_questions
+from app.services.groq_service import generate_interview_questions, generate_job_prefill
 
 logger = logging.getLogger("hireiq.jobs_router")
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
@@ -105,6 +106,30 @@ async def generate_questions_for_job(
     return {"questions": questions}
 
 
+@router.post("/ai-prefill")
+async def ai_prefill_job(
+    request: AIPrefillRequest,
+    company_id: str = Depends(get_authenticated_company_id),
+) -> dict:
+    """
+    Given a job title and department, return an AI-generated job posting draft:
+    description, required_skills, nice_to_have_skills, eligibility_criteria, and questions.
+    Does NOT save anything — purely a generation step for the creation form.
+    """
+    result = await generate_job_prefill(
+        job_title=request.title,
+        department=request.department,
+    )
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI pre-fill is temporarily unavailable. Please try again or fill the form manually.",
+        )
+
+    return result
+
+
 @router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def publish_job(
     request: PublishJobRequest,
@@ -117,31 +142,48 @@ async def publish_job(
     """
     try:
         job_data = {
-            "company_id":           company_id,
-            "title":                request.title,
-            "department":           request.department,
-            "location":             request.location,
-            "employment_type":      request.employment_type,
-            "job_description":      request.job_description,
-            "question_count":       request.question_count,
-            "focus_areas":          request.focus_areas,
-            "questions":            [q.model_dump() for q in request.questions],
+            "company_id":             company_id,
+            "title":                  request.title,
+            "department":             request.department,
+            "location":               request.location,
+            "employment_type":        request.employment_type,
+            "job_description":        request.job_description,
+            "question_count":         request.question_count,
+            "focus_areas":            request.focus_areas,
+            "questions":              [q.model_dump() for q in request.questions],
             "candidate_requirements": [r.model_dump() for r in request.candidate_requirements],
-            "status":               "active",
-            # Extended fields
-            "experience_level":     request.experience_level,
-            "work_arrangement":     request.work_arrangement,
-            "openings":             request.openings,
-            "skills":               request.skills,
-            "salary_min":           request.salary_min,
-            "salary_max":           request.salary_max,
-            "salary_currency":      request.salary_currency,
-            "salary_period":        request.salary_period,
-            "salary_disclosed":     request.salary_disclosed,
+            "status":                 "active",
+            # Basic info extras
+            "experience_level":       request.experience_level,
+            "work_arrangement":       request.work_arrangement,
+            "openings":               request.openings,
+            "job_code":               request.job_code,
+            "hiring_manager":         request.hiring_manager,
+            # Location
+            "relocation_considered":  request.relocation_considered,
+            "travel_required":        request.travel_required,
+            # Compensation
+            "skills":                 request.skills,
+            "nice_to_have_skills":    request.nice_to_have_skills,
+            "salary_min":             request.salary_min,
+            "salary_max":             request.salary_max,
+            "salary_currency":        request.salary_currency,
+            "salary_period":          request.salary_period,
+            "salary_disclosed":       request.salary_disclosed,
+            "equity_offered":         request.equity_offered,
+            "benefits_summary":       request.benefits_summary,
+            # Extended config
+            "eligibility_criteria":   request.eligibility_criteria,
+            "candidate_info_config":  request.candidate_info_config,
+            "dei_config":             request.dei_config,
+            # AI deterrent
+            "ai_deterrent_enabled":   request.ai_deterrent_enabled,
+            "ai_deterrent_placement": request.ai_deterrent_placement,
+            "ai_deterrent_message":   request.ai_deterrent_message,
             # Job-level controls
-            "application_deadline": request.application_deadline.isoformat() if request.application_deadline else None,
-            "application_limit":    request.application_limit,
-            "is_paused":            request.is_paused,
+            "application_deadline":   request.application_deadline.isoformat() if request.application_deadline else None,
+            "application_limit":      request.application_limit,
+            "is_paused":              request.is_paused,
         }
 
         result = supabase.table("jobs").insert(job_data).execute()
