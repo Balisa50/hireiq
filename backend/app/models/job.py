@@ -36,6 +36,7 @@ class GeneratedQuestion(BaseModel):
     type: str
     focus_area: str
     what_it_reveals: str
+    severity: str = "standard"   # "surface" | "standard" | "deep"
 
 
 class CreateJobRequest(BaseModel):

@@ -896,10 +896,26 @@ async def generate_conversation_response(
         "  3. Phone number\n"
         "  4. Current location\n"
         "  5. Current employment status\n\n"
-        "Role-relevant questions: ask about their background, experience, and fit for the role. "
-        "Questions must be specific to this role and this job description. "
-        "If an answer is vague, ask one follow-up: 'Could you tell me a bit more about that?' "
-        "or 'Could you walk me through a specific example?' Frame follow-ups as helpful, not challenging.\n\n"
+        + (
+            "ROLE QUESTIONS WITH SEVERITY SETTINGS\n"
+            "These are the questions to cover. Each has a severity level. Execute them EXACTLY as instructed:\n\n"
+            + "\n".join(
+                f"  [{q.get('severity', 'standard').upper()}] {q.get('question', '')}"
+                for q in pre_generated_questions
+                if q.get("question")
+            )
+            + "\n\n"
+            if pre_generated_questions else
+            "Role-relevant questions: ask about their background, experience, and fit for the role.\n\n"
+        ) +
+        "SEVERITY EXECUTION RULES -- follow these exactly:\n"
+        "  SURFACE: Ask the question once. Accept any answer, even brief. Move on immediately. No follow-ups.\n"
+        "  STANDARD: If the answer is vague or thin, ask one follow-up for more specificity. "
+        "Frame it helpfully: 'Could you walk me through a specific example of that?' Then accept and move on.\n"
+        "  DEEP: This is the most important question. Probe until you get something specific and real. "
+        "If the answer is vague: ask for a concrete example. If still vague: ask about a specific situation. "
+        "If still vague after 3 attempts: note it and move on. "
+        "Never accept 'I am good at X' for a DEEP question -- you need evidence.\n\n"
         f"Required documents still pending (collect ALL before closing):\n{pending_lines}\n"
         f"Optional documents (ask once at a natural moment -- never force):\n{optional_lines}\n"
         f"Already collected:\n{collected_lines}\n\n"
