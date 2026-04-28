@@ -70,14 +70,14 @@ async def get_job_by_link_token(link_token: str) -> JobPublicInfo:
     )
 
     if not job_result.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview link not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application link not found.")
 
     job = job_result.data[0]
 
     if job["status"] != "active":
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
-            detail="This interview link is no longer active.",
+            detail="This application link is no longer active.",
         )
 
     company = job.get("companies", {}) or {}
@@ -119,7 +119,7 @@ async def start_interview_session(
     job = job_result.data[0]
 
     if job["status"] != "active":
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="This interview is no longer active.")
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="This application is no longer active.")
 
     # Check if candidate already completed this interview
     completed_result = (
@@ -134,7 +134,7 @@ async def start_interview_session(
     if completed_result.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="You have already submitted your interview for this position.",
+            detail="You have already submitted your application for this position.",
         )
 
     # Check for an existing in-progress session to resume (within 24 hours)
@@ -178,7 +178,7 @@ async def start_interview_session(
     if not result.data:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Something went wrong starting your interview. Please try again.",
+            detail="Something went wrong starting your application. Please try again.",
         )
 
     return {

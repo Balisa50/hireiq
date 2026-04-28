@@ -110,7 +110,7 @@ function SidebarContent({ onNav }: { onNav?: () => void }) {
 
         <SectionLabel>Settings</SectionLabel>
         <NavItem href="/settings/profile"            label="Company Profile"    icon={Building2} active={isActive("/settings/profile")}            onClick={onNav} />
-        <NavItem href="/settings/interview-defaults" label="Interview Defaults" icon={Settings}  active={isActive("/settings/interview-defaults")} onClick={onNav} />
+        <NavItem href="/settings/interview-defaults" label="Application Defaults" icon={Settings}  active={isActive("/settings/interview-defaults")} onClick={onNav} />
         <NavItem href="/settings/notifications"      label="Notifications"      icon={Bell}      active={isActive("/settings/notifications")}      onClick={onNav} />
       </nav>
 

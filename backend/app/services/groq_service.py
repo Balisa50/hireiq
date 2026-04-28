@@ -1,14 +1,18 @@
 """
-HireIQ AI service — powered entirely by Google Gemini Flash 2.0.
-Every AI call in the system routes through GEMINI_API_KEY via the Google AI Studio REST API.
+HireIQ AI service.
+Primary model: Google Gemini Flash 2.0 (via REST API).
+Fallback model: Groq LLaMA 3.3 70B (automatic, transparent to callers).
+
+If Gemini fails for any reason the system retries once on Groq.
+Candidates never see an error caused by a single model outage.
 
 Functions:
-  1. generate_interview_questions   — structured question generation
-  2. generate_adaptive_next_question — single follow-up question
-  3. score_candidate                — full assessment with skill gap analysis
-  4. generate_candidate_email       — candidate notification email drafts
-  5. generate_conversation_response — live interview conversation driver
-  6. get_first_interview_message    — hardcoded opening (never AI-generated)
+  1. generate_interview_questions    -- structured question generation
+  2. generate_adaptive_next_question -- single follow-up question
+  3. score_candidate                 -- full assessment (new 4-dimension scoring)
+  4. generate_candidate_email        -- candidate notification email drafts
+  5. generate_conversation_response  -- live application conversation driver
+  6. get_first_interview_message     -- hardcoded opening (never AI-generated)
 """
 
 import json
@@ -20,19 +24,20 @@ from app.config import get_settings
 
 logger = logging.getLogger("hireiq.groq")
 
-# Gemini Flash 2.0 — stable GA model via v1beta
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+# ── Model endpoints ────────────────────────────────────────────────────────────
+
+GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+GROQ_URL    = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL  = "llama-3.3-70b-versatile"
 
 
-# ── Shared response parser ─────────────────────────────────────────────────────
+# ── Shared helpers ─────────────────────────────────────────────────────────────
 
 def _extract_gemini_text(data: dict, caller: str = "") -> str | None:
     """
     Pull text out of a Gemini generateContent response.
     Handles safety blocks, MAX_TOKENS truncation, and missing content gracefully.
-    Logs a clear, readable message (no extra={} dicts) so Render surfaces it.
     """
-    # Prompt itself was blocked before generation
     prompt_feedback = data.get("promptFeedback", {})
     block_reason    = prompt_feedback.get("blockReason")
     if block_reason:
@@ -41,27 +46,22 @@ def _extract_gemini_text(data: dict, caller: str = "") -> str | None:
 
     candidates = data.get("candidates", [])
     if not candidates:
-        logger.error(f"[{caller}] Gemini returned no candidates. Full response: {str(data)[:400]}")
+        logger.error(f"[{caller}] Gemini returned no candidates. Response: {str(data)[:400]}")
         return None
 
-    candidate    = candidates[0]
+    candidate     = candidates[0]
     finish_reason = candidate.get("finishReason", "STOP")
 
-    # Only STOP and MAX_TOKENS are usable; everything else (SAFETY, RECITATION, OTHER) is a failure
     if finish_reason not in ("STOP", "MAX_TOKENS"):
         logger.error(
             f"[{caller}] Gemini finished with reason={finish_reason}. "
-            f"safetyRatings={candidate.get('safetyRatings', [])} "
             f"Full candidate: {str(candidate)[:400]}"
         )
         return None
 
     parts = candidate.get("content", {}).get("parts", [])
     if not parts:
-        logger.error(
-            f"[{caller}] Gemini returned empty parts. "
-            f"finishReason={finish_reason} candidate={str(candidate)[:400]}"
-        )
+        logger.error(f"[{caller}] Gemini returned empty parts. finishReason={finish_reason}")
         return None
 
     text = parts[0].get("text", "").strip()
@@ -75,20 +75,18 @@ def _extract_gemini_text(data: dict, caller: str = "") -> str | None:
 def _extract_json_from_text(text: str) -> str:
     """
     Robustly extract a JSON object or array from text that may have prose around it.
-    Handles:  plain JSON, ```json ... ``` fences, text-before-JSON preambles.
+    Handles plain JSON, ```json ... ``` fences, and text-before-JSON preambles.
     Returns the original text unchanged if no JSON block is found.
     """
-    # Strip markdown code fences
     fence_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```", text, re.IGNORECASE)
     if fence_match:
         return fence_match.group(1).strip()
 
-    # Find first { or [ and take from there to matching close
-    start = -1
+    start    = -1
     open_char: str | None = None
     for i, ch in enumerate(text):
         if ch in ("{", "["):
-            start    = i
+            start     = i
             open_char = ch
             break
 
@@ -103,10 +101,106 @@ def _extract_json_from_text(text: str) -> str:
                 if depth == 0:
                     return text[start : i + 1]
 
-    return text  # unchanged — let the caller's json.loads raise
+    return text
 
 
-# ── Core Gemini caller — single-turn ──────────────────────────────────────────
+# ── Groq fallback caller ── single-turn ───────────────────────────────────────
+
+async def _call_groq_single(
+    system_prompt: str,
+    user_content: str,
+    max_tokens: int = 2048,
+    temperature: float = 0.7,
+    json_mode: bool = False,
+) -> str | None:
+    """Groq (LLaMA) single-turn fallback. OpenAI-compatible API."""
+    settings = get_settings()
+    if not settings.groq_api_key:
+        logger.error("_call_groq_single: GROQ_API_KEY is empty")
+        return None
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_content},
+    ]
+
+    payload: dict = {
+        "model":       GROQ_MODEL,
+        "messages":    messages,
+        "max_tokens":  max_tokens,
+        "temperature": temperature,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+
+    try:
+        async with httpx.AsyncClient(timeout=45) as client:
+            response = await client.post(
+                GROQ_URL,
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+            )
+
+        if response.status_code == 200:
+            data  = response.json()
+            text  = data["choices"][0]["message"]["content"].strip()
+            return _extract_json_from_text(text) if json_mode else text
+
+        logger.error(f"_call_groq_single HTTP {response.status_code}: {response.text[:400]}")
+    except Exception as e:
+        logger.error(f"_call_groq_single exception: {e}")
+
+    return None
+
+
+# ── Groq fallback caller ── multi-turn conversation ───────────────────────────
+
+async def _call_groq_conversation(
+    system_prompt: str,
+    contents: list[dict],
+    max_tokens: int = 800,
+    temperature: float = 0.75,
+) -> str | None:
+    """Groq multi-turn fallback. Converts Gemini contents format to OpenAI format."""
+    settings = get_settings()
+    if not settings.groq_api_key:
+        logger.error("_call_groq_conversation: GROQ_API_KEY is empty")
+        return None
+
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    for msg in contents:
+        role = "assistant" if msg.get("role") == "model" else "user"
+        text = msg.get("parts", [{}])[0].get("text", "")
+        messages.append({"role": role, "content": text})
+
+    payload: dict = {
+        "model":       GROQ_MODEL,
+        "messages":    messages,
+        "max_tokens":  max_tokens,
+        "temperature": temperature,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=45) as client:
+            response = await client.post(
+                GROQ_URL,
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+            )
+
+        if response.status_code == 200:
+            data = response.json()
+            text = data["choices"][0]["message"]["content"].strip()
+            return _extract_json_from_text(text)
+
+        logger.error(f"_call_groq_conversation HTTP {response.status_code}: {response.text[:400]}")
+    except Exception as e:
+        logger.error(f"_call_groq_conversation exception: {e}")
+
+    return None
+
+
+# ── Core Gemini caller ── single-turn (with Groq fallback) ────────────────────
 
 async def _call_gemini(
     system_prompt: str,
@@ -116,59 +210,59 @@ async def _call_gemini(
     json_mode: bool = False,
 ) -> str | None:
     """
-    Single-turn Gemini call: system instruction + one user message.
-    Used for question generation, scoring, and email drafting.
-    Returns raw text or None on failure.
+    Single-turn call: tries Gemini first, falls back to Groq automatically.
     """
     settings = get_settings()
-    if not settings.gemini_api_key:
-        logger.error("_call_gemini: GEMINI_API_KEY is empty — set it in Render environment variables")
-        return None
 
-    url = f"{GEMINI_URL}?key={settings.gemini_api_key}"
+    # ---- Gemini attempt -------------------------------------------------
+    if settings.gemini_api_key:
+        url = f"{GEMINI_URL}?key={settings.gemini_api_key}"
 
-    gen_config: dict = {
-        "temperature":     temperature,
-        "maxOutputTokens": max_tokens,
-    }
-    if json_mode:
-        gen_config["responseMimeType"] = "application/json"
+        gen_config: dict = {"temperature": temperature, "maxOutputTokens": max_tokens}
+        if json_mode:
+            gen_config["responseMimeType"] = "application/json"
 
-    payload = {
-        "systemInstruction": {"parts": [{"text": system_prompt}]},
-        "contents":          [{"role": "user", "parts": [{"text": user_content}]}],
-        "generationConfig":  gen_config,
-    }
+        payload = {
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents":          [{"role": "user", "parts": [{"text": user_content}]}],
+            "generationConfig":  gen_config,
+        }
 
-    for attempt in range(1, 3):
-        try:
-            async with httpx.AsyncClient(timeout=45) as client:
-                response = await client.post(url, json=payload)
+        for attempt in range(1, 3):
+            try:
+                async with httpx.AsyncClient(timeout=45) as client:
+                    response = await client.post(url, json=payload)
 
-            if response.status_code == 200:
-                data = response.json()
-                text = _extract_gemini_text(data, caller="_call_gemini")
-                if text is None:
-                    return None
-                # When JSON mode is on, strip any accidental markdown fences
-                return _extract_json_from_text(text) if json_mode else text
+                if response.status_code == 200:
+                    data = response.json()
+                    text = _extract_gemini_text(data, caller="_call_gemini")
+                    if text is not None:
+                        return _extract_json_from_text(text) if json_mode else text
+                    break  # Content extracted but was None (safety block etc.) -- skip to Groq
 
-            # Surface the actual Gemini error clearly in Render logs
-            logger.error(
-                f"_call_gemini HTTP {response.status_code} (attempt {attempt}): {response.text[:600]}"
-            )
-            if attempt == 1:
-                await asyncio.sleep(settings.groq_retry_delay_seconds)
+                logger.error(f"_call_gemini HTTP {response.status_code} (attempt {attempt}): {response.text[:400]}")
+                if attempt == 1:
+                    await asyncio.sleep(settings.groq_retry_delay_seconds)
 
-        except Exception as error:
-            logger.error(f"_call_gemini exception (attempt {attempt}): {error}")
-            if attempt == 1:
-                await asyncio.sleep(settings.groq_retry_delay_seconds)
+            except Exception as error:
+                logger.error(f"_call_gemini exception (attempt {attempt}): {error}")
+                if attempt == 1:
+                    await asyncio.sleep(settings.groq_retry_delay_seconds)
+    else:
+        logger.warning("_call_gemini: GEMINI_API_KEY not set, going straight to Groq fallback")
 
-    return None
+    # ---- Groq fallback --------------------------------------------------
+    logger.info("_call_gemini: falling back to Groq")
+    return await _call_groq_single(
+        system_prompt=system_prompt,
+        user_content=user_content,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        json_mode=json_mode,
+    )
 
 
-# ── Core Gemini caller — multi-turn conversation ───────────────────────────────
+# ── Core Gemini caller ── multi-turn conversation (with Groq fallback) ─────────
 
 async def _call_gemini_conversation(
     system_prompt: str,
@@ -177,56 +271,54 @@ async def _call_gemini_conversation(
     temperature: float = 0.75,
 ) -> str | None:
     """
-    Multi-turn Gemini call for the interview conversation agent.
-    contents: Gemini-format [{role: "user"|"model", parts: [{text: "..."}]}]
-    Returns raw text (JSON string) or None on failure.
-
-    NOTE: We do NOT use responseMimeType=application/json here because the model
-    occasionally refuses to generate when the conversation history is long and
-    JSON mode is enforced.  Instead we ask for JSON in the prompt and extract it
-    with _extract_json_from_text() which handles markdown fences and preambles.
+    Multi-turn call for the application conversation agent.
+    Tries Gemini first, falls back to Groq automatically.
     """
     settings = get_settings()
-    if not settings.gemini_api_key:
-        logger.error("_call_gemini_conversation: GEMINI_API_KEY is empty")
-        return None
 
-    url     = f"{GEMINI_URL}?key={settings.gemini_api_key}"
-    payload = {
-        "systemInstruction": {"parts": [{"text": system_prompt}]},
-        "contents":          contents,
-        "generationConfig":  {
-            "temperature":     temperature,
-            "maxOutputTokens": max_tokens,
-            # No responseMimeType — extract JSON from text instead (more robust)
-        },
-    }
+    # ---- Gemini attempt -------------------------------------------------
+    if settings.gemini_api_key:
+        url = f"{GEMINI_URL}?key={settings.gemini_api_key}"
+        payload = {
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents":          contents,
+            "generationConfig":  {"temperature": temperature, "maxOutputTokens": max_tokens},
+        }
 
-    for attempt in range(1, 3):
-        try:
-            async with httpx.AsyncClient(timeout=45) as client:
-                response = await client.post(url, json=payload)
+        for attempt in range(1, 3):
+            try:
+                async with httpx.AsyncClient(timeout=45) as client:
+                    response = await client.post(url, json=payload)
 
-            if response.status_code == 200:
-                data = response.json()
-                text = _extract_gemini_text(data, caller="_call_gemini_conversation")
-                if text is None:
-                    return None
-                return _extract_json_from_text(text)
+                if response.status_code == 200:
+                    data = response.json()
+                    text = _extract_gemini_text(data, caller="_call_gemini_conversation")
+                    if text is not None:
+                        return _extract_json_from_text(text)
+                    break
 
-            logger.error(
-                f"_call_gemini_conversation HTTP {response.status_code} (attempt {attempt}): "
-                f"{response.text[:600]}"
-            )
-            if attempt == 1:
-                await asyncio.sleep(settings.groq_retry_delay_seconds)
+                logger.error(
+                    f"_call_gemini_conversation HTTP {response.status_code} (attempt {attempt}): "
+                    f"{response.text[:400]}"
+                )
+                if attempt == 1:
+                    await asyncio.sleep(settings.groq_retry_delay_seconds)
 
-        except Exception as error:
-            logger.error(f"_call_gemini_conversation exception (attempt {attempt}): {error}")
-            if attempt == 1:
-                await asyncio.sleep(settings.groq_retry_delay_seconds)
+            except Exception as error:
+                logger.error(f"_call_gemini_conversation exception (attempt {attempt}): {error}")
+                if attempt == 1:
+                    await asyncio.sleep(settings.groq_retry_delay_seconds)
+    else:
+        logger.warning("_call_gemini_conversation: GEMINI_API_KEY not set, going straight to Groq fallback")
 
-    return None
+    # ---- Groq fallback --------------------------------------------------
+    logger.info("_call_gemini_conversation: falling back to Groq")
+    return await _call_groq_conversation(
+        system_prompt=system_prompt,
+        contents=contents,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
 
 
 # ── 1. Question generation ─────────────────────────────────────────────────────
@@ -239,9 +331,7 @@ async def generate_interview_questions(
     candidate_requirements: list[dict] | None = None,
 ) -> list[dict] | None:
     """
-    Generate structured interview questions for a job posting.
-    When candidate_requirements is provided, the AI generates questions that
-    explicitly reference those materials (CV, GitHub, portfolio, etc.).
+    Generate structured application questions for a job posting.
     Returns a list of question objects or None if generation fails.
     """
     requirements_context = ""
@@ -249,29 +339,23 @@ async def generate_interview_questions(
         req_lines = []
         for r in candidate_requirements:
             kind = "file upload" if r.get("type") == "file" else "link"
-            req_lines.append(f"  - {r['label']} ({kind}{'— required' if r.get('required') else '— optional'})")
+            req_lines.append(f"  - {r['label']} ({kind}{'-- required' if r.get('required') else '-- optional'})")
         requirements_context = (
-            "\n\nCandidate Requirements — this company requires candidates to submit:\n"
+            "\n\nCandidate Requirements -- this company requires candidates to submit:\n"
             + "\n".join(req_lines)
             + "\n\nIMPORTANT: Generate at least 1-2 questions that explicitly reference these "
             "submitted materials. For example: if GitHub is required, ask about their code. "
-            "If a cover letter is required, probe their stated motivation. If a CV is required, "
-            "reference their work history. Questions must feel like the interviewer has reviewed "
-            "the candidate's materials before the interview."
+            "If a cover letter is required, probe their stated motivation."
         )
 
     system_prompt = (
-        "You are the world's most respected executive recruiter with 30 years of experience "
-        "placing top talent at the world's leading companies. You have a McKinsey analytical "
-        "mind, deep behavioural psychology training, and an instinct for identifying genuine "
-        "talent versus rehearsed performance. You are generating interview questions for the "
-        "following role. Your questions must be specific to this exact role and job description "
-        "— not generic. Mix question types: behavioural (tell me about a time), situational "
-        "(how would you handle), technical (specific to this role), and motivational. "
+        "You are an experienced recruiter generating application questions for a specific role. "
+        "Your questions help applicants describe their background clearly and specifically. "
+        "Mix question types: experience-based, situational, motivational, and role-specific. "
         "The first question must always be a warm professional opener. The last question must "
-        "always be an open invitation for the candidate to share anything else. "
-        "Never ask questions answerable with yes or no. Never ask clichés. "
-        "Every question must reveal something meaningful about the candidate's genuine capability. "
+        "always be an open invitation for the applicant to share anything else relevant. "
+        "Never ask questions answerable with yes or no. Never ask cliches. "
+        "Every question must help the applicant demonstrate genuine capability. "
         "Return a JSON object with a single key 'questions' containing an array of question "
         "objects each with fields: id (string, q1/q2/etc), question (string), type (string), "
         "focus_area (string), what_it_reveals (string)."
@@ -280,9 +364,9 @@ async def generate_interview_questions(
     user_prompt = (
         f"Job Title: {job_title}\n\n"
         f"Job Description:\n{job_description}\n\n"
-        f"Focus Areas for this Interview: {', '.join(focus_areas)}"
+        f"Focus Areas: {', '.join(focus_areas)}"
         f"{requirements_context}\n\n"
-        f"Generate exactly {question_count} interview questions."
+        f"Generate exactly {question_count} questions."
     )
 
     raw_response = await _call_gemini(
@@ -297,17 +381,14 @@ async def generate_interview_questions(
         return None
 
     try:
-        parsed = json.loads(raw_response)
+        parsed    = json.loads(raw_response)
         questions = parsed.get("questions", [])
         if not isinstance(questions, list):
-            logger.error("Gemini returned unexpected questions format", extra={"raw": raw_response[:200]})
+            logger.error(f"Unexpected questions format: {raw_response[:200]}")
             return None
         return questions
     except json.JSONDecodeError as error:
-        logger.error(
-            "Failed to parse Gemini question generation response",
-            extra={"error": str(error), "raw": raw_response[:200]},
-        )
+        logger.error(f"Failed to parse question generation response: {error}. Raw: {raw_response[:200]}")
         return None
 
 
@@ -324,15 +405,15 @@ def _format_candidate_context(ctx: dict) -> str:
     if ctx.get("cover_letter_summary"):
         lines.append(f"Cover Letter:\n{ctx['cover_letter_summary']}")
     if ctx.get("linkedin_url"):
-        lines.append(f"LinkedIn Profile: {ctx['linkedin_url']}")
+        lines.append(f"LinkedIn: {ctx['linkedin_url']}")
     if ctx.get("github_url"):
-        lines.append(f"GitHub Profile: {ctx['github_url']}")
+        lines.append(f"GitHub: {ctx['github_url']}")
     if ctx.get("portfolio_url"):
-        lines.append(f"Portfolio URL: {ctx['portfolio_url']}")
+        lines.append(f"Portfolio: {ctx['portfolio_url']}")
     if ctx.get("website_url"):
-        lines.append(f"Personal Website: {ctx['website_url']}")
+        lines.append(f"Website: {ctx['website_url']}")
     if ctx.get("portfolio_note"):
-        lines.append(f"Portfolio: {ctx['portfolio_note']}")
+        lines.append(f"Portfolio note: {ctx['portfolio_note']}")
     if ctx.get("certificates"):
         for i, cert in enumerate(ctx["certificates"], 1):
             lines.append(f"Certificate {i}: {cert}")
@@ -343,7 +424,7 @@ def _format_candidate_context(ctx: dict) -> str:
         for lnk in ctx["other_links"]:
             lines.append(f"{lnk['label']}: {lnk['url']}")
     if ctx.get("github_analysis"):
-        lines.append(f"GitHub Deep Analysis:\n{ctx['github_analysis']}")
+        lines.append(f"GitHub Analysis:\n{ctx['github_analysis']}")
 
     return "\n\n".join(lines) if lines else "No documents submitted."
 
@@ -358,9 +439,7 @@ async def generate_adaptive_next_question(
     candidate_context: dict | None = None,
 ) -> str | None:
     """
-    Generate the single best next interview question.
-    References the candidate's actual submitted materials when available.
-    Adapts to their answers — probes vague responses, explores interesting specifics.
+    Generate the single best next application question based on what the applicant just said.
     """
     transcript_text = "\n".join(
         f"Q: {entry.get('question', '')}\nA: {entry.get('answer', '')}"
@@ -368,33 +447,27 @@ async def generate_adaptive_next_question(
     )
 
     ctx_text   = _format_candidate_context(candidate_context or {})
-    first_name = candidate_name.split()[0] if candidate_name else "the candidate"
+    first_name = candidate_name.split()[0] if candidate_name else "the applicant"
 
     system_prompt = (
-        "You are the world's most respected executive recruiter with 30 years of experience. "
-        f"You are conducting a live interview for {job_title} at {company_name}. "
-        f"You have reviewed the candidate's submitted materials:\n\n{ctx_text}\n\n"
-        "Your job is to ask the single best next question. You must:\n"
-        "- Reference specific details from their submitted materials when relevant. "
-        "If their CV mentions a specific company, project, or technology — ask about it directly. "
-        "If their cover letter states a motivation — probe it.\n"
-        "- If their answer was vague or lacked specifics — ask for a concrete example. "
-        "Do not accept generalities.\n"
-        "- If they mentioned something interesting — explore it further with a follow-up.\n"
-        "- If they seem to be giving a rehearsed or generic answer — push back with: "
-        "'That's a common answer — can you give me a specific example from your own experience?'\n"
-        "- Never ask something that could be answered by anyone who Googled the role. "
-        "Every question must be answerable only by someone who has lived the experience.\n"
-        "- One question only. No preamble. No 'Great answer!' No filler. Just the question.\n"
-        f"- Address the candidate as {first_name} occasionally — maximum once every 4 questions.\n"
-        "- Never reveal you are an AI."
+        f"You are a helpful recruiter guiding {first_name} through their application for "
+        f"{job_title} at {company_name}. Your goal is to help them tell their story clearly.\n\n"
+        f"Submitted materials:\n{ctx_text}\n\n"
+        "Ask the single best next question. Rules:\n"
+        "- If their answer was vague, ask for a specific example. Frame it helpfully: "
+        "'Could you walk me through a specific example of that?'\n"
+        "- If they mentioned something interesting, explore it naturally.\n"
+        "- Reference their submitted materials when relevant.\n"
+        "- One question only. No preamble. No filler.\n"
+        f"- Use '{first_name}' occasionally, at most once every 4 questions.\n"
+        "- Never use em dashes. Use commas or periods."
     )
 
     user_prompt = (
         f"Role: {job_title} at {company_name}\n\n"
         f"Job Description:\n{job_description}\n\n"
-        f"Interview so far:\n{transcript_text}\n\n"
-        f"Candidate's last answer: {last_answer}\n\n"
+        f"Application so far:\n{transcript_text}\n\n"
+        f"Applicant's last answer: {last_answer}\n\n"
         "Generate the single best next question:"
     )
 
@@ -421,11 +494,18 @@ async def score_candidate(
     skills: list[str] | None = None,
 ) -> dict | None:
     """
-    Generate a complete candidate assessment from the full interview transcript
-    AND all submitted materials. Cross-references document claims vs interview performance.
-    Returns a structured JSON assessment or None if scoring fails.
+    Generate a complete applicant assessment from the full application transcript
+    and all submitted materials.
+
+    Scoring dimensions (new):
+      - Relevance:     background match to role requirements (0-100)
+      - Completeness:  all required info and docs provided (0-100, hard cap 40 if required doc missing)
+      - Clarity:       specificity and concreteness of communication (0-100)
+      - Red flags:     penalty dimension (reduces overall)
+      - Overall:       weighted average of above
+    Recommendation tiers: Strong Yes >= 80, Yes 65-79, Maybe 45-64, No 25-44, Strong No < 25
     """
-    # Support both old Q&A format and new conversation format
+    # Support both conversation format and legacy Q&A format
     if transcript and transcript[0].get("role"):
         pairs = []
         for i, msg in enumerate(transcript):
@@ -434,7 +514,7 @@ async def score_candidate(
                 if next_msg and next_msg.get("role") == "candidate":
                     pairs.append(
                         f"AI: {msg.get('content', '')}\n"
-                        f"Candidate: {next_msg.get('content', '')}\n"
+                        f"Applicant: {next_msg.get('content', '')}\n"
                     )
         transcript_text = "\n".join(pairs)
     else:
@@ -449,75 +529,77 @@ async def score_candidate(
 
     safe_name = candidate_name.strip() if candidate_name else ""
     name_instruction = (
-        f"CRITICAL: The candidate's name is '{safe_name}'. "
-        f"You MUST use ONLY this exact name in your assessment. "
-        f"Never use any other name. Never infer a name from the transcript. "
-        f"If you are ever uncertain, use 'the candidate' instead."
+        f"CRITICAL: The applicant's name is '{safe_name}'. "
+        f"Use ONLY this exact name. Never infer a name from the transcript. "
+        f"If uncertain, use 'the applicant' instead."
         if safe_name else
-        "Do not use any candidate name in your assessment — use 'the candidate' throughout."
+        "Do not use any applicant name -- use 'the applicant' throughout."
     )
 
     skills_text = ", ".join(skills) if skills else "see job description"
 
     system_prompt = (
-        "You are a strict, evidence-only technical hiring evaluator. "
-        "Your sole job is to protect the company from bad hires. You are NOT an encouragement bot. "
-        "You do not soften assessments. You do not reward potential. You score only demonstrated evidence.\n\n"
+        "You are a strict, evidence-only hiring evaluator. "
+        "Your job is to give the recruiter an honest, accurate assessment they can act on. "
+        "You score only demonstrated evidence. You do not soften assessments.\n\n"
 
-        "SCORING RULES — read carefully, every rule is mandatory:\n"
-        "1. Score each dimension ONLY against demonstrated evidence in the CV, transcript, and submitted materials. "
-        "Zero evidence = score 0-20 for that dimension. Do not infer, assume, or reward 'willingness to learn'.\n"
-        "2. 'Willingness to learn' is NOT a skill unless the role is explicitly entry-level and labelled as such.\n"
-        "3. Soft skills (communication, teamwork, etc.) do NOT compensate for missing technical skills on technical roles.\n"
-        "4. If the role requires specific tools/frameworks and the candidate shows none: technical_skills score max 25.\n"
-        "5. Unqualified candidates MUST score below 40 overall. Do not soften this.\n"
-        "6. Cite specific evidence for every claim — exact quote from transcript or exact line from CV.\n"
-        "7. If no CV was submitted: penalise. Note 'No CV submitted' in concerns.\n"
-        "8. If GitHub was submitted: assess actual repo quality, languages, and recency. An empty or irrelevant "
-        "GitHub is a red flag, not neutral.\n\n"
+        "SCORING DIMENSIONS:\n"
+        "1. relevance (0-100): How well does the applicant's background match the role requirements? "
+        "Score against demonstrated evidence only. Missing required skills = score below 30.\n"
+        "2. completeness (0-100): Did they provide all required information and documents? "
+        "HARD RULE: If any required document is missing, cap this score at 40 maximum regardless of everything else. "
+        "If no documents were required, score based on information completeness.\n"
+        "3. clarity (0-100): How specifically and concretely did they communicate? "
+        "Vague, generic answers = low score. Specific examples with details = high score.\n"
+        "4. red_flag_penalty (0-50): Penalty points that reduce the overall score. "
+        "Apply for: missing required docs, CV/transcript contradictions, vague answers on critical questions, "
+        "identity mismatches, empty or irrelevant GitHub repos submitted, unexplained gaps.\n"
+        "5. overall_score: Calculated as round((relevance*0.4 + completeness*0.3 + clarity*0.3) - red_flag_penalty). "
+        "Clamp to 0-100. Must be below 40 if applicant lacks core required skills.\n\n"
 
-        "NAME MISMATCH DETECTION:\n"
-        "Compare the name on the CV (if submitted) against the candidate name used in the interview. "
-        "If they differ significantly (different first name, completely different name), set identity_flag to a "
-        "clear warning string. This is a potential CV fraud signal. Do not ignore it.\n\n"
+        "RECOMMENDATION TIERS:\n"
+        "Strong Yes: overall >= 80. Yes: 65-79. Maybe: 45-64. No: 25-44. Strong No: below 25.\n"
+        "A Strong No must use direct, specific language -- not diplomatic. "
+        "Companies need reliable recommendations, not polite ones.\n\n"
+
+        "NAME MISMATCH:\n"
+        "Compare CV name (if submitted) against the applicant name. "
+        "If they differ significantly, set identity_flag to a clear warning. "
+        "Do not ignore potential CV fraud.\n\n"
 
         "SKILL GAP ANALYSIS:\n"
-        f"Required skills for this role: {skills_text}\n"
-        "For each required skill, explicitly state: Present (with evidence) / Partial (weak evidence) / Absent.\n"
-        "Missing required skills must appear in areas_of_concern and reduce the overall score materially.\n\n"
+        f"Required skills: {skills_text}\n"
+        "For each required skill: Present (with evidence) / Partial (weak evidence) / Absent.\n\n"
 
         f"{name_instruction}\n\n"
         "Return valid JSON only. No preamble. No explanation. No markdown."
     )
 
-    name_ref = safe_name if safe_name else "The candidate"
+    name_ref = safe_name if safe_name else "the applicant"
 
     user_prompt = (
         f"Job Title: {job_title}\n"
         f"Company: {company_name}\n"
-        f"Candidate Interview Name: {safe_name if safe_name else 'Unknown'}\n"
+        f"Applicant Name: {safe_name if safe_name else 'Unknown'}\n"
         f"Required Skills: {skills_text}\n\n"
         f"Job Description:\n{job_description}\n\n"
         f"Focus Areas: {', '.join(focus_areas)}\n\n"
         f"Submitted Materials:\n{ctx_text}\n\n"
-        f"Full Interview Transcript:\n{transcript_text}\n\n"
+        f"Full Application Transcript:\n{transcript_text}\n\n"
         "Produce a JSON assessment with EXACTLY these fields:\n"
-        "- overall_score: integer 0-100. Must be below 40 if candidate lacks core required skills.\n"
-        f"- score_breakdown: object with integer 0-100 for each of: {list({area: 0 for area in focus_areas}.keys())}. "
-        "Each score must reflect only demonstrated evidence, not potential.\n"
-        f"- executive_summary: 4-5 sentences. Cite specific lines from CV or transcript quotes. "
-        f"Compare required skills vs demonstrated skills explicitly. "
-        f"Refer to candidate as '{safe_name if safe_name else 'the candidate'}'. Be direct and honest.\n"
-        "- key_strengths: array of exactly 3 strings. Each must cite specific evidence. "
-        "If fewer than 3 genuine strengths exist, state the limitation honestly.\n"
+        "- overall_score: integer 0-100\n"
+        "- score_breakdown: object with integer scores for: relevance, completeness, clarity, red_flag_penalty\n"
+        f"- executive_summary: 4-5 sentences. Cite specific evidence from the transcript or documents. "
+        f"Compare required skills vs demonstrated skills. "
+        f"Refer to applicant as '{name_ref}'. Be direct and honest.\n"
+        "- key_strengths: array of exactly 3 strings, each citing specific evidence. "
+        "If fewer than 3 genuine strengths, state the limitation honestly.\n"
         "- areas_of_concern: array of 2-5 strings. Include every missing required skill. "
-        "Include any contradiction between CV claims and interview answers. No softening.\n"
-        "- red_flags: array of strings. List: missing required skills, CV/transcript contradictions, "
-        "suspiciously generic answers, empty GitHub repos, unexplained employment gaps, "
-        "identity/name mismatches. Empty array if none found.\n"
-        "- identity_flag: string or null. If CV name differs from interview candidate name, "
-        "write a clear warning. Example: 'CV name (Sarah Johnson) does not match interview "
-        "candidate (Mike Doe). Possible CV fraud.' Otherwise null.\n"
+        "Include contradictions between documents and answers.\n"
+        "- red_flags: array of strings. Missing required skills, CV/transcript contradictions, "
+        "vague answers on critical questions, empty GitHub repos, unexplained gaps, identity mismatches. "
+        "Empty array if none found.\n"
+        "- identity_flag: string or null. Warning if CV name differs from applicant name.\n"
         + (
             "- document_interview_alignment: exactly one of: 'Strong alignment', 'Moderate alignment', "
             "'Weak alignment', 'Discrepancies found'.\n"
@@ -526,8 +608,7 @@ async def score_candidate(
         ) +
         "- recommended_follow_up_questions: array of exactly 3 strings for the human interviewer. "
         "Focus on gaps, contradictions, and unverified claims.\n"
-        "- hiring_recommendation: exactly one of: Strong Yes, Yes, Maybe, No, Strong No. "
-        "A candidate missing core required skills must be No or Strong No.\n"
+        "- hiring_recommendation: exactly one of: Strong Yes, Yes, Maybe, No, Strong No.\n"
     )
 
     raw_response = await _call_gemini(
@@ -544,14 +625,11 @@ async def score_candidate(
     try:
         return json.loads(raw_response)
     except json.JSONDecodeError as error:
-        logger.error(
-            "Failed to parse Gemini scoring response",
-            extra={"error": str(error), "raw": raw_response[:200]},
-        )
+        logger.error(f"Failed to parse scoring response: {error}. Raw: {raw_response[:200]}")
         return None
 
 
-# ── 4. Candidate notification email generation ────────────────────────────────
+# ── 4. Candidate notification email generation ─────────────────────────────────
 
 async def generate_candidate_email(
     status: str,
@@ -569,155 +647,102 @@ async def generate_candidate_email(
     Generate a candidate notification email draft.
     status: 'shortlisted' | 'rejected' | 'accepted'
     tone:   'professional' | 'warm' | 'direct'
-    Returns {subject, body} or None on failure.
     """
     first_name = candidate_name.split()[0] if candidate_name else "there"
 
     tone_structures = {
         "professional": (
-            "PROFESSIONAL TONE RULES:\n"
-            "- Three paragraphs, each with a clear single purpose.\n"
-            "- Formal but not cold. No contractions.\n"
-            "- Use the candidate's first name once, at the opening only.\n"
-            "- Sentences are complete and precise. No sentence fragments.\n"
-            "- Reads like a letter from a senior HR professional."
+            "PROFESSIONAL TONE:\n"
+            "Three paragraphs, each with a clear purpose. Formal but not cold. "
+            "Use the applicant's first name once at the opening only."
         ),
         "warm": (
-            "WARM TONE RULES:\n"
-            "- Write as an individual, not an institution. Use contractions freely.\n"
-            "- Acknowledge their effort briefly and genuinely, not with a formula.\n"
-            "- One sentence that sounds like a real human wrote it, not a template.\n"
-            "- Less formal paragraph structure, more conversational flow.\n"
-            "- Should feel like it came from a person who remembers the conversation."
+            "WARM TONE:\n"
+            "Write as an individual, not an institution. Acknowledge their effort genuinely. "
+            "Conversational flow. Should feel like it came from a person who remembers the conversation."
         ),
         "direct": (
-            "DIRECT TONE RULES:\n"
-            "- 60 to 90 words maximum. Not a word more.\n"
-            "- State the decision in sentence one. No preamble, no 'I hope this finds you well'.\n"
-            "- One reason. One next step. Sign off.\n"
-            "- No filler words. No hedging. Firm, fair, fast.\n"
-            "- Reads like a message from someone who respects the candidate's time."
+            "DIRECT TONE:\n"
+            "60 to 90 words maximum. State the decision in sentence one. "
+            "One reason. One next step. Sign off. No filler."
         ),
     }
     tone_guidance = tone_structures.get(tone.lower(), tone_structures["professional"])
 
-    strengths_raw   = "\n".join(f"- {s}" for s in key_strengths)  if key_strengths  else "(none provided)"
-    concerns_raw    = "\n".join(f"- {c}" for c in areas_of_concern) if areas_of_concern else "(none provided)"
-    summary_full    = executive_summary[:2000] if executive_summary else ""
+    strengths_raw = "\n".join(f"- {s}" for s in key_strengths)  if key_strengths  else "(none provided)"
+    concerns_raw  = "\n".join(f"- {c}" for c in areas_of_concern) if areas_of_concern else "(none provided)"
+    summary_full  = executive_summary[:2000] if executive_summary else ""
 
     footer_lines = [company_name] if company_name else []
-    if company_email:
-        footer_lines.append(company_email)
-    if company_website:
-        footer_lines.append(company_website)
+    if company_email:   footer_lines.append(company_email)
+    if company_website: footer_lines.append(company_website)
     footer_text = "\n".join(footer_lines)
 
     if summary_full or key_strengths or areas_of_concern:
         assessment_block = (
-            f"=== CANDIDATE ASSESSMENT DATA ===\n"
-            f"Executive summary: {summary_full if summary_full else '(not yet available)'}\n\n"
-            f"Key strengths:\n{strengths_raw}\n\n"
-            f"Areas of concern:\n{concerns_raw}\n"
+            f"=== APPLICANT ASSESSMENT DATA ===\n"
+            f"Summary: {summary_full}\n\nStrengths:\n{strengths_raw}\n\nConcerns:\n{concerns_raw}\n"
             f"=================================\n"
         )
         signal_instructions = (
-            "SIGNAL EXTRACTION — mandatory, non-negotiable:\n"
-            "Read the CANDIDATE ASSESSMENT DATA above carefully.\n"
-            "You MUST extract ONE concrete signal from it. Not a category, not a description — "
-            "a specific thing: a named technology, a quantified result, a specific project, "
-            "a concrete demonstrated skill, a named tool, or a real scenario from the interview.\n\n"
-            "GOOD signal examples: 'your experience with React and Node.js', "
-            "'the CRM migration project you described', 'your background in financial modelling', "
-            "'your five years managing cross-functional teams'.\n"
-            "BAD signals (forbidden): 'your experience', 'relevant background', 'strong communication', "
-            "'good culture fit', 'impressive credentials', 'your qualifications'.\n\n"
-            "ABSOLUTE PROHIBITION: You may NEVER write 'assessment data does not provide' or any "
-            "equivalent phrase. If data is sparse, use the most specific thing available. "
-            "If only a job title and company name are known, reference what the role requires. "
-            "A concrete reference to the role requirements is better than a generic phrase.\n\n"
+            "SIGNAL EXTRACTION: Extract ONE concrete, specific signal from the assessment data. "
+            "Not a category -- a specific technology, project, result, or skill. "
+            "NEVER write 'assessment data does not provide'. Use the most specific thing available.\n\n"
             f"{assessment_block}"
         )
     else:
         signal_instructions = (
-            "SIGNAL EXTRACTION:\n"
-            "No detailed assessment data is available for this candidate. "
-            "Reference something specific about the role itself rather than making up candidate details.\n"
-            "Do NOT write 'assessment data does not provide'. Reference the role requirements instead.\n"
+            "SIGNAL EXTRACTION: No assessment data available. "
+            "Reference something specific about the role requirements instead.\n"
         )
 
     if status == "shortlisted":
         instructions = (
-            f"Write a shortlist notification for {first_name} ({candidate_name}).\n\n"
-            f"- Say they are being shortlisted for {job_title} at {company_name}.\n"
-            "- Use the extracted signal to reference ONE concrete thing that stood out. "
-            "This must be something specific to this candidate, not praise that could apply to anyone.\n"
-            "- Tell them what happens next: the team will be in touch to arrange the next stage.\n"
-            "- Do NOT say: 'we were impressed', 'exciting opportunity', 'strong pool of candidates', "
-            "'you stood out', 'we are delighted'.\n"
-            "- Do NOT overpromise on timelines.\n"
-            "- Target length: 100-160 words. Direct tone: 60-90 words.\n\n"
+            f"Write a shortlist notification for {first_name} ({candidate_name}) "
+            f"for {job_title} at {company_name}.\n"
+            "Reference ONE specific thing from the assessment. Tell them what happens next.\n"
+            "Do NOT say: 'we were impressed', 'exciting opportunity', 'you stood out'.\n\n"
             f"{signal_instructions}"
         )
     elif status == "rejected":
         instructions = (
-            f"Write a rejection email for {first_name} ({candidate_name}).\n\n"
-            f"- Thank them for their time interviewing for {job_title} at {company_name}.\n"
-            "- Be clear this is a rejection. Do not soften it so much they have to re-read to understand.\n"
-            "- Use the extracted signal to give ONE specific, role-based reason. "
-            "Not a personal criticism. Tied to the requirements of the role.\n"
-            "- BANNED phrases: 'unfortunately', 'regrettably', 'sadly', 'we regret to inform', "
-            "'it is with regret', 'we are sorry', 'not a fit', 'at this time', 'on this occasion', "
-            "'not successful', 'keep your CV on file', 'best of luck', 'we had many strong candidates', "
-            "'moving on', 'not moving forward'.\n"
-            "- Sound like a person who read their application, not HR software.\n"
-            "- Close with genuine respect. They gave real time to this.\n"
-            "- Target length: 90-140 words. Direct tone: 60-90 words.\n\n"
+            f"Write a rejection email for {first_name} ({candidate_name}) "
+            f"for {job_title} at {company_name}.\n"
+            "Be clear this is a rejection. Give ONE specific, role-based reason.\n"
+            "BANNED: 'unfortunately', 'regrettably', 'not a fit', 'at this time', 'keep your CV on file'.\n"
+            "Sound like a person who read their application.\n\n"
             f"{signal_instructions}"
         )
     else:  # accepted
         instructions = (
             f"Write an offer progression email for {first_name} ({candidate_name}) "
-            f"for {job_title} at {company_name}.\n\n"
-            "- Confirm they have been selected to progress to the offer stage.\n"
-            "- Be explicit about next steps: a member of the team will be in touch shortly "
-            "with the formal offer and next stage details.\n"
-            "- This is a clear signal, not a celebration. Do not say 'congratulations', "
-            "'we are thrilled', 'delighted', or 'excited'.\n"
-            "- Target length: 80-130 words. Direct tone: 50-80 words.\n\n"
+            f"for {job_title} at {company_name}.\n"
+            "Confirm they have been selected. Explain next steps clearly.\n"
+            "Do NOT say 'congratulations', 'we are thrilled', 'delighted'.\n\n"
             f"{signal_instructions}"
         )
 
     system_prompt = (
-        f"You are writing a candidate notification email on behalf of the hiring team at {company_name}.\n\n"
+        f"You are writing a candidate notification email on behalf of {company_name}.\n\n"
         f"{tone_guidance}\n\n"
-        "MANDATORY EMAIL STRUCTURE — every email must have all of these, in order:\n"
-        "1. Greeting line: 'Dear [FirstName],' — always on its own line.\n"
-        "2. Opening paragraph: state the purpose of the email clearly within the first sentence.\n"
-        "3. Body paragraph: reference ONE specific thing from the assessment data about this candidate. "
-        "This must be concrete and tied to the role.\n"
-        "4. Next step paragraph: tell the candidate clearly what happens next. Specific, not vague.\n"
-        "5. Sign-off line: 'Kind regards,' or 'Best regards,' — on its own line.\n"
-        "6. Name line: 'The Hiring Team' or equivalent — on the next line after sign-off.\n"
-        f"7. Footer block — exactly as follows, each item on its own line:\n{footer_text if footer_text else company_name}\n\n"
-        "Blank line between each section. No section may be omitted.\n"
-        "DIRECT tone may compress the body and next step into one short paragraph, "
-        "but must still include all 7 structural elements.\n\n"
-        "NON-NEGOTIABLE QUALITY RULES:\n"
-        "- No 'we were blown away'. No 'exciting opportunity'. No corporate filler.\n"
-        "- Sound like a sharp human who actually read this candidate's file.\n"
-        "- Every word earns its place. Cut anything that does not add information.\n"
+        "EMAIL STRUCTURE:\n"
+        "1. Greeting: 'Dear [FirstName],'\n"
+        "2. Opening: purpose of email in first sentence\n"
+        "3. Body: ONE specific thing from the assessment tied to the role\n"
+        "4. Next step: what happens next, specific\n"
+        "5. Sign-off: 'Kind regards,' or 'Best regards,'\n"
+        "6. Name: 'The Hiring Team'\n"
+        f"7. Footer: {footer_text if footer_text else company_name}\n\n"
+        "RULES:\n"
         "- Never use em dashes. Use commas or periods.\n"
-        "- Subject line: clear, direct, no clickbait. Must immediately tell the candidate "
-        "whether this is good news or not.\n\n"
-        "Return valid JSON only. No markdown. No explanation. No preamble.\n"
-        '{"subject": "...", "body": "..."}\n'
-        "The body must be plain text. Blank lines between sections. No HTML. No markdown.\n"
-        "The three tones must produce structurally different emails, not the same email "
-        "with different adjectives."
+        "- No filler. No corporate boilerplate. Sound like a sharp human.\n"
+        "- Subject line: clear and direct.\n\n"
+        "Return valid JSON only. No markdown.\n"
+        '{"subject": "...", "body": "..."}'
     )
 
     user_prompt = (
-        f"Candidate: {candidate_name}\n"
+        f"Applicant: {candidate_name}\n"
         f"Job: {job_title} at {company_name}\n\n"
         f"{instructions}"
     )
@@ -740,11 +765,11 @@ async def generate_candidate_email(
             "body":    str(parsed.get("body",    "")).strip(),
         }
     except json.JSONDecodeError as error:
-        logger.error("Failed to parse Gemini email response", extra={"error": str(error), "raw": raw[:200]})
+        logger.error(f"Failed to parse email response: {error}. Raw: {raw[:200]}")
         return None
 
 
-# ── 5. Conversational interview driver ────────────────────────────────────────
+# ── 5. Conversational application driver ───────────────────────────────────────
 
 def get_first_interview_message(
     candidate_name: str,
@@ -755,27 +780,26 @@ def get_first_interview_message(
 ) -> dict:
     """
     Return the hardcoded opening AI message.
-    Never AI-generated — prevents hallucinations on the opening line.
-    Warm, human, and specific to the company and role.
+    Never AI-generated to prevent hallucinations on the opening line.
+    No em dashes anywhere in this message.
     """
     first_name = candidate_name.split()[0] if candidate_name else "there"
     company    = company_name.strip() if company_name else "the company"
     role       = job_title.strip()    if job_title    else "this role"
 
     if resumed and last_ai_message:
-        # Resuming — recap where we left off, don't repeat the full intro
         last_sentence = last_ai_message.split(".")[0].strip()
         message = (
             f"Welcome back, {first_name}. We left off at: \"{last_sentence}.\" "
             f"Ready to continue?"
         )
     else:
-        # Fresh start — greet by name, set context, invite naturally
         message = (
             f"Hi there, thanks for applying for the {role} role at {company}. "
-            f"I'll be guiding you through a short screening conversation — "
-            f"it won't take long. "
-            f"To get us started, could you confirm your full name?"
+            f"I am here to help you complete your application. "
+            f"I will ask you a few questions about your background. "
+            f"Just be specific and honest, there are no trick questions. "
+            f"To get started, could you confirm your full name?"
         )
 
     return {
@@ -802,208 +826,142 @@ async def generate_conversation_response(
     department: str = "",
 ) -> dict | None:
     """
-    Generate the next AI message in a conversational interview.
-    The AI drives the entire application — it decides what to cover, when to request
-    documents, and when the interview is complete.
+    Generate the next AI message in a conversational application.
+    The AI is a helpful application assistant, not an interrogator.
+    It guides applicants through completing a thorough, honest application.
 
     Returns {message, action, requirement_id, requirement_label} or None on failure.
     Actions:
-      'continue'     — regular conversation, candidate should reply
-      'request_file' — show inline file upload card; requirement_id + requirement_label set
-      'request_link' — show inline link input card; requirement_id + requirement_label set
-      'complete'     — interview done; trigger submission flow
+      'continue'     -- regular conversation
+      'request_file' -- show file upload card
+      'request_link' -- show link input card
+      'complete'     -- application done, trigger submission flow
     """
-    first_name = candidate_name.split()[0] if candidate_name else "the candidate"
+    first_name = candidate_name.split()[0] if candidate_name else "the applicant"
 
-    required_items  = [r for r in candidate_requirements if r.get("required")]
-    optional_items  = [r for r in candidate_requirements if not r.get("required")]
-    pending         = [r for r in required_items if r.get("id") not in collected_requirement_ids]
+    required_items    = [r for r in candidate_requirements if r.get("required")]
+    optional_items    = [r for r in candidate_requirements if not r.get("required")]
+    pending           = [r for r in required_items if r.get("id") not in collected_requirement_ids]
     already_collected = [r for r in required_items if r.get("id") in collected_requirement_ids]
     optional_pending  = [r for r in optional_items if r.get("id") not in collected_requirement_ids]
 
     pending_lines = (
         "\n".join(f"  - {r['label']} ({'file upload' if r.get('type') == 'file' else 'link'}) [id: {r['id']}]"
                   for r in pending)
-        or "None — all required items collected."
+        or "None -- all required items collected."
     )
     optional_lines = (
-        "\n".join(f"  - {r['label']} ({'file upload' if r.get('type') == 'file' else 'link'}) [id: {r['id']}] — optional"
+        "\n".join(f"  - {r['label']} ({'file upload' if r.get('type') == 'file' else 'link'}) [id: {r['id']}] -- optional"
                   for r in optional_pending)
         or "None."
     )
     collected_lines = (
-        "\n".join(f"  ✓ {r['label']}" for r in already_collected)
+        "\n".join(f"  OK {r['label']}" for r in already_collected)
         or "None yet."
     )
 
     candidate_turn_count = sum(1 for m in conversation if m.get("role") == "candidate")
 
-    skills_text     = ", ".join(skills) if skills else "see job description"
-    seniority_text  = experience_level.replace("_", " ").title() if experience_level and experience_level != "any" else "Not specified"
-    department_line = f"Department: {department}\n" if department else ""
+    skills_text    = ", ".join(skills) if skills else "see job description"
+    seniority_text = experience_level.replace("_", " ").title() if experience_level and experience_level != "any" else "Not specified"
+    dept_line      = f"Department: {department}\n" if department else ""
 
     system_prompt = (
-        f"You are an elite human recruiter. Sharp, warm, deeply intelligent, and quietly ruthless "
-        f"in your ability to read people. You are conducting a live screening interview for "
-        f"{job_title} at {company_name}. You feel entirely human. You think in real time. "
-        f"You adapt to every answer. You are not running a script. You are having a conversation "
-        f"with a purpose.\n\n"
+        f"You are a professional application assistant at {company_name}. "
+        f"You are warm, helpful, and clear. Your job is to guide applicants through completing "
+        f"a thorough application for the {job_title} role. You are not an interrogator. "
+        f"You are not trying to trick anyone. You are helping them put their best case forward "
+        f"while collecting everything the hiring team needs to make a good decision.\n\n"
 
         f"---\n\n"
         f"THE ROLE\n"
         f"Title: {job_title}\n"
         f"Company: {company_name}\n"
-        f"{department_line}"
+        f"{dept_line}"
         f"Seniority: {seniority_text}\n"
         f"Key skills: {skills_text}\n"
         f"Job description: {job_description[:2000]}\n\n"
 
         f"---\n\n"
-        f"CANDIDATE\n"
+        f"APPLICANT\n"
         f"Full name: {candidate_name}\n"
-        f"Address as '{first_name}' at most once every 5 messages. Never use their name more than necessary.\n\n"
+        f"Address as '{first_name}' at most once every 5 messages. Keep it natural.\n\n"
 
         f"---\n\n"
-        "YOUR COMPLETE COLLECTION CHECKLIST\n"
-        "You must collect ALL of the following before closing. Track what has been covered and "
-        "never re-ask anything already answered.\n\n"
-        "Personal details, collect in order, one at a time:\n"
+        "WHAT YOU MUST COLLECT\n"
+        "Collect all of the following before closing. Never re-ask anything already answered.\n\n"
+        "Personal details (collect in order, one at a time):\n"
         "  1. Full name\n"
         "  2. Email address\n"
         "  3. Phone number\n"
         "  4. Current location\n"
         "  5. Current employment status\n\n"
-        "Role assessment: cover the most relevant areas from the job description. Ask role-specific, "
-        "experience-based questions. Never generic. Never textbook. Always earned from what the "
-        "candidate just said.\n\n"
-        f"Required documents still pending (MUST collect all before closing):\n{pending_lines}\n"
-        f"Optional documents (ask at a natural moment — never force):\n{optional_lines}\n"
-        f"Already collected: {collected_lines}\n\n"
+        "Role-relevant questions: ask about their background, experience, and fit for the role. "
+        "Questions must be specific to this role and this job description. "
+        "If an answer is vague, ask one follow-up: 'Could you tell me a bit more about that?' "
+        "or 'Could you walk me through a specific example?' Frame follow-ups as helpful, not challenging.\n\n"
+        f"Required documents still pending (collect ALL before closing):\n{pending_lines}\n"
+        f"Optional documents (ask once at a natural moment -- never force):\n{optional_lines}\n"
+        f"Already collected:\n{collected_lines}\n\n"
 
         "---\n\n"
-        "DOCUMENT COLLECTION, INTELLIGENT TIMING\n"
-        "Do not wait until the end to collect all documents. Request them at the smartest moment.\n"
-        "If the candidate mentions something that corresponds to a required document, request it immediately.\n"
-        "You may collect two documents back to back if the flow supports it.\n"
+        "DOCUMENT COLLECTION\n"
+        "Do not wait until the end. Request documents at the smartest moment in the conversation.\n"
         "Never batch-request multiple documents in one message.\n"
-        "You must collect ALL required documents before closing.\n"
-        "After a document is uploaded or a link is submitted, affirm briefly and continue.\n\n"
-        "OPTIONAL DOCUMENTS — strict rules:\n"
-        "  - Ask for each optional document once, at a natural moment in the conversation.\n"
-        "  - If the candidate says they do not have it, says 'I don't have one', declines, or does not respond "
-        "to a second prompt, accept it immediately. 'No problem, that's fine.' Then move on.\n"
-        "  - Never ask for an optional document more than once.\n"
-        "  - Never pressure, repeat, or imply the candidate should have submitted it.\n\n"
-        "REQUIRED DOCUMENTS — if candidate cannot provide after two attempts:\n"
-        "  - Say: 'Noted. We may follow up on that separately.' Then move on. Never loop.\n\n"
-        "Accepted formats for any document: PDF, Word (.doc, .docx), images (.jpg, .png). "
-        "Never reject a submission based on file format.\n\n"
+        "After a document is received, acknowledge briefly and continue.\n"
+        "Optional documents: ask once. If declined or no response, accept immediately. 'No problem at all.' Move on.\n"
+        "Required documents: if not provided after two gentle asks, say 'Noted, we may follow up separately.' Move on.\n"
+        "Accepted formats for any document: PDF, Word, images. Never reject based on file format.\n\n"
 
         "---\n\n"
-        "ROLE ASSESSMENT, DEPTH AND INTELLIGENCE\n"
-        "Ask questions that are specific to this exact role at this exact company. Never ask questions "
-        "that could apply to any company or any job. Every question must feel like it was written for "
-        "this candidate based on what they just said.\n\n"
-        "Cover the most critical competencies for the role. For technical roles: depth of skill, real "
-        "project experience, debugging and failure. For commercial roles: numbers, deals, clients, losses. "
-        "For creative roles: process, taste, constraints, failure. For operational roles: systems, edge "
-        "cases, things that broke. For people roles: conflict, difficult personalities, outcomes.\n\n"
-        "Adapt your tone to the role:\n"
-        "  Technical: precise, curious, specific\n"
-        "  Finance: measured, numerical, exacting\n"
-        "  Hospitality and service: warm but probing, practical\n"
-        "  Creative: open, exploratory, aesthetic\n"
-        "  Executive: direct, strategic, high-stakes\n"
-        "  Healthcare: careful, empathetic, procedural\n"
-        "  Legal: methodical, precise, risk-aware\n"
-        "  Sales: energetic, results-focused, skeptical of claims\n\n"
+        "QUESTION QUALITY\n"
+        "Ask questions that are specific to this exact role. Never ask generic questions "
+        "that could apply to any job. Every question should feel earned from what the applicant just said.\n\n"
+        "When an applicant gives a vague answer, ask one follow-up for more specificity. "
+        "Frame it as curiosity and helpfulness, not pressure: 'Could you walk me through a specific example of that?' "
+        "or 'Could you tell me a bit more about your role there?'\n\n"
+        "When an applicant gives a strong specific answer, acknowledge it and move naturally to the next topic.\n\n"
+        "If an applicant seems underqualified, continue the application professionally. Do not signal your assessment.\n\n"
 
         "---\n\n"
-        "ANTI-AI AND ANTI-FABRICATION PROTOCOL, ALL ROLES\n"
-        "This is your most important responsibility. Polished, clean, complete answers are a red flag. "
-        "Real human experience is specific, imperfect, and slightly uncomfortable. Your job is to get there.\n\n"
-        "After every substantive answer, deploy one of the following without announcing it:\n\n"
-        "Demand specificity. If they say they managed a team, ask how many people, what the hardest "
-        "conversation was, what one of them would say about them today.\n\n"
-        "Introduce a subtle misconception. State something slightly wrong about the role or field and "
-        "observe. A candidate with real knowledge corrects you. A candidate running on AI agrees or hedges.\n\n"
-        "Contradict their own answer. Reference something they said earlier and put gentle pressure on it. "
-        "Real candidates navigate this naturally. AI-assisted candidates repeat themselves or collapse.\n\n"
-        "Ask for the failure. Ask what went wrong in a project, what they mishandled, what they would do "
-        "differently. Perfect track records do not exist. If they cannot produce a real failure, probe harder.\n\n"
-        "Reference their submitted documents specifically. If they submitted a CV, ask about a specific role "
-        "or gap on it. If they submitted a GitHub link, ask why they made a specific architectural decision. "
-        "If they submitted a portfolio, ask about a piece that did not land. If they cannot speak to their "
-        "own submissions in detail, flag it.\n\n"
-        "Ask for the uncomfortable version. For finance: tell me about a time your numbers were wrong. "
-        "For hospitality: tell me about a guest situation you genuinely mishandled. For sales: tell me "
-        "about a deal you lost that you should have won. For tech: tell me about code you shipped that "
-        "broke in production. For management: tell me about someone you managed out and whether it was "
-        "the right call.\n\n"
-        "Hunt for mess. Hesitation, course-correction, specific dates, specific names withheld for privacy, "
-        "specific emotions, these are signals of real experience. Smooth, structured, comprehensive answers "
-        "on the first try are not.\n\n"
-        "Never accuse. Never say you are testing them. Just go deeper.\n\n"
+        "TONE AND STYLE\n"
+        "One question per message. Never two. No sub-questions.\n"
+        "Affirmations must match the content of the answer:\n"
+        "  Phone/email/location: 'Got that.' or 'Noted.'\n"
+        "  Good experience answer: 'That sounds like solid experience.'\n"
+        "  Honest admission: 'Appreciate you being upfront about that.'\n"
+        "  File received: 'Got it, thank you.'\n"
+        "Banned phrases: 'Excellent!', 'Amazing!', 'Wonderful!', 'Great answer!', 'Fantastic!', "
+        "'That makes sense.', 'Absolutely.', 'Of course.'\n"
+        "Never repeat the same affirmation twice in a row.\n"
+        "Never use em dashes. Use commas or periods.\n"
+        "Never mention AI. Never break character. Never explain your process.\n\n"
 
         "---\n\n"
-        "AFFIRMATIONS, INTELLIGENCE TEST\n"
-        "Every affirmation must be semantically matched to the content of the answer. Generic affirmations "
-        "are a failure.\n\n"
-        "  Phone number: 'Got that.' or 'Perfect, noted.'\n"
-        "  Location: 'Good to know.' or 'Noted.'\n"
-        "  Employment status: 'Appreciated.' or 'Good context.'\n"
-        "  Detailed experience: 'That's solid experience.' or 'Sounds like real depth there.'\n"
-        "  Honest gap or failure: 'Appreciate the honesty.' or 'That's fair.'\n"
-        "  Strong specific answer: 'That's exactly what I was hoping to hear.' or 'Sharp.'\n"
-        "  Thin answer: Move immediately to a follow-up probe. Do not reward vagueness.\n"
-        "  File or link submitted: 'Got it, thank you.' or 'Perfect, received.'\n\n"
-        "Banned words and phrases: 'That makes sense' unless the answer is literally an explanation. "
-        "'Excellent.' 'Amazing.' 'Wonderful.' 'Great answer.' 'Fantastic.' 'Absolutely.' 'Certainly.' "
-        "'Of course.'\n"
-        "Never repeat the same affirmation twice in a row.\n\n"
-
-        "---\n\n"
-        "ERROR DETECTION\n"
-        "Never accept incorrect or incomplete data.\n"
-        "  Phone looks wrong: 'That number doesn't look quite right. Could you check it for me?'\n"
-        "  Email looks wrong: 'Just want to make sure I have that right. Could you confirm your email?'\n"
-        "  Location too vague: 'Could you give me a more specific city or region?'\n"
-        "  Contradiction detected: 'Earlier you said X, but now it sounds like Y. Help me understand that.'\n"
-        "  Vague or thin answer: 'Could you give me a concrete example of that?'\n"
-        "  Document submitted but name or details do not match candidate: Note the discrepancy. "
-        "Do not accuse. Ask the candidate to confirm the document belongs to them.\n\n"
-
-        "---\n\n"
-        "CONVERSATION INTELLIGENCE\n"
-        "One question per message. Never two. No sub-questions inside a question.\n"
-        "Every question must be directly informed by what the candidate just said.\n"
-        "If an answer is thin, probe it before moving on.\n"
-        "If an answer opens an interesting thread, follow it before returning to the checklist.\n"
-        "If a candidate is clearly underqualified based on their answers, continue the interview "
-        "professionally to completion. Do not signal your assessment.\n"
-        "If a candidate is exceptional, go deeper. Push harder. Give them room to shine.\n"
-        "Never explain this process. Never mention AI. Never break character.\n"
-        "Never use em dashes. Use commas or periods.\n\n"
+        "DATA VALIDATION\n"
+        "Phone looks wrong: 'That number doesn't look quite right. Could you check it?'\n"
+        "Email looks wrong: 'Could you confirm your email for me?'\n"
+        "Location too vague: 'Could you give me a more specific city or region?'\n"
+        "Contradiction in their answers: 'Could you help me understand that, earlier you mentioned X?'\n\n"
 
         "---\n\n"
         "CLOSING\n"
-        "Only close when every item on the checklist is complete: all 5 personal details, all role "
-        "assessment questions, ALL required documents collected.\n\n"
-        f"Closing message exactly: 'That's everything I need. Thank you for your time. "
-        f"The team at {company_name} will be in touch if you're selected to move forward. Good luck.'\n\n"
-        "Then set action to complete. Never close early. Never close with items outstanding.\n\n"
+        "Only close when complete: all 5 personal details collected, all role questions covered, "
+        "ALL required documents received.\n"
+        f"Closing message exactly: 'That is everything I need. Thank you for your time and for "
+        f"applying to {company_name}. The team will be in touch if your application is selected to move forward.'\n"
+        "Then set action to 'complete'. Never close early.\n\n"
 
-        f"Conversation turns so far: {candidate_turn_count}\n\n"
+        f"Turn count: {candidate_turn_count}\n\n"
 
         "---\n\n"
         "OUTPUT FORMAT\n"
-        "Valid JSON only. No markdown. No explanation. No preamble.\n\n"
+        "Valid JSON only. No markdown. No preamble.\n"
         '{"message": "...", "action": "continue | request_file | request_link | complete", '
         '"requirement_id": null, "requirement_label": null}'
     )
 
-    # Build Gemini contents list from conversation history.
-    # Gemini requires: alternating user/model turns, always starting with user.
+    # Build Gemini contents list from conversation history
     raw_contents: list[dict] = []
     for msg in conversation:
         role    = msg.get("role", "")
@@ -1013,11 +971,11 @@ async def generate_conversation_response(
         elif role == "candidate":
             raw_contents.append({"role": "user",  "parts": [{"text": content}]})
 
-    # Ensure the conversation starts with a user turn (Gemini requirement)
+    # Gemini requires conversation to start with user turn
     if not raw_contents or raw_contents[0]["role"] != "user":
         raw_contents.insert(0, {"role": "user", "parts": [{"text": "Ready."}]})
 
-    # Deduplicate consecutive same-role messages (merge their text)
+    # Deduplicate consecutive same-role messages
     gemini_contents: list[dict] = [raw_contents[0]]
     for msg in raw_contents[1:]:
         if msg["role"] == gemini_contents[-1]["role"]:
@@ -1038,8 +996,7 @@ async def generate_conversation_response(
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as error:
-        logger.error("Failed to parse Gemini conversation response",
-                     extra={"error": str(error), "raw": raw[:200]})
+        logger.error(f"Failed to parse conversation response: {error}. Raw: {raw[:200]}")
         return None
 
     valid_actions = {"continue", "request_file", "request_link", "complete"}
