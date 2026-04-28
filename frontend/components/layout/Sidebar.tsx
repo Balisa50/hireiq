@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Briefcase, Users,
-  Building2, Settings, Bell,
+  Building2, Settings, Bell, CreditCard, UserPlus,
   LogOut, ChevronDown, Menu, X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -109,9 +109,11 @@ function SidebarContent({ onNav }: { onNav?: () => void }) {
         <NavItem href="/candidates" label="Candidates"  icon={Users}           active={isActive("/candidates")} onClick={onNav} />
 
         <SectionLabel>Settings</SectionLabel>
-        <NavItem href="/settings/profile"            label="Company Profile"    icon={Building2} active={isActive("/settings/profile")}            onClick={onNav} />
-        <NavItem href="/settings/interview-defaults" label="Application Defaults" icon={Settings}  active={isActive("/settings/interview-defaults")} onClick={onNav} />
-        <NavItem href="/settings/notifications"      label="Notifications"      icon={Bell}      active={isActive("/settings/notifications")}      onClick={onNav} />
+        <NavItem href="/settings/profile"            label="Company Profile"      icon={Building2}  active={isActive("/settings/profile")}            onClick={onNav} />
+        <NavItem href="/settings/interview-defaults" label="Application Defaults" icon={Settings}   active={isActive("/settings/interview-defaults")} onClick={onNav} />
+        <NavItem href="/settings/notifications"      label="Notifications"        icon={Bell}       active={isActive("/settings/notifications")}      onClick={onNav} />
+        <NavItem href="/settings/team"               label="Team"                 icon={UserPlus}   active={isActive("/settings/team")}               onClick={onNav} />
+        <NavItem href="/settings/billing"            label="Billing"              icon={CreditCard} active={isActive("/settings/billing")}            onClick={onNav} />
       </nav>
 
       {/* Profile section */}

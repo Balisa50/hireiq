@@ -258,6 +258,8 @@ export default function NewJobPage() {
   // ── Application settings ──────────────────────────────────────────────────────
   const [questionCount, setQuestionCount] = useState(8);
   const [focusAreas, setFocusAreas]       = useState<string[]>(["Technical Skills", "Problem Solving", "Communication"]);
+  const [appDeadline, setAppDeadline]     = useState("");
+  const [appLimit, setAppLimit]           = useState(0);
 
   // ── Compensation ──────────────────────────────────────────────────────────────
   const [salaryDisclosed, setSalaryDisclosed] = useState(false);
@@ -430,9 +432,11 @@ export default function NewJobPage() {
         skills,
         salary_min:       salaryDisclosed && salaryMin ? parseInt(salaryMin, 10) : undefined,
         salary_max:       salaryDisclosed && salaryMax ? parseInt(salaryMax, 10) : undefined,
-        salary_currency:  salaryCurrency,
-        salary_period:    salaryPeriod,
-        salary_disclosed: salaryDisclosed,
+        salary_currency:      salaryCurrency,
+        salary_period:        salaryPeriod,
+        salary_disclosed:     salaryDisclosed,
+        application_deadline: appDeadline || undefined,
+        application_limit:    appLimit,
       });
       setPublishedToken(String(job.interview_link_token));
       setStep("published");
@@ -881,6 +885,32 @@ export default function NewJobPage() {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Job-level controls */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2 border-t border-border">
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-ink">Application deadline</label>
+            <input
+              type="date"
+              value={appDeadline}
+              onChange={(e) => setAppDeadline(e.target.value)}
+              className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors"
+            />
+            <p className="text-[12px] text-muted">Auto-closes on this date. Leave blank for no deadline.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-ink">Application limit</label>
+            <input
+              type="number"
+              min={0}
+              max={10000}
+              value={appLimit}
+              onChange={(e) => setAppLimit(Number(e.target.value))}
+              className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors"
+            />
+            <p className="text-[12px] text-muted">Max applications before auto-closing. 0 = unlimited.</p>
           </div>
         </div>
       </Card>

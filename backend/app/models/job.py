@@ -5,7 +5,7 @@ Pydantic models for job-related requests and responses.
 from pydantic import BaseModel, field_validator
 from typing import Optional, Literal
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, date
 
 
 VALID_EMPLOYMENT_TYPES = {"full_time", "part_time", "contract", "internship"}
@@ -146,6 +146,10 @@ class PublishJobRequest(BaseModel):
     salary_currency: str = "USD"
     salary_period: str = "year"
     salary_disclosed: bool = True
+    # Job-level controls
+    application_deadline: Optional[date] = None
+    application_limit: int = 0   # 0 = unlimited
+    is_paused: bool = False
 
     @field_validator("experience_level")
     @classmethod
@@ -219,6 +223,10 @@ class JobResponse(BaseModel):
     salary_currency: str = "USD"
     salary_period: str = "year"
     salary_disclosed: bool = True
+    # Job-level controls
+    application_deadline: Optional[date] = None
+    application_limit: int = 0
+    is_paused: bool = False
 
 
 class JobSummary(BaseModel):

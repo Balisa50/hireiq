@@ -7,7 +7,7 @@ import {
   ArrowLeft, Copy, Check, Power, PowerOff,
   Users, BarChart3, Calendar, Briefcase,
   MapPin, Clock, ExternalLink, ChevronRight,
-  AlertCircle, Loader2,
+  AlertCircle, Loader2, Trash2, PauseCircle, PlayCircle,
 } from "lucide-react";
 import { jobsAPI, candidatesAPI } from "@/lib/api";
 import type { Job, CandidateSummary } from "@/lib/types";
@@ -53,6 +53,12 @@ export default function JobDetailPage() {
   const [error, setError]           = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeletingJob, setIsDeletingJob] = useState(false);
+  const [isTogglingPause, setIsTogglingPause] = useState(false);
+  const [deadline, setDeadline] = useState("");
+  const [appLimit, setAppLimit] = useState(0);
+  const [controlsSaved, setControlsSaved] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -62,6 +68,8 @@ export default function JobDetailPage() {
       .then(([jobData, candidatesData]) => {
         setJob(jobData);
         setCandidates(candidatesData);
+        setDeadline(jobData.application_deadline ?? "");
+        setAppLimit(jobData.application_limit ?? 0);
       })
       .catch(() => setError("Failed to load job details."))
       .finally(() => setIsLoading(false));
@@ -74,6 +82,51 @@ export default function JobDetailPage() {
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   }, [job]);
+
+  const togglePause = useCallback(async () => {
+    if (!job) return;
+    const newPaused = !job.is_paused;
+    setIsTogglingPause(true);
+    try {
+      await jobsAPI.updateJobControls(job.id, { is_paused: newPaused });
+      setJob((prev) => prev ? { ...prev, is_paused: newPaused } : prev);
+    } catch {
+      alert("Failed to update job. Please try again.");
+    } finally {
+      setIsTogglingPause(false);
+    }
+  }, [job]);
+
+  const saveControls = useCallback(async () => {
+    if (!job) return;
+    try {
+      await jobsAPI.updateJobControls(job.id, {
+        application_deadline: deadline || null,
+        application_limit: appLimit,
+      });
+      setJob((prev) => prev ? {
+        ...prev,
+        application_deadline: deadline || null,
+        application_limit: appLimit,
+      } : prev);
+      setControlsSaved(true);
+      setTimeout(() => setControlsSaved(false), 2000);
+    } catch {
+      alert("Failed to save controls. Please try again.");
+    }
+  }, [job, deadline, appLimit]);
+
+  const deleteJob = useCallback(async () => {
+    if (!job) return;
+    setIsDeletingJob(true);
+    try {
+      await jobsAPI.deleteJob(job.id);
+      router.replace("/jobs");
+    } catch {
+      alert("Failed to delete job. Please try again.");
+      setIsDeletingJob(false);
+    }
+  }, [job, router]);
 
   const toggleJobStatus = useCallback(async () => {
     if (!job) return;
@@ -111,6 +164,7 @@ export default function JobDetailPage() {
 
   const interviewLink = jobsAPI.buildInterviewLink(job.interview_link_token);
   const isActive      = job.status === "active";
+  const isPaused      = isActive && job.is_paused;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-12">
@@ -133,6 +187,20 @@ export default function JobDetailPage() {
               )}
             </Button>
           )}
+          {isActive && (
+            <Button
+              variant="secondary"
+              size="sm"
+              isLoading={isTogglingPause}
+              onClick={togglePause}
+            >
+              {job.is_paused ? (
+                <><PlayCircle className="w-3.5 h-3.5" /> Resume</>
+              ) : (
+                <><PauseCircle className="w-3.5 h-3.5" /> Pause</>
+              )}
+            </Button>
+          )}
           <Button
             variant={isActive ? "danger" : "secondary"}
             size="sm"
@@ -145,6 +213,14 @@ export default function JobDetailPage() {
               <><Power className="w-3.5 h-3.5" /> Reopen Job</>
             )}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowDeleteModal(true)}
+            className="text-muted hover:text-danger"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
         </div>
       </div>
 
@@ -155,13 +231,15 @@ export default function JobDetailPage() {
             <div className="flex items-center gap-3 mb-2">
               <span
                 className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                  isActive
+                  isPaused
+                    ? "text-amber-400 bg-amber-400/10 border-amber-400/20"
+                    : isActive
                     ? "text-green-400 bg-green-400/10 border-green-400/20"
                     : "text-[var(--text-muted)] bg-white/5 border-[var(--border)]"
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-green-400 animate-pulse" : "bg-[var(--text-dim)]"}`} />
-                {isActive ? "Active" : "Closed"}
+                <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-amber-400" : isActive ? "bg-green-400 animate-pulse" : "bg-[var(--text-dim)]"}`} />
+                {isPaused ? "Paused" : isActive ? "Active" : "Closed"}
               </span>
             </div>
             <h1 className="text-2xl font-bold text-white">{job.title}</h1>
@@ -222,6 +300,66 @@ export default function JobDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Job controls */}
+      {isActive && (
+        <div className="glass rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider">
+              Application Controls
+            </h2>
+            {controlsSaved && (
+              <span className="text-[11px] text-green-400 flex items-center gap-1">
+                <Check className="w-3 h-3" /> Saved
+              </span>
+            )}
+          </div>
+
+          {job.is_paused && (
+            <div className="flex items-center gap-2 text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-xl px-3 py-2">
+              <PauseCircle className="w-3.5 h-3.5 shrink-0" />
+              Applications are paused — new candidates cannot start.
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-[var(--text-muted)]">
+                Application deadline
+              </label>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500 transition-colors [color-scheme:dark]"
+              />
+              <p className="text-[10px] text-[var(--text-dim)]">
+                Job auto-closes after this date. Leave blank for no deadline.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-[var(--text-muted)]">
+                Application limit
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={10000}
+                value={appLimit}
+                onChange={(e) => setAppLimit(Number(e.target.value))}
+                className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500 transition-colors"
+              />
+              <p className="text-[10px] text-[var(--text-dim)]">
+                Max applications before auto-closing. 0 = unlimited.
+              </p>
+            </div>
+          </div>
+
+          <Button variant="secondary" size="sm" onClick={saveControls}>
+            <Check className="w-3.5 h-3.5" /> Save Controls
+          </Button>
+        </div>
+      )}
 
       {/* Interview link */}
       {isActive && (
@@ -297,6 +435,39 @@ export default function JobDetailPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Delete job confirmation modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/30 backdrop-blur-sm">
+          <div className="bg-white border border-border rounded-[4px] w-full max-w-md shadow-xl">
+            <div className="p-6 space-y-3">
+              <h2 className="text-base font-semibold text-ink">Delete this job?</h2>
+              <p className="text-sm text-sub">
+                <span className="font-medium text-ink">{job.title}</span> and all{" "}
+                <span className="font-medium text-ink">{candidates.length}</span> candidate
+                {candidates.length !== 1 ? "s" : ""} will be permanently deleted. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 text-sm font-medium text-sub hover:text-ink transition-colors"
+              >
+                Cancel
+              </button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={deleteJob}
+                isLoading={isDeletingJob}
+                loadingText="Deleting…"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete job
+              </Button>
+            </div>
           </div>
         </div>
       )}

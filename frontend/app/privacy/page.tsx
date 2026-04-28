@@ -19,8 +19,8 @@ function Section({ id, title, children }: {
 }) {
   return (
     <section id={id} className="space-y-4">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
-      <div className="text-sm text-[var(--text-muted)] leading-7 space-y-4">{children}</div>
+      <h2 className="text-lg font-bold text-ink">{title}</h2>
+      <div className="text-sm text-sub leading-7 space-y-4">{children}</div>
     </section>
   );
 }
@@ -28,7 +28,7 @@ function Section({ id, title, children }: {
 function Li({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex items-start gap-2">
-      <span className="text-brand-400 mt-1.5 shrink-0">•</span>
+      <span className="text-ink mt-1.5 shrink-0">•</span>
       <span>{children}</span>
     </li>
   );
@@ -36,19 +36,19 @@ function Li({ children }: { children: React.ReactNode }) {
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-[var(--bg)]">
       {/* Minimal nav */}
-      <header className="border-b border-[var(--border)] px-6 py-4">
+      <header className="border-b border-border bg-white px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-brand-500 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-[4px] bg-ink flex items-center justify-center">
               <span className="text-white text-xs font-black">H</span>
             </div>
-            <span className="text-white font-bold text-sm">HireIQ</span>
+            <span className="text-ink font-bold text-sm">HireIQ</span>
           </Link>
           <Link
             href="/terms"
-            className="text-xs text-[var(--text-muted)] hover:text-white transition-colors"
+            className="text-xs text-sub hover:text-ink transition-colors"
           >
             Terms of Service →
           </Link>
@@ -58,11 +58,11 @@ export default function PrivacyPage() {
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-16">
         {/* Title */}
         <div className="mb-12">
-          <h1 className="text-3xl font-extrabold text-white mb-3">Privacy Policy</h1>
-          <p className="text-sm text-[var(--text-muted)]">
-            Effective date: <strong className="text-[var(--text)]">{EFFECTIVE_DATE}</strong>
+          <h1 className="text-3xl font-extrabold text-ink mb-3">Privacy Policy</h1>
+          <p className="text-sm text-sub">
+            Effective date: <strong className="text-ink">{EFFECTIVE_DATE}</strong>
           </p>
-          <p className="text-sm text-[var(--text-muted)] mt-3">
+          <p className="text-sm text-sub mt-3">
             {COMPANY_NAME} (&ldquo;HireIQ&rdquo;, &ldquo;we&rdquo;, &ldquo;our&rdquo;, or
             &ldquo;us&rdquo;) is committed to protecting the personal data of both the companies
             that use our platform (&ldquo;Customers&rdquo;) and the individuals who complete
@@ -70,7 +70,7 @@ export default function PrivacyPage() {
             Policy explains what personal data we collect, why we collect it, how we use and
             share it, and what rights you have over it.
           </p>
-          <p className="text-sm text-[var(--text-muted)] mt-3">
+          <p className="text-sm text-sub mt-3">
             If you are located in the European Economic Area (EEA), the United Kingdom (UK), or
             Switzerland, HireIQ is the data controller for your personal data and this policy
             reflects compliance with the UK GDPR and EU GDPR.
@@ -85,7 +85,7 @@ export default function PrivacyPage() {
             </p>
 
             <div>
-              <p className="font-semibold text-white mb-2">1.1 Company Account Data</p>
+              <p className="font-semibold text-ink mb-2">1.1 Company Account Data</p>
               <p>When a company creates a HireIQ account, we collect:</p>
               <ul className="space-y-1 mt-2">
                 <Li>Business email address and password (hashed, never stored in plain text)</Li>
@@ -97,7 +97,7 @@ export default function PrivacyPage() {
             </div>
 
             <div>
-              <p className="font-semibold text-white mb-2">1.2 Candidate Data</p>
+              <p className="font-semibold text-ink mb-2">1.2 Candidate Data</p>
               <p>
                 When an individual completes an AI interview via HireIQ, we collect:
               </p>
@@ -109,14 +109,14 @@ export default function PrivacyPage() {
                 <Li>Technical data: IP address (for fraud prevention), browser user agent</Li>
               </ul>
               <p className="mt-3">
-                Candidates are <strong className="text-white">not required to create an account</strong>.
+                Candidates are <strong className="text-ink">not required to create an account</strong>.
                 They interact with HireIQ solely through a single-use interview link provided by
                 the hiring company.
               </p>
             </div>
 
             <div>
-              <p className="font-semibold text-white mb-2">1.3 Data We Do Not Collect</p>
+              <p className="font-semibold text-ink mb-2">1.3 Data We Do Not Collect</p>
               <p>HireIQ does not collect, and explicitly prohibits, the collection or use of:</p>
               <ul className="space-y-1 mt-2">
                 <Li>Video or audio recordings of candidates</Li>
@@ -134,20 +134,20 @@ export default function PrivacyPage() {
             </p>
             <ul className="space-y-1 mt-2">
               <Li>
-                <strong className="text-white">Contract performance:</strong> processing company
+                <strong className="text-ink">Contract performance:</strong> processing company
                 account data and delivering the HireIQ service to Customers.
               </Li>
               <Li>
-                <strong className="text-white">Legitimate interests:</strong> fraud prevention,
+                <strong className="text-ink">Legitimate interests:</strong> fraud prevention,
                 platform security, product improvement, and sending relevant product updates to
                 existing Customers (where not overridden by the individual&apos;s interests or rights).
               </Li>
               <Li>
-                <strong className="text-white">Consent:</strong> for marketing communications to
+                <strong className="text-ink">Consent:</strong> for marketing communications to
                 prospective customers and optional cookies. Consent may be withdrawn at any time.
               </Li>
               <Li>
-                <strong className="text-white">Legal obligation:</strong> where we are required to
+                <strong className="text-ink">Legal obligation:</strong> where we are required to
                 retain or disclose data under applicable law.
               </Li>
             </ul>
@@ -186,7 +186,7 @@ export default function PrivacyPage() {
               during interviews, and score candidates at the end of each interview.
             </p>
             <p>
-              The AI-generated score and hiring recommendation are <strong className="text-white">
+              The AI-generated score and hiring recommendation are <strong className="text-ink">
               advisory only</strong>. They are tools to assist human hiring managers, not automated
               decisions with legal or similarly significant effect on candidates. No offer of
               employment or rejection decision is made by HireIQ or its AI. All final decisions
@@ -214,24 +214,24 @@ export default function PrivacyPage() {
             </p>
             <ul className="space-y-1">
               <Li>
-                <strong className="text-white">Service providers (data processors):</strong> Supabase
+                <strong className="text-ink">Service providers (data processors):</strong> Supabase
                 (database and authentication infrastructure), Groq (AI inference), our email
                 notification provider, and our payment processor. All processors are bound by
                 data processing agreements and are prohibited from using data for any purpose
                 other than delivering the service.
               </Li>
               <Li>
-                <strong className="text-white">Hiring companies:</strong> Candidate interview
+                <strong className="text-ink">Hiring companies:</strong> Candidate interview
                 transcripts, scores, and AI reports are visible to the hiring company that
                 published the job posting. Candidates consent to this by starting an interview.
               </Li>
               <Li>
-                <strong className="text-white">Legal requirements:</strong> We may disclose data
+                <strong className="text-ink">Legal requirements:</strong> We may disclose data
                 if required by law, court order, or to protect the rights, property, or safety of
                 HireIQ, our users, or the public.
               </Li>
               <Li>
-                <strong className="text-white">Business transfers:</strong> In the event of a
+                <strong className="text-ink">Business transfers:</strong> In the event of a
                 merger, acquisition, or sale of all or part of our assets, personal data may be
                 transferred as part of that transaction. We will provide notice before data
                 becomes subject to a different privacy policy.
@@ -246,21 +246,21 @@ export default function PrivacyPage() {
             </p>
             <ul className="space-y-1">
               <Li>
-                <strong className="text-white">Company account data:</strong> retained for the
+                <strong className="text-ink">Company account data:</strong> retained for the
                 duration of the account plus 90 days after account deletion, to allow recovery
                 in case of accidental deletion.
               </Li>
               <Li>
-                <strong className="text-white">Candidate interview data:</strong> retained for 24
+                <strong className="text-ink">Candidate interview data:</strong> retained for 24
                 months from the date of interview, or until the hiring company deletes the
                 record, whichever is sooner. Customers may request earlier deletion.
               </Li>
               <Li>
-                <strong className="text-white">Log and analytics data:</strong> retained for 12
+                <strong className="text-ink">Log and analytics data:</strong> retained for 12
                 months, then automatically purged.
               </Li>
               <Li>
-                <strong className="text-white">Billing records:</strong> retained for 7 years to
+                <strong className="text-ink">Billing records:</strong> retained for 7 years to
                 comply with financial regulations.
               </Li>
             </ul>
@@ -293,31 +293,31 @@ export default function PrivacyPage() {
             </p>
             <ul className="space-y-1">
               <Li>
-                <strong className="text-white">Right of access:</strong> request a copy of the
+                <strong className="text-ink">Right of access:</strong> request a copy of the
                 personal data we hold about you.
               </Li>
               <Li>
-                <strong className="text-white">Right to rectification:</strong> request correction
+                <strong className="text-ink">Right to rectification:</strong> request correction
                 of inaccurate personal data.
               </Li>
               <Li>
-                <strong className="text-white">Right to erasure (&ldquo;right to be forgotten&rdquo;):</strong>{" "}
+                <strong className="text-ink">Right to erasure (&ldquo;right to be forgotten&rdquo;):</strong>{" "}
                 request deletion of your personal data, subject to legal retention requirements.
               </Li>
               <Li>
-                <strong className="text-white">Right to restrict processing:</strong> request that
+                <strong className="text-ink">Right to restrict processing:</strong> request that
                 we limit how we use your data in certain circumstances.
               </Li>
               <Li>
-                <strong className="text-white">Right to data portability:</strong> receive your
+                <strong className="text-ink">Right to data portability:</strong> receive your
                 personal data in a structured, machine-readable format.
               </Li>
               <Li>
-                <strong className="text-white">Right to object:</strong> object to processing based
+                <strong className="text-ink">Right to object:</strong> object to processing based
                 on legitimate interests, including profiling.
               </Li>
               <Li>
-                <strong className="text-white">Rights related to automated decision-making:</strong>{" "}
+                <strong className="text-ink">Rights related to automated decision-making:</strong>{" "}
                 as described in Section 4.
               </Li>
             </ul>
@@ -384,8 +384,8 @@ export default function PrivacyPage() {
               For any questions about this Privacy Policy, to exercise your data rights, or to
               report a data protection concern, please contact our Privacy team:
             </p>
-            <div className="glass rounded-xl p-5 mt-2">
-              <p className="text-white font-semibold">{COMPANY_NAME}</p>
+            <div className="bg-white border border-border rounded-[4px] p-5 mt-2">
+              <p className="text-ink font-semibold">{COMPANY_NAME}</p>
               <p>{COMPANY_ADDRESS}</p>
               <p className="mt-2">
                 Email:{" "}
@@ -398,9 +398,9 @@ export default function PrivacyPage() {
         </div>
 
         {/* Footer nav */}
-        <div className="mt-16 pt-8 border-t border-[var(--border)] flex flex-wrap gap-4 text-sm text-[var(--text-muted)]">
-          <Link href="/" className="hover:text-white transition-colors">← Back to HireIQ</Link>
-          <Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
+        <div className="mt-16 pt-8 border-t border-border flex flex-wrap gap-4 text-sm text-muted">
+          <Link href="/" className="hover:text-ink transition-colors">← Back to HireIQ</Link>
+          <Link href="/terms" className="hover:text-ink transition-colors">Terms of Service</Link>
         </div>
       </main>
     </div>
