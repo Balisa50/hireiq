@@ -13,6 +13,7 @@ Handles the full candidate interview lifecycle:
 """
 
 import logging
+import re as _re
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import Response
@@ -52,6 +53,84 @@ router = APIRouter(prefix="/interviews", tags=["Interviews"])
 def _sanitize_answer(text: str) -> str:
     """Strip HTML tags from candidate answers to prevent XSS."""
     return bleach.clean(text, tags=[], strip=True)
+
+
+def _check_knockout(
+    candidate_message: str,
+    conversation: list[dict],
+    questions: list[dict],
+) -> tuple[bool, str]:
+    """
+    Evaluate whether the candidate's latest message violates a knockout condition.
+
+    Matches the candidate's answer to the question the AI most recently asked,
+    then checks the answer against the knockout threshold (yes/no expected answer,
+    number min/max).  Returns (knocked_out, rejection_reason).
+    """
+    if not questions:
+        return False, ""
+
+    msg = candidate_message.lower().strip()
+
+    # Last 4 AI messages — knock-out questions could have been asked recently
+    recent_ai_texts = [
+        m.get("content", "").lower()
+        for m in reversed(conversation)
+        if m.get("role") == "ai"
+    ][:4]
+
+    if not recent_ai_texts:
+        return False, ""
+
+    for q in questions:
+        if not q.get("knockout_enabled"):
+            continue
+
+        q_text     = q.get("question", "").lower()
+        q_words    = [w for w in q_text.split() if len(w) > 4][:6]
+        if not q_words:
+            continue
+
+        # Check if the AI asked this question recently (>=half of key words match)
+        threshold = max(1, len(q_words) // 2)
+        was_asked  = any(
+            sum(1 for w in q_words if w in ai_txt) >= threshold
+            for ai_txt in recent_ai_texts
+        )
+        if not was_asked:
+            continue
+
+        q_type    = q.get("type", "text")
+        ko_reason = q.get("knockout_rejection_reason") or "Requirements not met for this role"
+
+        if q_type == "yes_no":
+            expected = (q.get("knockout_expected_answer") or "yes").lower()
+            positive = bool(_re.search(
+                r"\b(yes|yeah|yep|yup|absolutely|correct|i do|i am|i have|definitely|sure|of course)\b",
+                msg,
+            ))
+            negative = bool(_re.search(
+                r"\b(no|nope|not\b|don't|do not|doesn't|cannot|can't|i'm not|i am not|never|unfortunately)\b",
+                msg,
+            ))
+            if expected == "yes" and negative and not positive:
+                return True, ko_reason
+            if expected == "no" and positive and not negative:
+                return True, ko_reason
+
+        elif q_type == "number":
+            numbers = _re.findall(r"\b(\d+(?:,\d{3})*(?:\.\d+)?)\b", candidate_message)
+            if not numbers:
+                continue
+            value   = float(numbers[0].replace(",", ""))
+            min_val = q.get("knockout_min_value")
+            max_val = q.get("knockout_max_value")
+            if min_val is not None and value < float(min_val):
+                return True, ko_reason
+            if max_val is not None and value > float(max_val):
+                return True, ko_reason
+
+    return False, ""
 
 
 # ── Public endpoints (no company auth — for candidates via interview link) ─────
@@ -508,6 +587,46 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
         + [l["requirement_id"] for l in submitted_links]
     )
     candidate_context = interview.get("candidate_context") or None
+
+    # ── Knockout check ────────────────────────────────────────────────────────
+    job_questions = job.get("questions") or []
+    knocked_out, ko_reason = _check_knockout(
+        candidate_message=candidate_msg,
+        conversation=updated_conv,
+        questions=job_questions,
+    )
+
+    if knocked_out:
+        rejection_msg = (
+            "Thank you for your time. Based on your response, there may be a mismatch "
+            "with the requirements for this role. We will keep your details on file but "
+            "are unable to progress your application at this stage."
+        )
+        ko_ai_entry = {
+            "role":              "ai",
+            "content":           rejection_msg,
+            "timestamp":         datetime.now(timezone.utc).isoformat(),
+            "action":            "complete",
+            "requirement_id":    None,
+            "requirement_label": None,
+        }
+        final_conv = updated_conv + [ko_ai_entry]
+        supabase.table("interviews").update({
+            "transcript":    final_conv,
+            "status":        "auto_rejected",
+            "knockout_reason": ko_reason,
+            "last_saved_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", str(request.interview_id)).execute()
+        logger.info(
+            "Knockout triggered for interview %s: %s",
+            str(request.interview_id), ko_reason,
+        )
+        return {
+            "message":           rejection_msg,
+            "action":            "complete",
+            "requirement_id":    None,
+            "requirement_label": None,
+        }
 
     ai_response = await generate_conversation_response(
         job_title=job.get("title", ""),

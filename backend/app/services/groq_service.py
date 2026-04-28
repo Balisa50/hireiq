@@ -908,6 +908,20 @@ async def generate_conversation_response(
             if pre_generated_questions else
             "Role-relevant questions: ask about their background, experience, and fit for the role.\n\n"
         ) +
+        + (
+            "KNOCKOUT / SCREENING QUESTIONS -- ask these FIRST, before any role questions:\n"
+            + "\n".join(
+                f"  [KNOCKOUT] {q.get('question', '')} "
+                f"(reject if: {q.get('knockout_rejection_reason', 'threshold not met')})"
+                for q in pre_generated_questions
+                if q.get("knockout_enabled")
+            )
+            + "\n\n"
+            "Ask each knockout question once. It is a SURFACE question. "
+            "Do not probe. Accept the answer and move on. "
+            "The system handles auto-rejection -- you just need to collect the answer clearly.\n\n"
+            if any(q.get("knockout_enabled") for q in pre_generated_questions) else ""
+        ) +
         "SEVERITY EXECUTION RULES -- follow these exactly:\n"
         "  SURFACE: Ask the question once. Accept any answer, even brief. Move on immediately. No follow-ups.\n"
         "  STANDARD: If the answer is vague or thin, ask one follow-up for more specificity. "

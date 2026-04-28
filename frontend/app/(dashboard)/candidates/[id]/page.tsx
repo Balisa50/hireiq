@@ -126,12 +126,13 @@ function Card({ title, label, children }: { title: string; label?: string; child
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
-    shortlisted: { label: "Shortlisted", color: "text-success",  bg: "bg-green-50 border-success/20" },
-    accepted:    { label: "Accepted",    color: "text-blue-600", bg: "bg-blue-50 border-blue-200" },
-    rejected:    { label: "Rejected",    color: "text-danger",   bg: "bg-red-50 border-danger/20" },
-    scored:      { label: "Scored",      color: "text-sub",      bg: "bg-[var(--bg)] border-border" },
-    completed:   { label: "Completed",   color: "text-sub",      bg: "bg-[var(--bg)] border-border" },
-    in_progress: { label: "In Progress", color: "text-warn",     bg: "bg-amber-50 border-amber-200" },
+    shortlisted:   { label: "Shortlisted",   color: "text-success",  bg: "bg-green-50 border-success/20" },
+    accepted:      { label: "Accepted",      color: "text-blue-600", bg: "bg-blue-50 border-blue-200" },
+    rejected:      { label: "Rejected",      color: "text-danger",   bg: "bg-red-50 border-danger/20" },
+    scored:        { label: "Scored",        color: "text-sub",      bg: "bg-[var(--bg)] border-border" },
+    completed:     { label: "Completed",     color: "text-sub",      bg: "bg-[var(--bg)] border-border" },
+    in_progress:   { label: "In Progress",   color: "text-warn",     bg: "bg-amber-50 border-amber-200" },
+    auto_rejected: { label: "Auto-Rejected", color: "text-danger",   bg: "bg-red-50 border-danger/20" },
   };
   const cfg = map[status] ?? { label: status, color: "text-muted", bg: "bg-[var(--bg)] border-border" };
   return (
@@ -639,7 +640,7 @@ export default function CandidateReportPage() {
     : null;
 
   const canShortlist = interview.status !== "shortlisted" && interview.status !== "accepted";
-  const canReject    = interview.status !== "rejected";
+  const canReject    = interview.status !== "rejected" && interview.status !== "auto_rejected";
   const canAccept    = interview.status !== "accepted";
 
   return (
@@ -737,8 +738,26 @@ export default function CandidateReportPage() {
         />
       )}
 
+      {/* Auto-rejected — knockout banner */}
+      {interview.status === "auto_rejected" && (
+        <div className="bg-red-50 border border-danger/30 rounded-[4px] p-5 space-y-1.5">
+          <div className="flex items-center gap-2.5">
+            <XCircle className="w-5 h-5 text-danger shrink-0" />
+            <span className="text-[15px] font-semibold text-danger">Auto-rejected by knockout rule</span>
+          </div>
+          <p className="text-[13px] text-danger/80 pl-8">
+            {interview.knockout_reason
+              ? interview.knockout_reason
+              : "This candidate did not meet a mandatory screening criterion and was automatically rejected."}
+          </p>
+          <p className="text-[12px] text-muted pl-8 pt-0.5">
+            You can still manually shortlist or override this decision using the buttons above.
+          </p>
+        </div>
+      )}
+
       {/* Not scored yet */}
-      {!isScored && (
+      {!isScored && interview.status !== "auto_rejected" && (
         <div className="bg-white border border-border rounded-[4px] p-8 text-center">
           <p className="text-sub text-sm">
             This application is still in progress. The AI assessment will appear once the candidate submits.

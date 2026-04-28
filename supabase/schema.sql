@@ -55,7 +55,11 @@ CREATE TABLE IF NOT EXISTS interviews (
     areas_of_concern                TEXT[],
     recommended_follow_up_questions TEXT[],
     hiring_recommendation           TEXT,
-    status                          TEXT DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'scored', 'shortlisted', 'rejected')),
+    document_interview_alignment    TEXT,
+    submitted_files                 JSONB DEFAULT '[]',
+    submitted_links                 JSONB DEFAULT '[]',
+    knockout_reason                 TEXT,
+    status                          TEXT DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'scored', 'shortlisted', 'rejected', 'accepted', 'auto_rejected')),
     started_at                      TIMESTAMPTZ DEFAULT NOW(),
     completed_at                    TIMESTAMPTZ,
     last_saved_at                   TIMESTAMPTZ DEFAULT NOW()
