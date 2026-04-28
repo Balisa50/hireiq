@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { candidatesAPI, jobsAPI } from "@/lib/api";
 import type { CandidateSummary, JobSummary } from "@/lib/types";
 import ScoreBadge from "@/components/ui/ScoreBadge";
@@ -47,6 +48,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function CandidatesPage() {
+  const router = useRouter();
   const [candidates, setCandidates] = useState<CandidateSummary[]>([]);
   const [jobs, setJobs]             = useState<JobSummary[]>([]);
   const [isLoading, setIsLoading]   = useState(true);
@@ -71,6 +73,8 @@ export default function CandidatesPage() {
     tryLoad();
   }, [jobFilter, statusFilter]);
 
+  // Bust Next.js router cache on mount so deleted jobs don't linger in the filter dropdown
+  useEffect(() => { router.refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { jobsAPI.listJobs().then(setJobs).catch(() => null); }, []);
   useEffect(() => { loadCandidates(); }, [loadCandidates]);
 

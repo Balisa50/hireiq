@@ -83,6 +83,82 @@ export interface SubmittedLink {
 
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
+// ── Job eligibility criteria (JSONB) ─────────────────────────────────────────
+
+export interface EligibilityCriteria {
+  min_education: "none" | "high_school" | "associate" | "bachelor" | "master" | "phd";
+  min_experience_years: number;
+  required_certifications: string[];
+  min_gpa: number | null;
+  work_auth_required: boolean;
+  required_languages: string[];
+}
+
+export const DEFAULT_ELIGIBILITY: EligibilityCriteria = {
+  min_education: "none",
+  min_experience_years: 0,
+  required_certifications: [],
+  min_gpa: null,
+  work_auth_required: false,
+  required_languages: ["English"],
+};
+
+// ── Candidate info to collect (JSONB) ────────────────────────────────────────
+
+export interface CandidateInfoConfig {
+  collect_phone: boolean;
+  collect_date_of_birth: boolean;
+  collect_nationality: boolean;
+  collect_current_location: boolean;
+  collect_employment_history: boolean;
+  collect_education_history: boolean;
+  collect_references: boolean;
+}
+
+export const DEFAULT_CANDIDATE_INFO_CONFIG: CandidateInfoConfig = {
+  collect_phone: true,
+  collect_date_of_birth: false,
+  collect_nationality: false,
+  collect_current_location: true,
+  collect_employment_history: true,
+  collect_education_history: true,
+  collect_references: false,
+};
+
+// ── DEI config (JSONB) ────────────────────────────────────────────────────────
+
+export interface DeiConfig {
+  enabled: boolean;
+  collect_ethnicity: boolean;
+  collect_gender: boolean;
+  collect_disability: boolean;
+  collect_veteran: boolean;
+}
+
+export const DEFAULT_DEI_CONFIG: DeiConfig = {
+  enabled: false,
+  collect_ethnicity: false,
+  collect_gender: false,
+  collect_disability: false,
+  collect_veteran: false,
+};
+
+// ── AI prefill response ───────────────────────────────────────────────────────
+
+export interface AIPrefillResult {
+  description: string;
+  required_skills: string[];
+  nice_to_have_skills: string[];
+  eligibility: {
+    min_education: string;
+    min_experience_years: number;
+    required_certifications: string[];
+    work_auth_required: boolean;
+    languages: string[];
+  };
+  questions: GeneratedQuestion[];
+}
+
 export interface Job {
   id: string;
   company_id: string;
@@ -101,16 +177,33 @@ export interface Job {
   updated_at: string | null;
   interview_count: number;
   average_score: number | null;
-  // Extended fields
+  // Basic info extras
   experience_level: string;
   work_arrangement: string;
   openings: number;
+  job_code: string | null;
+  hiring_manager: string | null;
+  // Location
+  relocation_considered: boolean;
+  travel_required: boolean;
+  // Compensation
   skills: string[];
+  nice_to_have_skills: string[];
   salary_min: number | null;
   salary_max: number | null;
   salary_currency: string;
   salary_period: string;
   salary_disclosed: boolean;
+  equity_offered: boolean;
+  benefits_summary: string | null;
+  // Extended config
+  eligibility_criteria: EligibilityCriteria;
+  candidate_info_config: CandidateInfoConfig;
+  dei_config: DeiConfig;
+  // AI deterrent
+  ai_deterrent_enabled: boolean;
+  ai_deterrent_placement: string;
+  ai_deterrent_message: string | null;
   // Job-level controls
   application_deadline: string | null;
   application_limit: number;
