@@ -200,6 +200,40 @@ async def start_interview_session(
     if job["status"] != "active":
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="This application is no longer active.")
 
+    # Pause check
+    if job.get("is_paused"):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Applications for this position are temporarily paused. Please check back later.",
+        )
+
+    # Deadline check
+    deadline = job.get("application_deadline")
+    if deadline:
+        from datetime import date as _date
+        today = _date.today().isoformat()
+        if today > deadline:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="The application deadline for this position has passed.",
+            )
+
+    # Application limit check
+    app_limit = job.get("application_limit") or 0
+    if app_limit > 0:
+        count_result = (
+            supabase.table("interviews")
+            .select("id", count="exact")
+            .eq("job_id", job["id"])
+            .execute()
+        )
+        total = count_result.count or 0
+        if total >= app_limit:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="This position has reached its maximum number of applications.",
+            )
+
     # Check if candidate already completed this interview
     completed_result = (
         supabase.table("interviews")

@@ -95,6 +95,10 @@ export interface Job {
   salary_currency: string;
   salary_period: string;
   salary_disclosed: boolean;
+  // Job-level controls
+  application_deadline: string | null;
+  application_limit: number;
+  is_paused: boolean;
 }
 
 export interface JobSummary {

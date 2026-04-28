@@ -19,8 +19,8 @@ function Section({ id, title, children }: {
 }) {
   return (
     <section id={id} className="space-y-4">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
-      <div className="text-sm text-[var(--text-muted)] leading-7 space-y-4">{children}</div>
+      <h2 className="text-lg font-bold text-ink">{title}</h2>
+      <div className="text-sm text-sub leading-7 space-y-4">{children}</div>
     </section>
   );
 }
@@ -28,7 +28,7 @@ function Section({ id, title, children }: {
 function Li({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex items-start gap-2">
-      <span className="text-brand-400 mt-1.5 shrink-0">•</span>
+      <span className="text-ink mt-1.5 shrink-0">•</span>
       <span>{children}</span>
     </li>
   );
@@ -36,19 +36,19 @@ function Li({ children }: { children: React.ReactNode }) {
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-[var(--bg)]">
       {/* Minimal nav */}
-      <header className="border-b border-[var(--border)] px-6 py-4">
+      <header className="border-b border-border bg-white px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-brand-500 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-[4px] bg-ink flex items-center justify-center">
               <span className="text-white text-xs font-black">H</span>
             </div>
-            <span className="text-white font-bold text-sm">HireIQ</span>
+            <span className="text-ink font-bold text-sm">HireIQ</span>
           </Link>
           <Link
             href="/privacy"
-            className="text-xs text-[var(--text-muted)] hover:text-white transition-colors"
+            className="text-xs text-sub hover:text-ink transition-colors"
           >
             Privacy Policy →
           </Link>
@@ -58,16 +58,16 @@ export default function TermsPage() {
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-16">
         {/* Title */}
         <div className="mb-12">
-          <h1 className="text-3xl font-extrabold text-white mb-3">Terms of Service</h1>
-          <p className="text-sm text-[var(--text-muted)]">
-            Effective date: <strong className="text-[var(--text)]">{EFFECTIVE_DATE}</strong>
+          <h1 className="text-3xl font-extrabold text-ink mb-3">Terms of Service</h1>
+          <p className="text-sm text-sub">
+            Effective date: <strong className="text-ink">{EFFECTIVE_DATE}</strong>
           </p>
-          <p className="text-sm text-[var(--text-muted)] mt-3">
+          <p className="text-sm text-sub mt-3">
             Please read these Terms of Service (&ldquo;Terms&rdquo;) carefully before using the HireIQ
             platform (the &ldquo;Service&rdquo;) operated by {COMPANY_NAME} (&ldquo;HireIQ&rdquo;,
             &ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;).
           </p>
-          <p className="text-sm text-[var(--text-muted)] mt-3">
+          <p className="text-sm text-sub mt-3">
             By creating an account or using the Service, you agree to be bound by these Terms. If you
             are entering into these Terms on behalf of a company or other legal entity, you represent
             that you have the authority to bind that entity. If you do not agree to these Terms, do
@@ -79,25 +79,25 @@ export default function TermsPage() {
           <Section id="definitions" title="1. Definitions">
             <ul className="space-y-1">
               <Li>
-                <strong className="text-white">&ldquo;Customer&rdquo;</strong> means a company or
+                <strong className="text-ink">&ldquo;Customer&rdquo;</strong> means a company or
                 individual who creates a HireIQ account to manage hiring processes.
               </Li>
               <Li>
-                <strong className="text-white">&ldquo;Candidate&rdquo;</strong> means an individual
+                <strong className="text-ink">&ldquo;Candidate&rdquo;</strong> means an individual
                 who completes an AI interview via a HireIQ interview link.
               </Li>
               <Li>
-                <strong className="text-white">&ldquo;Content&rdquo;</strong> means job descriptions,
+                <strong className="text-ink">&ldquo;Content&rdquo;</strong> means job descriptions,
                 questions, answers, reports, and any other material uploaded to or generated through
                 the Service.
               </Li>
               <Li>
-                <strong className="text-white">&ldquo;AI Features&rdquo;</strong> means the
+                <strong className="text-ink">&ldquo;AI Features&rdquo;</strong> means the
                 artificial intelligence capabilities of the Service including question generation,
                 adaptive follow-up questioning, and candidate scoring.
               </Li>
               <Li>
-                <strong className="text-white">&ldquo;Subscription&rdquo;</strong> means a paid plan
+                <strong className="text-ink">&ldquo;Subscription&rdquo;</strong> means a paid plan
                 that grants access to extended features of the Service.
               </Li>
             </ul>
@@ -215,19 +215,19 @@ export default function TermsPage() {
               design. Nothing in these Terms transfers any ownership rights to you.
             </p>
             <p>
-              <strong className="text-white">Customer Content:</strong> You retain ownership of the
+              <strong className="text-ink">Customer Content:</strong> You retain ownership of the
               job descriptions, questions, and other content you upload to the Service. You grant
               HireIQ a limited, non-exclusive, royalty-free licence to use that content solely to
               operate and provide the Service.
             </p>
             <p>
-              <strong className="text-white">Candidate Content:</strong> Interview transcripts and
+              <strong className="text-ink">Candidate Content:</strong> Interview transcripts and
               answers provided by candidates are owned by the candidate. The hiring company (Customer)
               receives a licence to use that content for the sole purpose of evaluating the candidate
               for the advertised role.
             </p>
             <p>
-              <strong className="text-white">AI Outputs:</strong> AI-generated interview questions,
+              <strong className="text-ink">AI Outputs:</strong> AI-generated interview questions,
               follow-up questions, and candidate assessment reports are owned by HireIQ but are
               licensed to you for use within the Service during your subscription period.
             </p>
@@ -355,25 +355,25 @@ export default function TermsPage() {
           <Section id="general" title="14. General Provisions">
             <ul className="space-y-1">
               <Li>
-                <strong className="text-white">Entire Agreement:</strong> These Terms, together with
+                <strong className="text-ink">Entire Agreement:</strong> These Terms, together with
                 our Privacy Policy, constitute the entire agreement between you and HireIQ regarding
                 the Service and supersede all prior agreements.
               </Li>
               <Li>
-                <strong className="text-white">Severability:</strong> If any provision is found
+                <strong className="text-ink">Severability:</strong> If any provision is found
                 unenforceable, the remaining provisions continue in full force.
               </Li>
               <Li>
-                <strong className="text-white">Waiver:</strong> Failure to enforce any right under
+                <strong className="text-ink">Waiver:</strong> Failure to enforce any right under
                 these Terms is not a waiver of that right.
               </Li>
               <Li>
-                <strong className="text-white">Assignment:</strong> You may not assign your rights
+                <strong className="text-ink">Assignment:</strong> You may not assign your rights
                 or obligations under these Terms without our prior written consent. HireIQ may
                 assign these Terms in connection with a merger, acquisition, or sale of assets.
               </Li>
               <Li>
-                <strong className="text-white">Changes:</strong> We may update these Terms from time
+                <strong className="text-ink">Changes:</strong> We may update these Terms from time
                 to time. Material changes will be notified by email 30 days in advance. Continued
                 use after the effective date constitutes acceptance.
               </Li>
@@ -384,8 +384,8 @@ export default function TermsPage() {
             <p>
               For legal enquiries or questions about these Terms:
             </p>
-            <div className="glass rounded-xl p-5 mt-2">
-              <p className="text-white font-semibold">{COMPANY_NAME}</p>
+            <div className="bg-white border border-border rounded-[4px] p-5 mt-2">
+              <p className="text-ink font-semibold">{COMPANY_NAME}</p>
               <p>{COMPANY_ADDRESS}</p>
               <p className="mt-2">
                 Email:{" "}
@@ -398,9 +398,9 @@ export default function TermsPage() {
         </div>
 
         {/* Footer nav */}
-        <div className="mt-16 pt-8 border-t border-[var(--border)] flex flex-wrap gap-4 text-sm text-[var(--text-muted)]">
-          <Link href="/" className="hover:text-white transition-colors">← Back to HireIQ</Link>
-          <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
+        <div className="mt-16 pt-8 border-t border-border flex flex-wrap gap-4 text-sm text-muted">
+          <Link href="/" className="hover:text-ink transition-colors">← Back to HireIQ</Link>
+          <Link href="/privacy" className="hover:text-ink transition-colors">Privacy Policy</Link>
         </div>
       </main>
     </div>

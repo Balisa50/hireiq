@@ -10,18 +10,15 @@ export default function GoogleCallbackPage() {
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    async function finalise() {
+    // Guard so the first of (getSession / onAuthStateChange) to fire wins.
+    let handled = false;
+
+    async function completeSignIn(token: string) {
+      if (handled) return;
+      handled = true;
+
       try {
-        // Supabase automatically exchanges the hash fragment for a session
-        const { data: { session }, error } = await supabase.auth.getSession();
-
-        if (error || !session?.access_token) {
-          throw new Error(error?.message ?? "No session returned from Google.");
-        }
-
-        const token = session.access_token;
-
-        // Tell the backend to get/create the company profile for this Google user
+        // Register / fetch the company profile on the backend
         const res = await fetch(`${API_BASE}/api/auth/google`, {
           method: "POST",
           headers: {
@@ -35,7 +32,7 @@ export default function GoogleCallbackPage() {
           throw new Error(body.detail ?? "Failed to sign in. Please try again.");
         }
 
-        // Store the Supabase JWT — the backend validates it directly
+        // Persist the Supabase JWT — auth-context + backend both use this
         localStorage.setItem("hireiq_token", token);
         window.location.href = "/dashboard";
       } catch (err) {
@@ -44,7 +41,40 @@ export default function GoogleCallbackPage() {
       }
     }
 
-    finalise();
+    // ── Path A: PKCE code exchange ──────────────────────────────────────────
+    // Supabase v2 defaults to PKCE. The provider redirects back with ?code=xxx.
+    // Supabase exchanges the code in the background; onAuthStateChange fires a
+    // SIGNED_IN event once it completes.  This is the primary path.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "SIGNED_IN" && session?.access_token) {
+          completeSignIn(session.access_token);
+        }
+      },
+    );
+
+    // ── Path B: Implicit / already-exchanged session ────────────────────────
+    // If the session is already in storage (e.g. implicit flow or a second
+    // render), getSession() returns it immediately — no need to wait for the
+    // auth-change event.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.access_token) {
+        completeSignIn(session.access_token);
+      }
+    });
+
+    // ── Timeout fallback ────────────────────────────────────────────────────
+    const timeout = setTimeout(() => {
+      if (!handled) {
+        setErrorMsg("Sign-in timed out. Please try again.");
+        setStatus("error");
+      }
+    }, 15_000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   if (status === "error") {

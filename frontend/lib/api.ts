@@ -189,7 +189,7 @@ export const companyAPI = {
     return apiFetch<Company>("/api/companies/me");
   },
 
-  async updateProfile(updates: Partial<Company>): Promise<Company> {
+  async updateProfile(updates: Partial<Company> & { logo_url?: string | null }): Promise<Company> {
     return apiFetch<Company>("/api/companies/me", {
       method: "PATCH",
       body: JSON.stringify(updates),
@@ -247,6 +247,9 @@ export const jobsAPI = {
     salary_currency?: string;
     salary_period?: string;
     salary_disclosed?: boolean;
+    application_deadline?: string;
+    application_limit?: number;
+    is_paused?: boolean;
   }): Promise<Job> {
     return apiFetch<Job>("/api/jobs/", {
       method: "POST",
@@ -256,6 +259,21 @@ export const jobsAPI = {
 
   async closeJob(jobId: string): Promise<void> {
     return apiFetch<void>(`/api/jobs/${jobId}/close`, { method: "PATCH" });
+  },
+
+  async deleteJob(jobId: string): Promise<{ deleted: boolean }> {
+    return apiFetch<{ deleted: boolean }>(`/api/jobs/${jobId}`, { method: "DELETE" });
+  },
+
+  async updateJobControls(jobId: string, controls: {
+    application_deadline?: string | null;
+    application_limit?: number;
+    is_paused?: boolean;
+  }): Promise<void> {
+    return apiFetch<void>(`/api/jobs/${jobId}/controls`, {
+      method: "PATCH",
+      body: JSON.stringify(controls),
+    });
   },
 
   async updateJobStatus(jobId: string, newStatus: "active" | "closed"): Promise<void> {

@@ -138,6 +138,10 @@ async def publish_job(
             "salary_currency":      request.salary_currency,
             "salary_period":        request.salary_period,
             "salary_disclosed":     request.salary_disclosed,
+            # Job-level controls
+            "application_deadline": request.application_deadline.isoformat() if request.application_deadline else None,
+            "application_limit":    request.application_limit,
+            "is_paused":            request.is_paused,
         }
 
         result = supabase.table("jobs").insert(job_data).execute()
@@ -212,6 +216,58 @@ async def close_job(
 
     supabase.table("jobs").update({"status": "closed"}).eq("id", job_id).execute()
     return {"message": "Job closed successfully."}
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_200_OK)
+async def delete_job(
+    job_id: str,
+    company_id: str = Depends(get_authenticated_company_id),
+) -> dict:
+    """
+    Permanently delete a job and all its associated interviews/candidates.
+    Only the owning company may delete their own jobs.
+    """
+    result = supabase.table("jobs").select("company_id").eq("id", job_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+
+    verify_company_owns_resource(result.data[0]["company_id"], company_id, "job")
+
+    # Cascade-delete interviews first (FK constraint)
+    supabase.table("interviews").delete().eq("job_id", job_id).execute()
+    supabase.table("jobs").delete().eq("id", job_id).execute()
+
+    logger.info("Job deleted", extra={"job_id": job_id, "company_id": company_id})
+    return {"deleted": True}
+
+
+@router.patch("/{job_id}/controls", response_model=dict)
+async def update_job_controls(
+    job_id: str,
+    payload: dict,
+    company_id: str = Depends(get_authenticated_company_id),
+) -> dict:
+    """
+    Update job-level controls: application_deadline, application_limit, is_paused.
+    Only fields included in the payload are updated.
+    """
+    result = supabase.table("jobs").select("company_id").eq("id", job_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+
+    verify_company_owns_resource(result.data[0]["company_id"], company_id, "job")
+
+    allowed = {"application_deadline", "application_limit", "is_paused"}
+    update_data = {k: v for k, v in payload.items() if k in allowed}
+
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid fields to update.",
+        )
+
+    supabase.table("jobs").update(update_data).eq("id", job_id).execute()
+    return {"updated": True, **update_data}
 
 
 @router.patch("/{job_id}/status", response_model=dict)

@@ -50,6 +50,7 @@ class CompanyProfileUpdateRequest(BaseModel):
     industry: Optional[str] = None
     company_size: Optional[str] = None
     website_url: Optional[str] = None
+    logo_url: Optional[str] = None
     default_question_count: Optional[int] = None
     default_focus_areas: Optional[list[str]] = None
     custom_intro_message: Optional[str] = None
