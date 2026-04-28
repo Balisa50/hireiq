@@ -85,44 +85,78 @@ export interface SubmittedLink {
 
 // ── Job eligibility criteria (JSONB) ─────────────────────────────────────────
 
+export interface LanguageRequirement {
+  language: string;
+  proficiency: "basic" | "conversational" | "professional" | "fluent" | "native";
+}
+
 export interface EligibilityCriteria {
-  min_education: "none" | "high_school" | "associate" | "bachelor" | "master" | "phd";
+  min_education: "none" | "high_school" | "associate" | "bachelor" | "master" | "phd" | "professional";
+  fields_of_study: string[];
+  equivalent_experience_accepted: boolean;
   min_experience_years: number;
+  experience_context: string;
   required_certifications: string[];
   min_gpa: number | null;
   work_auth_required: boolean;
-  required_languages: string[];
+  required_languages: LanguageRequirement[];
 }
 
 export const DEFAULT_ELIGIBILITY: EligibilityCriteria = {
   min_education: "none",
+  fields_of_study: [],
+  equivalent_experience_accepted: true,
   min_experience_years: 0,
+  experience_context: "",
   required_certifications: [],
   min_gpa: null,
   work_auth_required: false,
-  required_languages: ["English"],
+  required_languages: [{ language: "English", proficiency: "professional" }],
 };
 
 // ── Candidate info to collect (JSONB) ────────────────────────────────────────
 
 export interface CandidateInfoConfig {
+  // 6A — Personal
   collect_phone: boolean;
   collect_date_of_birth: boolean;
+  collect_gender: boolean;
   collect_nationality: boolean;
+  collect_country_of_residence: boolean;
   collect_current_location: boolean;
+  collect_full_address: boolean;
+  // 6B — Professional
+  collect_current_job_title: boolean;
+  collect_current_employer: boolean;
+  collect_total_years_exp: boolean;
+  collect_notice_period: boolean;
+  collect_expected_salary: boolean;
   collect_employment_history: boolean;
   collect_education_history: boolean;
+  collect_willing_to_relocate: boolean;
+  // 6C — References
   collect_references: boolean;
+  references_count: number;
 }
 
 export const DEFAULT_CANDIDATE_INFO_CONFIG: CandidateInfoConfig = {
   collect_phone: true,
   collect_date_of_birth: false,
+  collect_gender: false,
   collect_nationality: false,
+  collect_country_of_residence: false,
   collect_current_location: true,
+  collect_full_address: false,
+  collect_current_job_title: true,
+  collect_current_employer: true,
+  collect_total_years_exp: false,
+  collect_notice_period: true,
+  collect_expected_salary: false,
   collect_employment_history: true,
   collect_education_history: true,
+  collect_willing_to_relocate: false,
   collect_references: false,
+  references_count: 2,
 };
 
 // ── DEI config (JSONB) ────────────────────────────────────────────────────────
@@ -177,6 +211,8 @@ export interface Job {
   updated_at: string | null;
   interview_count: number;
   average_score: number | null;
+  // Visibility
+  job_visibility: string;
   // Basic info extras
   experience_level: string;
   work_arrangement: string;

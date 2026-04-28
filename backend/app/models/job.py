@@ -157,7 +157,8 @@ class PublishJobRequest(BaseModel):
     questions: list[GeneratedQuestion] = []
     candidate_requirements: list[CandidateRequirement] = []
 
-    # ── Basic info extras ───────────────────────────────────────────────────
+    # ── Section 1 ───────────────────────────────────────────────────────────
+    job_visibility: str = "public"
     experience_level: str = "any"
     work_arrangement: str = "on_site"
     openings: int = 1
@@ -253,7 +254,8 @@ class JobResponse(BaseModel):
     updated_at: Optional[datetime] = None
     interview_count: int = 0
     average_score: Optional[float] = None
-    # Basic info extras
+    # Section 1
+    job_visibility: str = "public"
     experience_level: str = "any"
     work_arrangement: str = "on_site"
     openings: int = 1

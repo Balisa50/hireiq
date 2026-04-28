@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef, KeyboardEvent } from "react";
 import Link from "next/link";
 import {
   Check, AlertCircle, CheckCircle2, Plus, FileText, Link2, X,
-  Sparkles,
+  Sparkles, Globe, Lock, EyeOff,
 } from "lucide-react";
 import { jobsAPI } from "@/lib/api";
 import type {
@@ -13,6 +13,7 @@ import type {
   EligibilityCriteria,
   CandidateInfoConfig,
   DeiConfig,
+  LanguageRequirement,
 } from "@/lib/types";
 import {
   EMPLOYMENT_TYPES,
@@ -29,6 +30,7 @@ import Input from "@/components/ui/Input";
 
 type Phase = "intro" | "form" | "published";
 type ScreeningType = "yes_no" | "number" | "text";
+type JobVisibility = "public" | "internal" | "unlisted";
 
 interface ScreeningQuestion {
   id: string;
@@ -58,6 +60,20 @@ interface CustomDoc {
 }
 
 function wordCount(t: string) { return t.trim().split(/\s+/).filter(Boolean).length; }
+
+const LANGUAGE_PROFICIENCIES: Array<{ value: LanguageRequirement["proficiency"]; label: string }> = [
+  { value: "basic",         label: "Basic" },
+  { value: "conversational",label: "Conversational" },
+  { value: "professional",  label: "Professional" },
+  { value: "fluent",        label: "Fluent" },
+  { value: "native",        label: "Native" },
+];
+
+const JOB_VISIBILITY_OPTIONS: Array<{ value: JobVisibility; label: string; desc: string; icon: React.ReactNode }> = [
+  { value: "public",   label: "Public",         desc: "Listed on your public job board",        icon: <Globe className="w-4 h-4" /> },
+  { value: "internal", label: "Internal Only",  desc: "Visible to employees with the link",     icon: <Lock className="w-4 h-4" /> },
+  { value: "unlisted", label: "Unlisted",        desc: "Link-only — not on public board",        icon: <EyeOff className="w-4 h-4" /> },
+];
 
 // ── Reusable UI bits ──────────────────────────────────────────────────────────
 
@@ -175,6 +191,72 @@ function TagInput({
   );
 }
 
+// ── Language rows ──────────────────────────────────────────────────────────────
+
+function LanguageRows({
+  languages, onChange,
+}: {
+  languages: LanguageRequirement[];
+  onChange: (v: LanguageRequirement[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+
+  const addLang = useCallback(() => {
+    const name = draft.trim();
+    if (!name || languages.some((l) => l.language.toLowerCase() === name.toLowerCase())) return;
+    onChange([...languages, { language: name, proficiency: "professional" }]);
+    setDraft("");
+  }, [draft, languages, onChange]);
+
+  return (
+    <div className="space-y-2">
+      {languages.map((lang, i) => (
+        <div key={lang.language} className="flex items-center gap-2">
+          <span className="flex-1 text-[13px] text-ink bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2">
+            {lang.language}
+          </span>
+          <select
+            value={lang.proficiency}
+            onChange={(e) => {
+              const updated = [...languages];
+              updated[i] = { ...lang, proficiency: e.target.value as LanguageRequirement["proficiency"] };
+              onChange(updated);
+            }}
+            className="bg-white border border-border rounded-[4px] px-2.5 py-2 text-[13px] text-ink outline-none appearance-none cursor-pointer focus:border-ink transition-colors"
+          >
+            {LANGUAGE_PROFICIENCIES.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => onChange(languages.filter((_, j) => j !== i))}
+            className="text-muted hover:text-danger transition-colors shrink-0 p-1"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLang(); } }}
+          placeholder="Add a language…"
+          className="flex-1 text-[13px] text-ink bg-white border border-border rounded-[4px] px-3 py-2 outline-none focus:border-ink transition-colors placeholder:text-muted"
+        />
+        <button
+          type="button"
+          onClick={addLang}
+          className="px-3 py-2 rounded-[4px] border border-border bg-white text-[13px] text-sub hover:border-ink hover:text-ink transition-colors flex items-center gap-1.5"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Screening question presets ─────────────────────────────────────────────────
 
 const SCREENING_PRESETS: Array<{ key: string; label: string; template: Partial<ScreeningQuestion> }> = [
@@ -220,17 +302,18 @@ export default function NewJobPage() {
   const [department, setDepartment] = useState("");
 
   // ── Section 1: Basic info ─────────────────────────────────────────────────
-  const [employmentType, setEmploymentType]   = useState("full_time");
-  const [experienceLevel, setExperienceLevel] = useState("any");
-  const [openings, setOpenings]               = useState(1);
-  const [jobCode, setJobCode]                 = useState("");
-  const [hiringManager, setHiringManager]     = useState("");
+  const [jobVisibility, setJobVisibility]             = useState<JobVisibility>("public");
+  const [employmentType, setEmploymentType]           = useState("full_time");
+  const [experienceLevel, setExperienceLevel]         = useState("any");
+  const [openings, setOpenings]                       = useState(1);
+  const [jobCode, setJobCode]                         = useState("");
+  const [hiringManager, setHiringManager]             = useState("");
 
   // ── Section 2: Location ───────────────────────────────────────────────────
-  const [workArrangement, setWorkArrangement]         = useState("on_site");
-  const [location, setLocation]                       = useState("");
+  const [workArrangement, setWorkArrangement]           = useState("on_site");
+  const [location, setLocation]                         = useState("");
   const [relocationConsidered, setRelocationConsidered] = useState(false);
-  const [travelRequired, setTravelRequired]           = useState(false);
+  const [travelRequired, setTravelRequired]             = useState(false);
 
   // ── Section 3: Compensation ───────────────────────────────────────────────
   const [salaryDisclosed, setSalaryDisclosed] = useState(false);
@@ -242,46 +325,66 @@ export default function NewJobPage() {
   const [benefitsSummary, setBenefitsSummary] = useState("");
 
   // ── Section 4: Description & skills ──────────────────────────────────────
-  const [jobDescription, setJobDescription]       = useState("");
-  const [skills, setSkills]                       = useState<string[]>([]);
-  const [niceToHaveSkills, setNiceToHaveSkills]   = useState<string[]>([]);
+  const [jobDescription, setJobDescription]     = useState("");
+  const [skills, setSkills]                     = useState<string[]>([]);
+  const [niceToHaveSkills, setNiceToHaveSkills] = useState<string[]>([]);
 
   // ── Section 5: Eligibility ────────────────────────────────────────────────
-  const [minEducation, setMinEducation]           = useState<EligibilityCriteria["min_education"]>("none");
-  const [minExpYears, setMinExpYears]             = useState(0);
-  const [requiredCerts, setRequiredCerts]         = useState<string[]>([]);
-  const [minGPA, setMinGPA]                       = useState("");
-  const [workAuthRequired, setWorkAuthRequired]   = useState(false);
-  const [requiredLanguages, setRequiredLanguages] = useState<string[]>(["English"]);
-  const [knockoutQs, setKnockoutQs]               = useState<ScreeningQuestion[]>([]);
+  const [minEducation, setMinEducation]             = useState<EligibilityCriteria["min_education"]>("none");
+  const [fieldsOfStudy, setFieldsOfStudy]           = useState<string[]>([]);
+  const [equivalentExpAccepted, setEquivalentExpAccepted] = useState(true);
+  const [minExpYears, setMinExpYears]               = useState(0);
+  const [experienceContext, setExperienceContext]   = useState("");
+  const [requiredCerts, setRequiredCerts]           = useState<string[]>([]);
+  const [minGPA, setMinGPA]                         = useState("");
+  const [workAuthRequired, setWorkAuthRequired]     = useState(false);
+  const [languages, setLanguages]                   = useState<LanguageRequirement[]>([
+    { language: "English", proficiency: "professional" },
+  ]);
+  const [knockoutQs, setKnockoutQs]                 = useState<ScreeningQuestion[]>([]);
 
-  // ── Section 6: Candidate info ─────────────────────────────────────────────
-  const [collectPhone, setCollectPhone]             = useState(true);
-  const [collectDOB, setCollectDOB]                 = useState(false);
-  const [collectNationality, setCollectNationality] = useState(false);
-  const [collectCurrLocation, setCollectCurrLocation] = useState(true);
-  const [collectEmpHistory, setCollectEmpHistory]   = useState(true);
-  const [collectEduHistory, setCollectEduHistory]   = useState(true);
-  const [collectRefs, setCollectRefs]               = useState(false);
-  // Documents
-  const [activeDocPresets, setActiveDocPresets] = useState<Set<string>>(new Set(["cv"]));
-  const [docPresetRequired, setDocPresetRequired] = useState<Record<string, boolean>>({ cv: true });
-  const [customDocs, setCustomDocs]               = useState<CustomDoc[]>([]);
+  // ── Section 6A: Personal details ─────────────────────────────────────────
+  const [collectPhone, setCollectPhone]                   = useState(true);
+  const [collectDOB, setCollectDOB]                       = useState(false);
+  const [collectGender, setCollectGender]                 = useState(false);
+  const [collectNationality, setCollectNationality]       = useState(false);
+  const [collectCountryOfResidence, setCollectCountryOfResidence] = useState(false);
+  const [collectCurrLocation, setCollectCurrLocation]     = useState(true);
+  const [collectFullAddress, setCollectFullAddress]       = useState(false);
+
+  // ── Section 6B: Professional background ──────────────────────────────────
+  const [collectCurrentJobTitle, setCollectCurrentJobTitle]   = useState(true);
+  const [collectCurrentEmployer, setCollectCurrentEmployer]   = useState(true);
+  const [collectTotalYearsExp, setCollectTotalYearsExp]       = useState(false);
+  const [collectNoticePeriod, setCollectNoticePeriod]         = useState(true);
+  const [collectExpectedSalary, setCollectExpectedSalary]     = useState(false);
+  const [collectEmpHistory, setCollectEmpHistory]             = useState(true);
+  const [collectEduHistory, setCollectEduHistory]             = useState(true);
+  const [collectWillingToRelocate, setCollectWillingToRelocate] = useState(false);
+
+  // ── Section 6C: References ────────────────────────────────────────────────
+  const [collectRefs, setCollectRefs] = useState(false);
+  const [refsCount, setRefsCount]     = useState(2);
+
+  // ── Documents ─────────────────────────────────────────────────────────────
+  const [activeDocPresets, setActiveDocPresets]     = useState<Set<string>>(new Set(["cv"]));
+  const [docPresetRequired, setDocPresetRequired]   = useState<Record<string, boolean>>({ cv: true });
+  const [customDocs, setCustomDocs]                 = useState<CustomDoc[]>([]);
 
   // ── Section 7: DEI ────────────────────────────────────────────────────────
-  const [deiEnabled, setDeiEnabled]     = useState(false);
-  const [deiEthnicity, setDeiEthnicity] = useState(false);
-  const [deiGender, setDeiGender]       = useState(false);
+  const [deiEnabled, setDeiEnabled]       = useState(false);
+  const [deiEthnicity, setDeiEthnicity]   = useState(false);
+  const [deiGender, setDeiGender]         = useState(false);
   const [deiDisability, setDeiDisability] = useState(false);
-  const [deiVeteran, setDeiVeteran]     = useState(false);
+  const [deiVeteran, setDeiVeteran]       = useState(false);
 
   // ── Section 8: Custom interview questions ─────────────────────────────────
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
 
   // ── Section 9: AI deterrent ───────────────────────────────────────────────
-  const [deterrentEnabled, setDeterrentEnabled]   = useState(true);
+  const [deterrentEnabled, setDeterrentEnabled]     = useState(true);
   const [deterrentPlacement, setDeterrentPlacement] = useState("before_questions");
-  const [deterrentMessage, setDeterrentMessage]   = useState(
+  const [deterrentMessage, setDeterrentMessage]     = useState(
     "This application uses AI to assist in evaluation. We can detect AI-generated responses — please answer genuinely and in your own words."
   );
 
@@ -290,11 +393,11 @@ export default function NewJobPage() {
   const [appLimit, setAppLimit]       = useState(0);
 
   // ── UI state ──────────────────────────────────────────────────────────────
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [errors, setErrors]             = useState<Record<string, string>>({});
-  const [apiError, setApiError]         = useState("");
-  const [publishedToken, setPublishedToken] = useState("");
-  const [linkCopied, setLinkCopied]     = useState(false);
+  const [isPublishing, setIsPublishing]       = useState(false);
+  const [errors, setErrors]                   = useState<Record<string, string>>({});
+  const [apiError, setApiError]               = useState("");
+  const [publishedToken, setPublishedToken]   = useState("");
+  const [linkCopied, setLinkCopied]           = useState(false);
 
   const wc = wordCount(jobDescription);
 
@@ -317,7 +420,15 @@ export default function NewJobPage() {
         setMinExpYears(e.min_experience_years ?? 0);
         setRequiredCerts(e.required_certifications ?? []);
         setWorkAuthRequired(e.work_auth_required ?? false);
-        setRequiredLanguages(e.languages?.length ? e.languages : ["English"]);
+        // AI returns languages as string[] — convert to LanguageRequirement[]
+        if (e.languages?.length) {
+          setLanguages(
+            (e.languages as string[]).map((l) => ({
+              language: l,
+              proficiency: "professional" as const,
+            }))
+          );
+        }
       }
       if (result.questions?.length) {
         setCustomQuestions(result.questions.map((q) => ({
@@ -376,7 +487,7 @@ export default function NewJobPage() {
     setCustomQuestions((p) => p.filter((q) => q.id !== id));
   }, []);
 
-  // ── Doc presets helpers ────────────────────────────────────────────────────
+  // ── Doc preset helpers ─────────────────────────────────────────────────────
   const toggleDocPreset = useCallback((id: string) => {
     setActiveDocPresets((prev) => {
       const next = new Set(prev);
@@ -409,39 +520,58 @@ export default function NewJobPage() {
   }, [activeDocPresets, docPresetRequired, customDocs]);
 
   const buildEligibility = useCallback((): EligibilityCriteria => ({
-    min_education: minEducation,
-    min_experience_years: minExpYears,
-    required_certifications: requiredCerts,
-    min_gpa: minGPA ? parseFloat(minGPA) : null,
-    work_auth_required: workAuthRequired,
-    required_languages: requiredLanguages,
-  }), [minEducation, minExpYears, requiredCerts, minGPA, workAuthRequired, requiredLanguages]);
+    min_education:               minEducation,
+    fields_of_study:             fieldsOfStudy,
+    equivalent_experience_accepted: equivalentExpAccepted,
+    min_experience_years:        minExpYears,
+    experience_context:          experienceContext,
+    required_certifications:     requiredCerts,
+    min_gpa:                     minGPA ? parseFloat(minGPA) : null,
+    work_auth_required:          workAuthRequired,
+    required_languages:          languages,
+  }), [minEducation, fieldsOfStudy, equivalentExpAccepted, minExpYears, experienceContext, requiredCerts, minGPA, workAuthRequired, languages]);
 
   const buildCandidateInfoConfig = useCallback((): CandidateInfoConfig => ({
-    collect_phone: collectPhone,
-    collect_date_of_birth: collectDOB,
-    collect_nationality: collectNationality,
-    collect_current_location: collectCurrLocation,
+    collect_phone:              collectPhone,
+    collect_date_of_birth:      collectDOB,
+    collect_gender:             collectGender,
+    collect_nationality:        collectNationality,
+    collect_country_of_residence: collectCountryOfResidence,
+    collect_current_location:   collectCurrLocation,
+    collect_full_address:       collectFullAddress,
+    collect_current_job_title:  collectCurrentJobTitle,
+    collect_current_employer:   collectCurrentEmployer,
+    collect_total_years_exp:    collectTotalYearsExp,
+    collect_notice_period:      collectNoticePeriod,
+    collect_expected_salary:    collectExpectedSalary,
     collect_employment_history: collectEmpHistory,
-    collect_education_history: collectEduHistory,
-    collect_references: collectRefs,
-  }), [collectPhone, collectDOB, collectNationality, collectCurrLocation, collectEmpHistory, collectEduHistory, collectRefs]);
+    collect_education_history:  collectEduHistory,
+    collect_willing_to_relocate: collectWillingToRelocate,
+    collect_references:         collectRefs,
+    references_count:           refsCount,
+  }), [
+    collectPhone, collectDOB, collectGender, collectNationality,
+    collectCountryOfResidence, collectCurrLocation, collectFullAddress,
+    collectCurrentJobTitle, collectCurrentEmployer, collectTotalYearsExp,
+    collectNoticePeriod, collectExpectedSalary, collectEmpHistory,
+    collectEduHistory, collectWillingToRelocate, collectRefs, refsCount,
+  ]);
 
   const buildDeiConfig = useCallback((): DeiConfig => ({
-    enabled: deiEnabled,
+    enabled:           deiEnabled,
     collect_ethnicity: deiEthnicity,
-    collect_gender: deiGender,
-    collect_disability: deiDisability,
-    collect_veteran: deiVeteran,
+    collect_gender:    deiGender,
+    collect_disability:deiDisability,
+    collect_veteran:   deiVeteran,
   }), [deiEnabled, deiEthnicity, deiGender, deiDisability, deiVeteran]);
 
   // ── Validation ─────────────────────────────────────────────────────────────
   const validate = useCallback((): boolean => {
     const e: Record<string, string> = {};
-    if (!title.trim())       e.title    = "Job title is required.";
-    if (!department.trim())  e.dept     = "Department is required.";
-    if (!location.trim())    e.location = "Location is required.";
-    if (wc < 50)             e.desc     = `Please write at least 50 words. You have ${wc}.`;
+    if (!title.trim())      e.title    = "Job title is required.";
+    if (!department.trim()) e.dept     = "Department is required.";
+    if (!location.trim())   e.location = "Location is required.";
+    if (wc < 50)            e.desc     = `Please write at least 50 words. You have ${wc}.`;
     if (openings < 1 || openings > 99) e.openings = "Openings must be 1–99.";
     if (salaryDisclosed) {
       const mn = parseInt(salaryMin, 10); const mx = parseInt(salaryMax, 10);
@@ -463,7 +593,6 @@ export default function NewJobPage() {
     setIsPublishing(true);
     setApiError("");
     try {
-      // Merge knockout questions + custom interview questions
       const allQuestions: GeneratedQuestion[] = [
         ...knockoutQs
           .filter((q) => q.question.trim())
@@ -473,7 +602,7 @@ export default function NewJobPage() {
             type: q.type,
             focus_area: "Screening",
             what_it_reveals: "",
-            severity: "surface",
+            severity: "surface" as const,
             knockout_enabled: q.knockout_enabled,
             knockout_expected_answer: q.knockout_expected_answer ?? null,
             knockout_min_value: q.knockout_min_value ? parseFloat(q.knockout_min_value) : null,
@@ -484,34 +613,35 @@ export default function NewJobPage() {
       ];
 
       const job = await jobsAPI.publishJob({
-        title:              title.trim(),
-        department:         department.trim(),
-        location:           location.trim(),
-        employment_type:    employmentType,
-        job_description:    jobDescription,
-        question_count:     allQuestions.length || 7,
-        focus_areas:        [],
-        questions:          allQuestions,
+        title:           title.trim(),
+        department:      department.trim(),
+        location:        location.trim(),
+        employment_type: employmentType,
+        job_description: jobDescription,
+        question_count:  allQuestions.length || 7,
+        focus_areas:     [],
+        questions:       allQuestions,
         candidate_requirements: buildCandidateRequirements(),
-        // Basic info
-        experience_level:   experienceLevel,
-        work_arrangement:   workArrangement,
+        // Section 1
+        job_visibility:   jobVisibility,
+        experience_level: experienceLevel,
+        work_arrangement: workArrangement,
         openings,
-        job_code:           jobCode || undefined,
-        hiring_manager:     hiringManager || undefined,
-        // Location
+        job_code:         jobCode || undefined,
+        hiring_manager:   hiringManager || undefined,
+        // Section 2
         relocation_considered: relocationConsidered,
-        travel_required:    travelRequired,
-        // Compensation
+        travel_required:       travelRequired,
+        // Section 3
         skills,
         nice_to_have_skills: niceToHaveSkills,
-        salary_min:         salaryDisclosed && salaryMin ? parseInt(salaryMin, 10) : undefined,
-        salary_max:         salaryDisclosed && salaryMax ? parseInt(salaryMax, 10) : undefined,
-        salary_currency:    salaryCurrency,
-        salary_period:      salaryPeriod,
-        salary_disclosed:   salaryDisclosed,
-        equity_offered:     equityOffered,
-        benefits_summary:   benefitsSummary || undefined,
+        salary_min:      salaryDisclosed && salaryMin ? parseInt(salaryMin, 10) : undefined,
+        salary_max:      salaryDisclosed && salaryMax ? parseInt(salaryMax, 10) : undefined,
+        salary_currency: salaryCurrency,
+        salary_period:   salaryPeriod,
+        salary_disclosed: salaryDisclosed,
+        equity_offered:  equityOffered,
+        benefits_summary: benefitsSummary || undefined,
         // Extended config
         eligibility_criteria:  buildEligibility(),
         candidate_info_config: buildCandidateInfoConfig(),
@@ -533,7 +663,7 @@ export default function NewJobPage() {
   }, [
     validate, title, department, location, employmentType, jobDescription,
     knockoutQs, customQuestions, buildCandidateRequirements,
-    experienceLevel, workArrangement, openings, jobCode, hiringManager,
+    jobVisibility, experienceLevel, workArrangement, openings, jobCode, hiringManager,
     relocationConsidered, travelRequired, skills, niceToHaveSkills,
     salaryDisclosed, salaryMin, salaryMax, salaryCurrency, salaryPeriod,
     equityOffered, benefitsSummary, buildEligibility, buildCandidateInfoConfig,
@@ -666,6 +796,29 @@ export default function NewJobPage() {
 
       {/* ── 1. Basic Information ─────────────────────────────────────────────── */}
       <Card title="1. Basic Information">
+        {/* Job Visibility */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-ink">Job Visibility</label>
+          <div className="grid grid-cols-3 gap-2">
+            {JOB_VISIBILITY_OPTIONS.map(({ value, label, desc, icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setJobVisibility(value)}
+                className={`flex flex-col items-start gap-1 p-3 rounded-[4px] border text-left transition-colors ${
+                  jobVisibility === value
+                    ? "border-ink bg-white"
+                    : "border-border bg-[var(--bg)] hover:border-sub"
+                }`}
+              >
+                <span className={`${jobVisibility === value ? "text-ink" : "text-muted"}`}>{icon}</span>
+                <span className={`text-[13px] font-medium ${jobVisibility === value ? "text-ink" : "text-sub"}`}>{label}</span>
+                <span className="text-[11px] text-muted leading-tight">{desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <Input label="Job Title" value={title} onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Senior Data Analyst" error={errors.title} required />
@@ -799,7 +952,9 @@ export default function NewJobPage() {
 
       {/* ── 5. Eligibility & Screening Criteria ──────────────────────────────── */}
       <Card title="5. Eligibility & Screening Criteria">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+        {/* Education */}
+        <div className="space-y-3">
           <FieldSelect label="Minimum Education" value={minEducation} onChange={(v) => setMinEducation(v as EligibilityCriteria["min_education"])}>
             <option value="none">No requirement</option>
             <option value="high_school">High School / GED</option>
@@ -807,35 +962,77 @@ export default function NewJobPage() {
             <option value="bachelor">Bachelor&apos;s Degree</option>
             <option value="master">Master&apos;s Degree</option>
             <option value="phd">PhD / Doctorate</option>
+            <option value="professional">Professional Degree (e.g. MD, JD)</option>
           </FieldSelect>
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-ink">Min Years of Experience</label>
-            <input type="number" min={0} max={30} value={minExpYears}
-              onChange={(e) => setMinExpYears(Math.max(0, parseInt(e.target.value, 10) || 0))}
-              className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors" />
+
+          {minEducation !== "none" && (
+            <div className="space-y-1.5 pl-1">
+              <label className="block text-sm font-medium text-ink">
+                Accepted Field(s) of Study <span className="text-muted font-normal text-[12px]">optional</span>
+              </label>
+              <TagInput
+                tags={fieldsOfStudy}
+                onChange={setFieldsOfStudy}
+                placeholder="e.g. Computer Science, Engineering, Business…"
+              />
+              <Toggle
+                on={equivalentExpAccepted}
+                onChange={setEquivalentExpAccepted}
+                label="Allow equivalent work experience in place of degree"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Experience */}
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-ink">Min Years of Experience</label>
+              <input type="number" min={0} max={30} value={minExpYears}
+                onChange={(e) => setMinExpYears(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-ink">
+                Min GPA <span className="text-muted font-normal text-[12px]">optional, 0.0–4.0</span>
+              </label>
+              <input type="number" min={0} max={4} step={0.1} value={minGPA}
+                onChange={(e) => setMinGPA(e.target.value)}
+                placeholder="e.g. 3.0"
+                className={`w-full bg-white border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted ${errors.gpa ? "border-danger" : "border-border"}`} />
+              {errors.gpa && <p className="text-[13px] text-danger">{errors.gpa}</p>}
+            </div>
           </div>
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-ink">
-              Min GPA <span className="text-muted font-normal text-[12px]">optional, 0.0–4.0</span>
+              Experience Context <span className="text-muted font-normal text-[12px]">optional — specify industry or type</span>
             </label>
-            <input type="number" min={0} max={4} step={0.1} value={minGPA}
-              onChange={(e) => setMinGPA(e.target.value)}
-              placeholder="e.g. 3.0"
-              className={`w-full bg-white border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted ${errors.gpa ? "border-danger" : "border-border"}`} />
-            {errors.gpa && <p className="text-[13px] text-danger">{errors.gpa}</p>}
+            <input
+              value={experienceContext}
+              onChange={(e) => setExperienceContext(e.target.value)}
+              placeholder="e.g. SaaS product development, financial services, B2B sales…"
+              className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
+            />
           </div>
         </div>
 
+        {/* Certifications */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-ink">Required Certifications / Licenses</label>
-          <TagInput tags={requiredCerts} onChange={setRequiredCerts} placeholder="e.g. AWS Certified, PMP…" />
+          <TagInput tags={requiredCerts} onChange={setRequiredCerts} placeholder="e.g. AWS Certified, PMP, CPA…" />
         </div>
 
+        {/* Languages */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-ink">Languages Required</label>
-          <TagInput tags={requiredLanguages} onChange={setRequiredLanguages} placeholder="e.g. English, French…" />
+          <label className="block text-sm font-medium text-ink">
+            Languages Required
+            <span className="text-muted font-normal text-[12px] ml-2">set minimum proficiency for each</span>
+          </label>
+          <LanguageRows languages={languages} onChange={setLanguages} />
         </div>
 
+        {/* Work auth */}
         <Toggle on={workAuthRequired} onChange={setWorkAuthRequired}
           label="Work authorisation required (no sponsorship available)" />
 
@@ -843,10 +1040,9 @@ export default function NewJobPage() {
         <div className="space-y-3 pt-2 border-t border-border">
           <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">Knockout Questions</p>
           <p className="text-[13px] text-sub">
-            Asked first. Enable knockout to auto-reject candidates who don't qualify.
+            Asked first. Enable knockout to auto-reject candidates who don&apos;t qualify.
           </p>
 
-          {/* Preset quick-adds */}
           <div className="flex flex-wrap gap-2">
             {SCREENING_PRESETS.map((preset) => (
               <button key={preset.key} type="button" onClick={() => addKnockoutQ(preset.template)}
@@ -941,15 +1137,20 @@ export default function NewJobPage() {
 
       {/* ── 6. Candidate Information to Collect ──────────────────────────────── */}
       <Card title="6. Candidate Information to Collect" subtitle="Name and email are always collected. Configure what else to ask.">
+
+        {/* 6A — Personal */}
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">Personal Details</p>
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6A — Personal Details</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {[
-              { label: "Phone number",       state: collectPhone,       set: setCollectPhone },
-              { label: "Current location",   state: collectCurrLocation, set: setCollectCurrLocation },
-              { label: "Date of birth",      state: collectDOB,         set: setCollectDOB },
-              { label: "Nationality",        state: collectNationality, set: setCollectNationality },
-            ].map(({ label, state, set }) => (
+            {([
+              { label: "Phone number",           state: collectPhone,              set: setCollectPhone },
+              { label: "Current location",        state: collectCurrLocation,       set: setCollectCurrLocation },
+              { label: "Date of birth",           state: collectDOB,                set: setCollectDOB },
+              { label: "Gender",                  state: collectGender,             set: setCollectGender },
+              { label: "Nationality",             state: collectNationality,        set: setCollectNationality },
+              { label: "Country of residence",    state: collectCountryOfResidence, set: setCollectCountryOfResidence },
+              { label: "Full address",            state: collectFullAddress,        set: setCollectFullAddress },
+            ] as Array<{ label: string; state: boolean; set: (v: boolean) => void }>).map(({ label, state, set }) => (
               <label key={label} className="flex items-center gap-2 cursor-pointer">
                 <button type="button" onClick={() => set(!state)}
                   className={`w-4 h-4 rounded-[2px] border-2 flex items-center justify-center shrink-0 transition-colors ${state ? "bg-ink border-ink" : "border-border bg-white"}`}>
@@ -961,14 +1162,20 @@ export default function NewJobPage() {
           </div>
         </div>
 
+        {/* 6B — Professional */}
         <div className="space-y-2 pt-2 border-t border-border">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">Professional Background</p>
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6B — Professional Background</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {[
-              { label: "Employment history",  state: collectEmpHistory, set: setCollectEmpHistory },
-              { label: "Education history",   state: collectEduHistory, set: setCollectEduHistory },
-              { label: "References",          state: collectRefs,       set: setCollectRefs },
-            ].map(({ label, state, set }) => (
+            {([
+              { label: "Current job title",          state: collectCurrentJobTitle,   set: setCollectCurrentJobTitle },
+              { label: "Current / most recent employer", state: collectCurrentEmployer, set: setCollectCurrentEmployer },
+              { label: "Total years of experience",  state: collectTotalYearsExp,     set: setCollectTotalYearsExp },
+              { label: "Notice period / availability", state: collectNoticePeriod,    set: setCollectNoticePeriod },
+              { label: "Expected salary",            state: collectExpectedSalary,    set: setCollectExpectedSalary },
+              { label: "Employment history",         state: collectEmpHistory,        set: setCollectEmpHistory },
+              { label: "Education history",          state: collectEduHistory,        set: setCollectEduHistory },
+              { label: "Willing to relocate",        state: collectWillingToRelocate, set: setCollectWillingToRelocate },
+            ] as Array<{ label: string; state: boolean; set: (v: boolean) => void }>).map(({ label, state, set }) => (
               <label key={label} className="flex items-center gap-2 cursor-pointer">
                 <button type="button" onClick={() => set(!state)}
                   className={`w-4 h-4 rounded-[2px] border-2 flex items-center justify-center shrink-0 transition-colors ${state ? "bg-ink border-ink" : "border-border bg-white"}`}>
@@ -980,8 +1187,33 @@ export default function NewJobPage() {
           </div>
         </div>
 
+        {/* 6C — References */}
         <div className="space-y-3 pt-2 border-t border-border">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">Documents & Links</p>
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6C — References</p>
+          <Toggle on={collectRefs} onChange={setCollectRefs} label="Collect professional references" />
+          {collectRefs && (
+            <div className="space-y-2 pl-1">
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] text-sub">Number of references to collect:</span>
+                <div className="flex items-center border border-border rounded-[4px] overflow-hidden text-[13px] font-medium">
+                  {([1, 2, 3] as const).map((n) => (
+                    <button key={n} type="button" onClick={() => setRefsCount(n)}
+                      className={`w-9 py-1.5 transition-colors ${refsCount === n ? "bg-ink text-white" : "bg-white text-muted hover:text-sub"}`}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[12px] text-muted">
+                For each reference, candidates will provide: Name, Job title, Company, Relationship, Email, Phone.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Documents */}
+        <div className="space-y-3 pt-2 border-t border-border">
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6D — Documents & Links</p>
           <div className="space-y-2">
             {PRESET_REQUIREMENTS.map((preset) => {
               const active = activeDocPresets.has(preset.id);
@@ -1044,12 +1276,12 @@ export default function NewJobPage() {
           <div className="space-y-3 pt-2">
             <p className="text-[13px] text-sub">Select which categories to collect:</p>
             <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "Ethnicity / race",         state: deiEthnicity,  set: setDeiEthnicity },
-                { label: "Gender identity",          state: deiGender,     set: setDeiGender },
-                { label: "Disability status",        state: deiDisability, set: setDeiDisability },
-                { label: "Veteran status",           state: deiVeteran,    set: setDeiVeteran },
-              ].map(({ label, state, set }) => (
+              {([
+                { label: "Ethnicity / race",  state: deiEthnicity,  set: setDeiEthnicity },
+                { label: "Gender identity",   state: deiGender,     set: setDeiGender },
+                { label: "Disability status", state: deiDisability, set: setDeiDisability },
+                { label: "Veteran status",    state: deiVeteran,    set: setDeiVeteran },
+              ] as Array<{ label: string; state: boolean; set: (v: boolean) => void }>).map(({ label, state, set }) => (
                 <label key={label} className="flex items-center gap-2 cursor-pointer">
                   <button type="button" onClick={() => set(!state)}
                     className={`w-4 h-4 rounded-[2px] border-2 flex items-center justify-center shrink-0 transition-colors ${state ? "bg-ink border-ink" : "border-border bg-white"}`}>
