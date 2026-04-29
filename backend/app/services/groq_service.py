@@ -16,12 +16,13 @@ import json
 import re
 import asyncio
 import logging
-from groq import AsyncGroq
+import httpx
 from app.config import get_settings
 
 logger = logging.getLogger("hireiq.groq")
 
-MODEL = "llama-3.3-70b-versatile"
+GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -58,11 +59,6 @@ def _extract_json_from_text(text: str) -> str:
     return text
 
 
-def _build_groq_client() -> AsyncGroq:
-    settings = get_settings()
-    return AsyncGroq(api_key=settings.groq_api_key)
-
-
 # ── Core Groq caller ───────────────────────────────────────────────────────────
 
 async def _call_groq_with_retry(
@@ -72,36 +68,41 @@ async def _call_groq_with_retry(
     json_mode: bool = False,
 ) -> str | None:
     """
-    Call Groq LLaMA with automatic retry on failure.
-    Accepts a pre-built messages list (system + user/assistant turns).
-    Returns extracted text or None on total failure.
+    Call Groq via direct httpx REST (OpenAI-compatible endpoint).
+    Retries once on failure. Returns text or None on total failure.
     """
     settings = get_settings()
-    client   = _build_groq_client()
 
-    kwargs: dict = {
-        "model":       MODEL,
+    payload: dict = {
+        "model":       GROQ_MODEL,
         "messages":    messages,
         "max_tokens":  max_tokens,
         "temperature": temperature,
-        "timeout":     settings.groq_timeout_seconds,
     }
     if json_mode:
-        kwargs["response_format"] = {"type": "json_object"}
+        payload["response_format"] = {"type": "json_object"}
+
+    headers = {"Authorization": f"Bearer {settings.groq_api_key}"}
 
     for attempt in range(1, 3):
         try:
-            response = await client.chat.completions.create(**kwargs)
-            text     = response.choices[0].message.content or ""
-            text     = text.strip()
-            return _extract_json_from_text(text) if json_mode else text
-        except Exception as error:
+            async with httpx.AsyncClient(timeout=settings.groq_timeout_seconds) as client:
+                response = await client.post(GROQ_URL, json=payload, headers=headers)
+
+            if response.status_code == 200:
+                data = response.json()
+                text = data["choices"][0]["message"]["content"].strip()
+                return _extract_json_from_text(text) if json_mode else text
+
             logger.error(
-                "Groq API call failed",
-                extra={"attempt": attempt, "error": str(error), "model": MODEL},
+                "Groq HTTP %s (attempt %d): %s",
+                response.status_code, attempt, response.text[:400],
             )
-            if attempt == 1:
-                await asyncio.sleep(settings.groq_retry_delay_seconds)
+        except Exception as error:
+            logger.error("Groq request failed (attempt %d): %s", attempt, error)
+
+        if attempt == 1:
+            await asyncio.sleep(settings.groq_retry_delay_seconds)
 
     return None
 
