@@ -1,76 +1,30 @@
 """
-HireIQ AI service.
-Primary model: Google Gemini Flash 2.0 (via REST API).
-Fallback model: Groq LLaMA 3.3 70B (automatic, transparent to callers).
-
-If Gemini fails for any reason the system retries once on Groq.
-Candidates never see an error caused by a single model outage.
+HireIQ AI service — pure Groq SDK.
+Model: Groq LLaMA 3.3 70B Versatile (AsyncGroq).
 
 Functions:
-  1. generate_application_questions  -- structured question generation
-  2. generate_adaptive_next_question -- single follow-up question
-  3. score_candidate                 -- full assessment (new 4-dimension scoring)
-  4. generate_candidate_email        -- candidate notification email drafts
-  5. generate_conversation_response  -- live application conversation driver
-  6. get_first_interview_message     -- hardcoded opening (never AI-generated)
+  1. generate_interview_questions  -- structured question generation
+  2. generate_job_prefill          -- full job posting draft from title + department
+  3. generate_adaptive_next_question -- single follow-up question
+  4. score_candidate               -- full assessment (4-dimension scoring)
+  5. generate_candidate_email      -- candidate notification email drafts
+  6. generate_conversation_response -- live application conversation driver
+  7. get_first_interview_message   -- hardcoded opening (never AI-generated)
 """
 
 import json
 import re
 import asyncio
 import logging
-import httpx
+from groq import AsyncGroq
 from app.config import get_settings
 
 logger = logging.getLogger("hireiq.groq")
 
-# ── Model endpoints ────────────────────────────────────────────────────────────
-
-GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-GROQ_URL    = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL  = "llama-3.3-70b-versatile"
+MODEL = "llama-3.3-70b-versatile"
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
-
-def _extract_gemini_text(data: dict, caller: str = "") -> str | None:
-    """
-    Pull text out of a Gemini generateContent response.
-    Handles safety blocks, MAX_TOKENS truncation, and missing content gracefully.
-    """
-    prompt_feedback = data.get("promptFeedback", {})
-    block_reason    = prompt_feedback.get("blockReason")
-    if block_reason:
-        logger.error(f"[{caller}] Gemini blocked prompt: blockReason={block_reason}")
-        return None
-
-    candidates = data.get("candidates", [])
-    if not candidates:
-        logger.error(f"[{caller}] Gemini returned no candidates. Response: {str(data)[:400]}")
-        return None
-
-    candidate     = candidates[0]
-    finish_reason = candidate.get("finishReason", "STOP")
-
-    if finish_reason not in ("STOP", "MAX_TOKENS"):
-        logger.error(
-            f"[{caller}] Gemini finished with reason={finish_reason}. "
-            f"Full candidate: {str(candidate)[:400]}"
-        )
-        return None
-
-    parts = candidate.get("content", {}).get("parts", [])
-    if not parts:
-        logger.error(f"[{caller}] Gemini returned empty parts. finishReason={finish_reason}")
-        return None
-
-    text = parts[0].get("text", "").strip()
-    if not text:
-        logger.error(f"[{caller}] Gemini text part is blank. finishReason={finish_reason}")
-        return None
-
-    return text
-
 
 def _extract_json_from_text(text: str) -> str:
     """
@@ -104,221 +58,52 @@ def _extract_json_from_text(text: str) -> str:
     return text
 
 
-# ── Groq fallback caller ── single-turn ───────────────────────────────────────
+def _build_groq_client() -> AsyncGroq:
+    settings = get_settings()
+    return AsyncGroq(api_key=settings.groq_api_key)
 
-async def _call_groq_single(
-    system_prompt: str,
-    user_content: str,
+
+# ── Core Groq caller ───────────────────────────────────────────────────────────
+
+async def _call_groq_with_retry(
+    messages: list[dict],
     max_tokens: int = 2048,
     temperature: float = 0.7,
     json_mode: bool = False,
 ) -> str | None:
-    """Groq (LLaMA) single-turn fallback. OpenAI-compatible API."""
+    """
+    Call Groq LLaMA with automatic retry on failure.
+    Accepts a pre-built messages list (system + user/assistant turns).
+    Returns extracted text or None on total failure.
+    """
     settings = get_settings()
-    if not settings.groq_api_key:
-        logger.error("_call_groq_single: GROQ_API_KEY is empty")
-        return None
+    client   = _build_groq_client()
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": user_content},
-    ]
-
-    payload: dict = {
-        "model":       GROQ_MODEL,
+    kwargs: dict = {
+        "model":       MODEL,
         "messages":    messages,
         "max_tokens":  max_tokens,
         "temperature": temperature,
+        "timeout":     settings.groq_timeout_seconds,
     }
     if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+        kwargs["response_format"] = {"type": "json_object"}
 
-    try:
-        async with httpx.AsyncClient(timeout=45) as client:
-            response = await client.post(
-                GROQ_URL,
-                json=payload,
-                headers={"Authorization": f"Bearer {settings.groq_api_key}"},
-            )
-
-        if response.status_code == 200:
-            data  = response.json()
-            text  = data["choices"][0]["message"]["content"].strip()
+    for attempt in range(1, 3):
+        try:
+            response = await client.chat.completions.create(**kwargs)
+            text     = response.choices[0].message.content or ""
+            text     = text.strip()
             return _extract_json_from_text(text) if json_mode else text
-
-        logger.error(f"_call_groq_single HTTP {response.status_code}: {response.text[:400]}")
-    except Exception as e:
-        logger.error(f"_call_groq_single exception: {e}")
-
-    return None
-
-
-# ── Groq fallback caller ── multi-turn conversation ───────────────────────────
-
-async def _call_groq_conversation(
-    system_prompt: str,
-    contents: list[dict],
-    max_tokens: int = 800,
-    temperature: float = 0.75,
-) -> str | None:
-    """Groq multi-turn fallback. Converts Gemini contents format to OpenAI format."""
-    settings = get_settings()
-    if not settings.groq_api_key:
-        logger.error("_call_groq_conversation: GROQ_API_KEY is empty")
-        return None
-
-    messages: list[dict] = [{"role": "system", "content": system_prompt}]
-    for msg in contents:
-        role = "assistant" if msg.get("role") == "model" else "user"
-        text = msg.get("parts", [{}])[0].get("text", "")
-        messages.append({"role": role, "content": text})
-
-    payload: dict = {
-        "model":       GROQ_MODEL,
-        "messages":    messages,
-        "max_tokens":  max_tokens,
-        "temperature": temperature,
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.post(
-                GROQ_URL,
-                json=payload,
-                headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+        except Exception as error:
+            logger.error(
+                "Groq API call failed",
+                extra={"attempt": attempt, "error": str(error), "model": MODEL},
             )
-
-        if response.status_code == 200:
-            data = response.json()
-            text = data["choices"][0]["message"]["content"].strip()
-            return _extract_json_from_text(text)
-
-        logger.error(f"_call_groq_conversation HTTP {response.status_code}: {response.text[:400]}")
-    except Exception as e:
-        logger.error(f"_call_groq_conversation exception: {e}")
+            if attempt == 1:
+                await asyncio.sleep(settings.groq_retry_delay_seconds)
 
     return None
-
-
-# ── Core Gemini caller ── single-turn (with Groq fallback) ────────────────────
-
-async def _call_gemini(
-    system_prompt: str,
-    user_content: str,
-    max_tokens: int = 2048,
-    temperature: float = 0.7,
-    json_mode: bool = False,
-) -> str | None:
-    """
-    Single-turn call: tries Gemini first, falls back to Groq automatically.
-    """
-    settings = get_settings()
-
-    # ---- Gemini attempt -------------------------------------------------
-    if settings.gemini_api_key:
-        url = f"{GEMINI_URL}?key={settings.gemini_api_key}"
-
-        gen_config: dict = {"temperature": temperature, "maxOutputTokens": max_tokens}
-        if json_mode:
-            gen_config["responseMimeType"] = "application/json"
-
-        payload = {
-            "systemInstruction": {"parts": [{"text": system_prompt}]},
-            "contents":          [{"role": "user", "parts": [{"text": user_content}]}],
-            "generationConfig":  gen_config,
-        }
-
-        for attempt in range(1, 3):
-            try:
-                async with httpx.AsyncClient(timeout=45) as client:
-                    response = await client.post(url, json=payload)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    text = _extract_gemini_text(data, caller="_call_gemini")
-                    if text is not None:
-                        return _extract_json_from_text(text) if json_mode else text
-                    break  # Content extracted but was None (safety block etc.) -- skip to Groq
-
-                logger.error(f"_call_gemini HTTP {response.status_code} (attempt {attempt}): {response.text[:400]}")
-                if attempt == 1:
-                    await asyncio.sleep(settings.groq_retry_delay_seconds)
-
-            except Exception as error:
-                logger.error(f"_call_gemini exception (attempt {attempt}): {error}")
-                if attempt == 1:
-                    await asyncio.sleep(settings.groq_retry_delay_seconds)
-    else:
-        logger.warning("_call_gemini: GEMINI_API_KEY not set, going straight to Groq fallback")
-
-    # ---- Groq fallback --------------------------------------------------
-    logger.info("_call_gemini: falling back to Groq")
-    return await _call_groq_single(
-        system_prompt=system_prompt,
-        user_content=user_content,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        json_mode=json_mode,
-    )
-
-
-# ── Core Gemini caller ── multi-turn conversation (with Groq fallback) ─────────
-
-async def _call_gemini_conversation(
-    system_prompt: str,
-    contents: list[dict],
-    max_tokens: int = 800,
-    temperature: float = 0.75,
-) -> str | None:
-    """
-    Multi-turn call for the application conversation agent.
-    Tries Gemini first, falls back to Groq automatically.
-    """
-    settings = get_settings()
-
-    # ---- Gemini attempt -------------------------------------------------
-    if settings.gemini_api_key:
-        url = f"{GEMINI_URL}?key={settings.gemini_api_key}"
-        payload = {
-            "systemInstruction": {"parts": [{"text": system_prompt}]},
-            "contents":          contents,
-            "generationConfig":  {"temperature": temperature, "maxOutputTokens": max_tokens},
-        }
-
-        for attempt in range(1, 3):
-            try:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    response = await client.post(url, json=payload)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    text = _extract_gemini_text(data, caller="_call_gemini_conversation")
-                    if text is not None:
-                        return _extract_json_from_text(text)
-                    break
-
-                logger.error(
-                    f"_call_gemini_conversation HTTP {response.status_code} (attempt {attempt}): "
-                    f"{response.text[:400]}"
-                )
-                if attempt == 1:
-                    await asyncio.sleep(settings.groq_retry_delay_seconds)
-
-            except Exception as error:
-                logger.error(f"_call_gemini_conversation exception (attempt {attempt}): {error}")
-                if attempt == 1:
-                    await asyncio.sleep(settings.groq_retry_delay_seconds)
-    else:
-        logger.warning("_call_gemini_conversation: GEMINI_API_KEY not set, going straight to Groq fallback")
-
-    # ---- Groq fallback --------------------------------------------------
-    logger.info("_call_gemini_conversation: falling back to Groq")
-    return await _call_groq_conversation(
-        system_prompt=system_prompt,
-        contents=contents,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
 
 
 # ── 1. Question generation ─────────────────────────────────────────────────────
@@ -350,34 +135,34 @@ async def generate_interview_questions(
 
     system_prompt = (
         "You are a senior talent acquisition specialist generating application questions for a specific role. "
-        "Your questions help candidates demonstrate genuine capability — not rehearsed answers. "
+        "Your questions help candidates demonstrate genuine capability -- not rehearsed answers. "
         "\n\n"
-        "QUESTION TYPE VOCABULARY — pick the most appropriate type for each question:\n"
-        "  behavioral       — STAR-format past experience ('Tell me about a time when…')\n"
-        "  situational      — hypothetical scenarios ('How would you handle…')\n"
-        "  motivational     — why this role/company/field ('What draws you to…')\n"
-        "  experience_depth — probing existing expertise ('Walk me through your experience with…')\n"
-        "  technical        — role-specific knowledge or process ('How do you approach…')\n"
-        "  values_culture   — alignment with working style/values ('Describe the environment where you thrive')\n"
-        "  achievement      — specific accomplishments ('What is the project you are most proud of')\n"
-        "  challenge        — how they handle adversity ('Describe a significant challenge you faced')\n"
-        "  leadership       — influence or management ('Describe a time you led without formal authority')\n"
-        "  collaboration    — teamwork and communication ('How do you work with difficult colleagues')\n"
-        "  ambition         — career goals and growth mindset ('Where do you see yourself in 3 years')\n"
-        "  analytical       — problem-solving and reasoning ('Walk me through how you would analyse this')\n"
-        "  open_invitation  — closing catch-all ('Is there anything else you want us to know')\n"
+        "QUESTION TYPE VOCABULARY -- pick the most appropriate type for each question:\n"
+        "  behavioral       -- STAR-format past experience ('Tell me about a time when...')\n"
+        "  situational      -- hypothetical scenarios ('How would you handle...')\n"
+        "  motivational     -- why this role/company/field ('What draws you to...')\n"
+        "  experience_depth -- probing existing expertise ('Walk me through your experience with...')\n"
+        "  technical        -- role-specific knowledge or process ('How do you approach...')\n"
+        "  values_culture   -- alignment with working style/values ('Describe the environment where you thrive')\n"
+        "  achievement      -- specific accomplishments ('What is the project you are most proud of')\n"
+        "  challenge        -- how they handle adversity ('Describe a significant challenge you faced')\n"
+        "  leadership       -- influence or management ('Describe a time you led without formal authority')\n"
+        "  collaboration    -- teamwork and communication ('How do you work with difficult colleagues')\n"
+        "  ambition         -- career goals and growth mindset ('Where do you see yourself in 3 years')\n"
+        "  analytical       -- problem-solving and reasoning ('Walk me through how you would analyse this')\n"
+        "  open_invitation  -- closing catch-all ('Is there anything else you want us to know')\n"
         "\n"
         "RULES:\n"
         "- The first question must be a warm professional opener (motivational or experience_depth).\n"
         "- The last question must always be open_invitation.\n"
-        "- Never use yes/no questions. Never use clichés ('Where do you see yourself in 5 years').\n"
+        "- Never use yes/no questions. Never use cliches ('Where do you see yourself in 5 years').\n"
         "- Every question must require a substantive, specific answer.\n"
-        "- Distribute types across the question set — do not repeat the same type more than twice.\n"
+        "- Distribute types across the question set -- do not repeat the same type more than twice.\n"
         "- Each question must directly relate to the job description and focus areas.\n"
         "\n"
         "Return a JSON object with a single key 'questions' containing an array of question objects "
-        "each with fields: id (string, q1/q2/etc), question (string), type (string — from the vocabulary above), "
-        "focus_area (string), what_it_reveals (string — 1 sentence explaining what a strong answer demonstrates)."
+        "each with fields: id (string, q1/q2/etc), question (string), type (string -- from the vocabulary above), "
+        "focus_area (string), what_it_reveals (string -- 1 sentence explaining what a strong answer demonstrates)."
     )
 
     user_prompt = (
@@ -388,9 +173,13 @@ async def generate_interview_questions(
         f"Generate exactly {question_count} questions."
     )
 
-    raw_response = await _call_gemini(
-        system_prompt=system_prompt,
-        user_content=user_prompt,
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_prompt},
+    ]
+
+    raw_response = await _call_groq_with_retry(
+        messages=messages,
         max_tokens=3000,
         temperature=0.7,
         json_mode=True,
@@ -417,7 +206,7 @@ async def generate_job_prefill(job_title: str, department: str) -> dict | None:
     """
     Given a job title and department, generate a complete job posting draft:
     description, required skills, nice-to-have skills, eligibility criteria,
-    and 6–8 interview questions.
+    and 6-8 interview questions.
 
     Returns a dict or None on failure.
     """
@@ -457,30 +246,23 @@ async def generate_job_prefill(job_title: str, department: str) -> dict | None:
 
     user_prompt = f"Job Title: {job_title}\nDepartment: {department}"
 
-    raw = await _call_gemini(
-        system_prompt=system_prompt,
-        user_content=user_prompt,
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_prompt},
+    ]
+
+    raw = await _call_groq_with_retry(
+        messages=messages,
         max_tokens=3000,
         temperature=0.65,
         json_mode=True,
     )
 
     if not raw:
-        logger.info("generate_job_prefill: Gemini failed, trying Groq fallback")
-        raw = await _call_groq_single(
-            system_prompt=system_prompt,
-            user_content=user_prompt,
-            max_tokens=3000,
-            temperature=0.65,
-            json_mode=True,
-        )
-
-    if not raw:
         return None
 
     try:
         parsed = json.loads(raw)
-        # Validate required top-level keys
         required_keys = {"description", "required_skills", "nice_to_have_skills", "eligibility", "questions"}
         if not required_keys.issubset(parsed.keys()):
             logger.error(f"generate_job_prefill: missing keys. Got: {list(parsed.keys())}")
@@ -570,9 +352,13 @@ async def generate_adaptive_next_question(
         "Generate the single best next question:"
     )
 
-    return await _call_gemini(
-        system_prompt=system_prompt,
-        user_content=user_prompt,
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_prompt},
+    ]
+
+    return await _call_groq_with_retry(
+        messages=messages,
         max_tokens=200,
         temperature=0.75,
         json_mode=False,
@@ -597,7 +383,7 @@ async def score_candidate(
     Generate a complete applicant assessment from the full application transcript
     and all submitted materials.
 
-    Scoring dimensions (new):
+    Scoring dimensions:
       - Relevance:     background match to role requirements (0-100)
       - Completeness:  all required info and docs provided (0-100, hard cap 40 if required doc missing)
       - Clarity:       specificity and concreteness of communication (0-100)
@@ -674,10 +460,10 @@ async def score_candidate(
         f"{name_instruction}\n\n"
 
         + (
-            "AI RESPONSE DETECTION — ENHANCED PENALTY (deterrent was shown to this candidate):\n"
+            "AI RESPONSE DETECTION -- ENHANCED PENALTY (deterrent was shown to this candidate):\n"
             "This candidate was explicitly warned that AI detection is active and AI-generated "
             "responses receive a stronger score penalty.\n"
-            "HARD RULES — all must be applied:\n"
+            "HARD RULES -- all must be applied:\n"
             "1. If ANY answer shows signs of AI generation (generic phrasing, no personal specificity, "
             "template-like structure, no concrete examples, hedging like 'I believe' / 'It is important to'), "
             "set red_flag_penalty to 45-50 regardless of other factors.\n"
@@ -685,13 +471,13 @@ async def score_candidate(
             "3. List each AI-flagged answer in red_flags with a brief reason (e.g. 'Q3: generic structure, "
             "no specific example, template phrasing detected').\n"
             "4. Set hiring_recommendation to 'No' or 'Strong No' if two or more responses appear AI-generated.\n"
-            "AI-generated responses after seeing a deterrent are equivalent to submission fraud — "
+            "AI-generated responses after seeing a deterrent are equivalent to submission fraud -- "
             "score accordingly. Do not soften this.\n\n"
             if ai_deterrent_enabled else
-            "AI RESPONSE DETECTION — STANDARD:\n"
+            "AI RESPONSE DETECTION -- STANDARD:\n"
             "AI detection is always active. If any answer appears AI-generated (generic phrasing, "
             "no personal specificity, no concrete examples), flag it in red_flags and apply a "
-            "red_flag_penalty of up to 20. AI detection alone should not cause automatic rejection — "
+            "red_flag_penalty of up to 20. AI detection alone should not cause automatic rejection -- "
             "use professional judgment on severity.\n\n"
         ) +
 
@@ -734,9 +520,13 @@ async def score_candidate(
         "- hiring_recommendation: exactly one of: Strong Yes, Yes, Maybe, No, Strong No.\n"
     )
 
-    raw_response = await _call_gemini(
-        system_prompt=system_prompt,
-        user_content=user_prompt,
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_prompt},
+    ]
+
+    raw_response = await _call_groq_with_retry(
+        messages=messages,
         max_tokens=2500,
         temperature=0.3,
         json_mode=True,
@@ -792,7 +582,7 @@ async def generate_candidate_email(
     }
     tone_guidance = tone_structures.get(tone.lower(), tone_structures["professional"])
 
-    strengths_raw = "\n".join(f"- {s}" for s in key_strengths)  if key_strengths  else "(none provided)"
+    strengths_raw = "\n".join(f"- {s}" for s in key_strengths)   if key_strengths   else "(none provided)"
     concerns_raw  = "\n".join(f"- {c}" for c in areas_of_concern) if areas_of_concern else "(none provided)"
     summary_full  = executive_summary[:2000] if executive_summary else ""
 
@@ -870,9 +660,13 @@ async def generate_candidate_email(
         f"{instructions}"
     )
 
-    raw = await _call_gemini(
-        system_prompt=system_prompt,
-        user_content=user_prompt,
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_prompt},
+    ]
+
+    raw = await _call_groq_with_retry(
+        messages=messages,
         max_tokens=900,
         temperature=0.65,
         json_mode=True,
@@ -1114,35 +908,27 @@ async def generate_conversation_response(
         '"requirement_id": null, "requirement_label": null}'
     )
 
-    # Build Gemini contents list from conversation history
-    raw_contents: list[dict] = []
+    # Build OpenAI-format messages from conversation history
+    groq_messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+    # Ensure conversation starts with a user turn
+    has_user_first = any(m.get("role") == "candidate" for m in conversation)
+    if not has_user_first:
+        groq_messages.append({"role": "user", "content": "Ready."})
+
     for msg in conversation:
         role    = msg.get("role", "")
         content = msg.get("content", "")
         if role == "ai":
-            raw_contents.append({"role": "model", "parts": [{"text": content}]})
+            groq_messages.append({"role": "assistant", "content": content})
         elif role == "candidate":
-            raw_contents.append({"role": "user",  "parts": [{"text": content}]})
+            groq_messages.append({"role": "user", "content": content})
 
-    # Gemini requires conversation to start with user turn
-    if not raw_contents or raw_contents[0]["role"] != "user":
-        raw_contents.insert(0, {"role": "user", "parts": [{"text": "Ready."}]})
-
-    # Deduplicate consecutive same-role messages
-    gemini_contents: list[dict] = [raw_contents[0]]
-    for msg in raw_contents[1:]:
-        if msg["role"] == gemini_contents[-1]["role"]:
-            gemini_contents[-1]["parts"][0]["text"] += "\n" + msg["parts"][0]["text"]
-        else:
-            gemini_contents.append(msg)
-
-    # Use Groq directly — faster and more reliable than Gemini for real-time conversation.
-    # Gemini's cold-start latency causes "Failed to fetch" on the candidate page.
-    raw = await _call_groq_conversation(
-        system_prompt=system_prompt,
-        contents=gemini_contents,
+    raw = await _call_groq_with_retry(
+        messages=groq_messages,
         max_tokens=600,
         temperature=0.75,
+        json_mode=True,
     )
 
     if not raw:
