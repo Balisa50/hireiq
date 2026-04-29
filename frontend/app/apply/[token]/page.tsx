@@ -20,7 +20,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useParams } from "next/navigation";
 import { Paperclip, Link2, Send, AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { interviewAPI, pingBackendHealth, wakeBackend, waitForBackendWarm } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
 import type { JobPublicInfo } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -129,13 +128,15 @@ function Spinner({ className = "w-4 h-4" }: { className?: string }) {
 function WelcomeScreen({
   jobInfo,
   onStart,
+  isStarting,
 }: {
   jobInfo: JobPublicInfo;
   onStart: () => void;
+  isStarting?: boolean;
 }) {
   return (
     <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4 py-12" dir="ltr">
-      <div className="max-w-[480px] w-full space-y-8">
+      <div className="max-w-[520px] w-full space-y-8">
 
         {/* Brand mark */}
         <div className="flex justify-center">
@@ -153,7 +154,21 @@ function WelcomeScreen({
           >
             {jobInfo.title}
           </h1>
+          {(jobInfo.department || jobInfo.location || jobInfo.employment_type) && (
+            <p className="text-[13px] text-muted">
+              {[jobInfo.department, jobInfo.location, jobInfo.employment_type].filter(Boolean).join(" · ")}
+            </p>
+          )}
         </div>
+
+        {/* Job description */}
+        {jobInfo.job_description && (
+          <div className="bg-white border border-border rounded-[4px] px-5 py-4">
+            <p className="text-[13px] text-sub leading-relaxed whitespace-pre-line">
+              {jobInfo.job_description}
+            </p>
+          </div>
+        )}
 
         {/* What to expect */}
         <div className="bg-white border border-border rounded-[4px] divide-y divide-border">
@@ -172,9 +187,10 @@ function WelcomeScreen({
         {/* CTA */}
         <button
           onClick={onStart}
-          className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3.5 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors flex items-center justify-center gap-2"
+          disabled={isStarting}
+          className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3.5 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
         >
-          Start Application <ChevronRight className="w-4 h-4" />
+          {isStarting ? "Starting…" : <><span>Start Application</span> <ChevronRight className="w-4 h-4" /></>}
         </button>
 
         <p className="text-center text-[11px] text-muted">Secured by HireIQ</p>
@@ -392,11 +408,9 @@ export default function ApplicationPage() {
   const [loadingSubtext, setLoadingSubtext]   = useState("");
 
   // Auth state
-  const [isAuthLoading, setIsAuthLoading]     = useState(false);
-  const [googleLoading, setGoogleLoading]     = useState(false);
-  const [authGlobalError, setAuthGlobalError] = useState("");
-  const [candidateName, setCandidateName]     = useState("");
-  const [candidateEmail, setCandidateEmail]   = useState("");
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [candidateName, setCandidateName]         = useState("");
+  const [candidateEmail, setCandidateEmail]       = useState("");
 
   // Application session
   const [applicationId, setApplicationId]       = useState("");
@@ -430,12 +444,8 @@ export default function ApplicationPage() {
   // Set to true once the backend has responded to at least one CORS GET.
   // Used as a gate before POST requests to avoid cold-start CORS errors.
   const backendWarmRef      = useRef(false);
-  // Track whether this page session explicitly started a Google OAuth flow.
-  // sessionStorage survives the OAuth redirect so we can distinguish a fresh
-  // user-initiated sign-in from an automatic token-refresh event (both fire
-  // SIGNED_IN in Supabase v2 and would otherwise cause the drain to auto-submit).
-  const OAUTH_FLAG = "hireiq_oauth_pending";
-  const [pendingOAuth, setPendingOAuth] = useState<{ name: string; email: string } | null>(null);
+  // Session key for localStorage persistence (keyed by the URL link token)
+  const SESSION_KEY = `hireiq_apply_${token}`;
 
   // ── Derive pending action from last AI message ─────────────────────────────
   const lastAiMsg = useMemo(
@@ -494,9 +504,24 @@ export default function ApplicationPage() {
       try {
         const info = await interviewAPI.getJobInfo(token);
         if (cancelled) return;
-        backendWarmRef.current = true; // backend returned a CORS GET → confirmed warm
+        backendWarmRef.current = true;
         setJobInfo(info);
-        setScreen((prev) => prev === "loading" ? "welcome" : prev);
+        // Bug 1 + 3: check localStorage BEFORE showing welcome — never flash it twice
+        try {
+          const saved = localStorage.getItem(`hireiq_apply_${token}`);
+          if (saved) {
+            const parsed = JSON.parse(saved) as { interviewId: string; messages: ConversationMessage[]; candidateName?: string; candidateEmail?: string };
+            if (parsed.interviewId && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+              setApplicationId(parsed.interviewId);
+              setCandidateName(parsed.candidateName ?? "");
+              setCandidateEmail(parsed.candidateEmail ?? "");
+              setMessages(parsed.messages);
+              if (!cancelled) setScreen("conversation");
+              return;
+            }
+          }
+        } catch { /* ignore */ }
+        if (!cancelled) setScreen((prev) => prev === "loading" ? "welcome" : prev);
       } catch (err: unknown) {
         if (cancelled) return;
         // Render free-tier cold-start: retry up to 4 times with increasing delay.
@@ -518,89 +543,19 @@ export default function ApplicationPage() {
     return () => { cancelled = true; };
   }, [token]);
 
-  // ── Auto-resume from localStorage on refresh ─────────────────────────────
-  // If a previous session was saved for this token, skip the auth screen and
-  // resume directly. Uses the same /start endpoint which returns resumed:true
-  // when the interview already exists.
+  // ── Persist conversation to localStorage on every message change ─────────
   useEffect(() => {
-    if (!jobInfo) return; // wait until job info is loaded
+    if (!applicationId || messages.length === 0) return;
     try {
-      const saved = localStorage.getItem(`hireiq_session_${token}`);
-      if (!saved) return;
-      const { name, email } = JSON.parse(saved) as { name: string; email: string; interviewId: string };
-      if (!name || !email) return;
-      // Auto-trigger start with saved credentials
-      isStartingRef.current = true;
-      setScreen("loading");
-      interviewAPI.startInterview(token, name, email).then((r) => {
-        setCandidateName(name);
-        setCandidateEmail(email);
-        setApplicationId(r.interview_id);
-        if (r.resumed && r.transcript?.length) {
-          const hydrated: ConversationMessage[] = (r.transcript as unknown[]).map((raw) => {
-            const entry = raw as Record<string, unknown>;
-            return {
-              id: nanoid(),
-              role: entry.role as "ai" | "candidate",
-              content: (entry.content as string) ?? "",
-              timestamp: (entry.timestamp as string) ?? new Date().toISOString(),
-              action: entry.action as ConversationMessage["action"],
-              requirement_id: (entry.requirement_id as string | null) ?? null,
-              requirement_label: (entry.requirement_label as string | null) ?? null,
-              cardStatus: (entry.action === "request_file" || entry.action === "request_link") ? ("complete" as const) : undefined,
-            };
-          });
-          setMessages(hydrated);
-          setScreen("conversation");
-        } else {
-          setScreen("conversation");
-          kickoffConversation(r.interview_id, false, []);
-        }
-      }).catch(() => {
-        // Resume failed — clear saved session and show welcome screen
-        try { localStorage.removeItem(`hireiq_session_${token}`); } catch { /* ignore */ }
-        isStartingRef.current = false;
-        setScreen("welcome");
-      });
-    } catch { /* ignore localStorage errors */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobInfo]);
-
-  // ── Google OAuth return ────────────────────────────────────────────────────
-  // Supabase processes the OAuth tokens from the URL hash during module
-  // initialisation — BEFORE React mounts and effects run. That means
-  // onAuthStateChange("SIGNED_IN") fires before we can subscribe, so we
-  // always miss it. Instead: on mount, if OAUTH_FLAG is set, call getSession()
-  // directly to read the session Supabase already established.
-  useEffect(() => {
-    if (typeof sessionStorage === "undefined") return;
-    if (!sessionStorage.getItem(OAUTH_FLAG)) return;
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) return; // OAuth hasn't completed or failed — leave flag for next load
-      sessionStorage.removeItem(OAUTH_FLAG);
-      const fullName = (
-        session.user.user_metadata?.full_name
-        ?? session.user.user_metadata?.name
-        ?? ""
-      ) as string;
-      const email = session.user.email ?? "";
-      if (!fullName || !email) return;
-      setGoogleLoading(false);
-      setPendingOAuth({ name: fullName, email });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Drain pending OAuth whenever auth screen is ready or session arrives ───
-  useEffect(() => {
-    if (screen === "auth" && pendingOAuth && !applicationId) {
-      const { name, email } = pendingOAuth;
-      setPendingOAuth(null);
-      handleStartWithCredentials(name, email);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, pendingOAuth]);
+      const toSave = messages.filter((m) => !m.isTyping);
+      localStorage.setItem(`hireiq_apply_${token}`, JSON.stringify({
+        interviewId: applicationId,
+        messages: toSave,
+        candidateName,
+        candidateEmail,
+      }));
+    } catch { /* ignore */ }
+  }, [messages, applicationId, token, candidateName, candidateEmail]);
 
   // ── Progress ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -619,64 +574,33 @@ export default function ApplicationPage() {
     setUploadQueue([]);
   }, [pendingAction]);
 
-  // ── Google OAuth ───────────────────────────────────────────────────────────
-  const handleGoogleAuth = useCallback(async () => {
-    setGoogleLoading(true);
-    setAuthGlobalError("");
-    // Flag this session as a user-initiated OAuth so the SIGNED_IN handler
-    // knows the callback is intentional (not an automatic token refresh).
-    if (typeof sessionStorage !== "undefined") {
-      sessionStorage.setItem(OAUTH_FLAG, "1");
-    }
-    try {
-      await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: window.location.href },
-      });
-    } catch {
-      if (typeof sessionStorage !== "undefined") {
-        sessionStorage.removeItem(OAUTH_FLAG);
-      }
-      setAuthGlobalError("Google sign-in is not configured yet. Please use the email form.");
-      setGoogleLoading(false);
-    }
-  }, []);
-
-  // ── Start application with name + email ───────────────────────────────────
-  const handleStartWithCredentials = useCallback(async (name: string, email: string) => {
+  // ── Start application — no auth screen, anonymous session ────────────────
+  // Generates a unique anonymous email so the backend can create/resume a session.
+  // The AI collects the candidate's real name and email conversationally.
+  const handleStartApplication = useCallback(async () => {
     if (!jobInfo) return;
     if (isStartingRef.current) return;
     isStartingRef.current = true;
-    setIsAuthLoading(true);
-    setAuthGlobalError("");
+    setIsStartingSession(true);
 
-    // ── Warmup gate ──────────────────────────────────────────────────────────
-    // Before sending any POST request we must confirm the backend is warm.
-    // If it has gone cold (unlikely but possible if user took >15 min), poll
-    // GET /health until we get a proper CORS response, then proceed.
-    // wakeBackend() fires a no-cors request first — guaranteed to reach the
-    // Render dyno and trigger its wake cycle even if CORS headers are missing.
     if (!backendWarmRef.current) {
       wakeBackend();
-      setAuthGlobalError("Connecting to server, please wait…");
       await waitForBackendWarm(55_000);
-      setAuthGlobalError("");
       backendWarmRef.current = true;
     }
 
-    // Attempt startInterview — retries once after 20 s if the backend is cold.
-    const tryStart = async (attempt = 1) => {
+    // Generate a unique anonymous identity for this session
+    const sessionId = nanoid();
+    const anonEmail = `anon_${sessionId}@session.hireiq`;
+
+    const tryStart = async (attempt = 1): Promise<typeof interviewAPI.startInterview extends (...a: never[]) => Promise<infer R> ? R : never> => {
       try {
-        return await interviewAPI.startInterview(token, name, email);
+        return await interviewAPI.startInterview(token, "", anonEmail);
       } catch (err: unknown) {
         const msg = (err instanceof Error ? err.message : "").toLowerCase();
-        const isNetwork = msg.includes("failed to fetch") || msg.includes("network") || msg.includes("fetch");
-        if (isNetwork && attempt === 1) {
-          // Unexpected network failure — wait for confirmed warm then retry.
+        if ((msg.includes("failed to fetch") || msg.includes("network")) && attempt === 1) {
           wakeBackend();
-          setAuthGlobalError("Server is warming up, please wait a moment…");
           await waitForBackendWarm(55_000);
-          setAuthGlobalError("");
           backendWarmRef.current = true;
           return tryStart(2);
         }
@@ -686,49 +610,12 @@ export default function ApplicationPage() {
 
     try {
       const r = await tryStart();
-      setCandidateName(name);
-      setCandidateEmail(email);
       setApplicationId(r.interview_id);
-      // Persist session so refresh auto-resumes without re-entering name/email
-      try {
-        localStorage.setItem(`hireiq_session_${token}`, JSON.stringify({ name, email, interviewId: r.interview_id }));
-      } catch { /* localStorage unavailable — not critical */ }
-
-      if (r.resumed && r.transcript?.length) {
-        // Hydrate existing transcript — no kickoff needed, transcript already has messages.
-        // Calling kickoff here would add the last AI message a second time → duplicate.
-        const hydrated: ConversationMessage[] = (r.transcript as unknown[]).map((raw) => {
-          const entry = raw as Record<string, unknown>;
-          return {
-            id:                nanoid(),
-            role:              entry.role as "ai" | "candidate",
-            content:           (entry.content as string) ?? "",
-            timestamp:         (entry.timestamp as string) ?? new Date().toISOString(),
-            action:            entry.action as ConversationMessage["action"],
-            requirement_id:    (entry.requirement_id as string | null) ?? null,
-            requirement_label: (entry.requirement_label as string | null) ?? null,
-            cardStatus:        (entry.action === "request_file" || entry.action === "request_link")
-              ? ("complete" as const)
-              : undefined,
-          };
-        });
-        setMessages(hydrated);
-        setScreen("conversation");
-      } else {
-        // Fresh start — kick off to get the opening greeting from the backend.
-        setScreen("conversation");
-        await kickoffConversation(r.interview_id, false, []);
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
-      if (msg.toLowerCase().includes("already submitted")) {
-        setAuthGlobalError("You have already submitted your application for this role.");
-      } else {
-        setAuthGlobalError(msg);
-      }
+      setScreen("conversation");
+      await kickoffConversation(r.interview_id, false, []);
+    } catch {
       isStartingRef.current = false;
-    } finally {
-      setIsAuthLoading(false);
+      setIsStartingSession(false);
     }
   }, [jobInfo, token]);
 
@@ -972,7 +859,7 @@ export default function ApplicationPage() {
     try {
       await interviewAPI.confirmSubmission(applicationId);
       // Clear saved session — application is done
-      try { localStorage.removeItem(`hireiq_session_${token}`); } catch { /* ignore */ }
+      try { localStorage.removeItem(`hireiq_apply_${token}`); } catch { /* ignore */ }
       setScreen("complete");
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Submission failed. Please try again.");
@@ -996,13 +883,8 @@ export default function ApplicationPage() {
     return (
       <WelcomeScreen
         jobInfo={jobInfo!}
-        onStart={() => {
-          // Fire a no-cors wake signal the moment the user enters the auth screen.
-          // If somehow the backend has gone cold since the welcome screen loaded,
-          // this starts the wake cycle while the user fills the form.
-          wakeBackend();
-          setScreen("auth");
-        }}
+        onStart={handleStartApplication}
+        isStarting={isStartingSession}
       />
     );
   }
@@ -1124,18 +1006,7 @@ export default function ApplicationPage() {
     );
   }
 
-  if (screen === "auth") {
-    return (
-      <AuthScreen
-        jobInfo={jobInfo!}
-        onAuth={handleStartWithCredentials}
-        onGoogleAuth={handleGoogleAuth}
-        isLoading={isAuthLoading}
-        googleLoading={googleLoading}
-        globalError={authGlobalError}
-      />
-    );
-  }
+  // "auth" screen removed — candidates go directly from welcome to conversation
 
   // ── Review screen ──────────────────────────────────────────────────────────
   if (screen === "review") {

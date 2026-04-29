@@ -350,6 +350,7 @@ export interface JobPublicInfo {
   question_count: number;
   custom_intro_message: string | null;
   candidate_requirements: CandidateRequirement[];
+  job_description: string | null;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────

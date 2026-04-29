@@ -172,6 +172,7 @@ async def get_job_by_link_token(link_token: str) -> JobPublicInfo:
         question_count=job["question_count"],
         custom_intro_message=company.get("custom_intro_message"),
         candidate_requirements=job.get("candidate_requirements") or [],
+        job_description=job.get("job_description"),
     )
 
 
