@@ -598,3 +598,47 @@ export async function pingBackendHealth(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Fire a no-cors GET to /health to immediately wake the Render dyno.
+ * mode:'no-cors' means the request is always sent regardless of whether the
+ * backend is returning CORS headers yet — the response is opaque (can't be
+ * read), but the dyno receives the request and starts waking up.
+ */
+export function wakeBackend(): void {
+  fetch(`${API_BASE_URL}/health`, {
+    method: "GET",
+    mode: "no-cors",
+    cache: "no-store",
+  }).catch(() => {});
+}
+
+/**
+ * Poll GET /health with normal CORS mode until the backend returns a valid
+ * response with CORS headers (confirming it is fully awake and ready to accept
+ * preflighted POST requests). Returns true when warm, false if maxWaitMs is
+ * exceeded. Each attempt has a 5-second timeout; retries every 3 seconds.
+ */
+export async function waitForBackendWarm(maxWaitMs = 55_000): Promise<boolean> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    try {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 5_000);
+      const res  = await fetch(`${API_BASE_URL}/health`, {
+        method: "GET",
+        cache:  "no-store",
+        signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      if (res.ok) return true;
+    } catch {
+      /* backend still cold — CORS headers not present yet, keep polling */
+    }
+    const remaining = deadline - Date.now();
+    if (remaining > 0) {
+      await new Promise((r) => setTimeout(r, Math.min(3_000, remaining)));
+    }
+  }
+  return false;
+}
