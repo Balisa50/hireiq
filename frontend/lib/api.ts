@@ -85,10 +85,18 @@ async function apiFetch<T>(
         }
       } catch { /* JSON parse failed — use default */ }
 
-      // Only redirect on 401 for authenticated requests — not for login/signup
+      // Only redirect on 401 for authenticated requests — not for login/signup,
+      // and never on the public candidate apply route. AuthProvider.loadCompanyProfile
+      // runs on every page including /apply/[token]; a 401 there (expired dashboard
+      // token) must NOT redirect the candidate to /login.
       if (response.status === 401 && requireAuth) {
         clearStoredToken();
-        if (typeof window !== "undefined") window.location.href = "/login";
+        if (
+          typeof window !== "undefined" &&
+          !window.location.pathname.startsWith("/apply/")
+        ) {
+          window.location.href = "/login";
+        }
       }
 
       throw new Error(errorMessage);
