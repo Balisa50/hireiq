@@ -424,6 +424,11 @@ export default function ApplicationPage() {
   const lastShownTime       = useRef<number>(0);
   const isStartingRef       = useRef(false);
   const kickoffCalledRef    = useRef(false);
+  // Track whether this page session explicitly started a Google OAuth flow.
+  // sessionStorage survives the OAuth redirect so we can distinguish a fresh
+  // user-initiated sign-in from an automatic token-refresh event (both fire
+  // SIGNED_IN in Supabase v2 and would otherwise cause the drain to auto-submit).
+  const OAUTH_FLAG = "hireiq_oauth_pending";
   const [pendingOAuth, setPendingOAuth] = useState<{ name: string; email: string } | null>(null);
 
   // ── Derive pending action from last AI message ─────────────────────────────
@@ -463,7 +468,9 @@ export default function ApplicationPage() {
     interviewAPI.getJobInfo(token)
       .then((info) => {
         setJobInfo(info);
-        setScreen("welcome");
+        // Only advance to welcome from loading. If the user has already clicked
+        // through to "auth" (or further) by the time this resolves, don't reset.
+        setScreen((prev) => prev === "loading" ? "welcome" : prev);
       })
       .catch((err: Error) => {
         const m = err.message.toLowerCase();
@@ -490,15 +497,22 @@ export default function ApplicationPage() {
   }, [token]);
 
   // ── Supabase OAuth state change ───────────────────────────────────────────
-  // IMPORTANT: only handle SIGNED_IN (fresh Google OAuth redirect), NOT INITIAL_SESSION.
-  // INITIAL_SESSION fires on every page load with any existing Supabase session in localStorage
-  // (e.g. a logged-in dashboard user). That would set pendingOAuth immediately, and the drain
-  // effect would fire the moment screen hits "auth" — causing a 1-2s flash before conversation.
-  // SIGNED_IN only fires after a real OAuth callback redirect, so Google auth still works correctly.
+  // Only process SIGNED_IN if the user explicitly started a Google OAuth flow
+  // in this browser session (flagged in sessionStorage before the redirect).
+  // This prevents automatic token-refresh events (also SIGNED_IN in Supabase v2)
+  // from silently pre-filling pendingOAuth and causing the auth form to flash/
+  // auto-submit without user interaction.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        if (event === "SIGNED_IN" && session && !applicationId) {
+        if (
+          event === "SIGNED_IN" &&
+          session &&
+          !applicationId &&
+          typeof sessionStorage !== "undefined" &&
+          sessionStorage.getItem(OAUTH_FLAG)
+        ) {
+          sessionStorage.removeItem(OAUTH_FLAG);
           const fullName = (
             session.user.user_metadata?.full_name
             ?? session.user.user_metadata?.name
@@ -546,12 +560,20 @@ export default function ApplicationPage() {
   const handleGoogleAuth = useCallback(async () => {
     setGoogleLoading(true);
     setAuthGlobalError("");
+    // Flag this session as a user-initiated OAuth so the SIGNED_IN handler
+    // knows the callback is intentional (not an automatic token refresh).
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem(OAUTH_FLAG, "1");
+    }
     try {
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo: window.location.href },
       });
     } catch {
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.removeItem(OAUTH_FLAG);
+      }
       setAuthGlobalError("Google sign-in is not configured yet. Please use the email form.");
       setGoogleLoading(false);
     }
@@ -622,7 +644,7 @@ export default function ApplicationPage() {
       }];
     });
 
-    try {
+    const attemptSend = async () => {
       const resp = await interviewAPI.sendMessage(appId, "");
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
         id:                nanoid(),
@@ -634,9 +656,22 @@ export default function ApplicationPage() {
         requirement_label: resp.requirement_label,
         cardStatus:        (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
       }]));
+    };
+
+    try {
+      await attemptSend();
     } catch {
-      setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
-      setAiError("Could not start your application. Please refresh.");
+      // First attempt failed — backend may be cold-starting (Render free tier).
+      // Wait 5 s and retry once before giving up.
+      try {
+        await new Promise((r) => setTimeout(r, 5000));
+        await attemptSend();
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
+        // Reset guard so the user can retry by refreshing or re-triggering.
+        kickoffCalledRef.current = false;
+        setAiError("Could not connect to the AI. Please refresh the page to try again.");
+      }
     }
   }, []);
 
