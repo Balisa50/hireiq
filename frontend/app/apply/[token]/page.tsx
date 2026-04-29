@@ -681,9 +681,12 @@ export default function ApplicationPage() {
   }, [jobInfo, token]);
 
   // ── Kick off conversation (first AI message) ───────────────────────────────
+  const initialized = useRef(false);
+
   const kickoffConversation = useCallback(async (appId: string, resumed: boolean, existingConv: unknown[]) => {
     // Guard: React concurrent mode can invoke this twice. Only the first call proceeds.
-    if (kickoffCalledRef.current) return;
+    if (initialized.current) return;
+    initialized.current = true;
     kickoffCalledRef.current = true;
 
     const thinkingId = nanoid();
@@ -722,6 +725,7 @@ export default function ApplicationPage() {
         await attemptSend();
       } catch {
         setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
+        initialized.current = false;
         kickoffCalledRef.current = false;
         setAiError("Could not connect to the AI. Please refresh the page to try again.");
       }
