@@ -518,6 +518,54 @@ export default function ApplicationPage() {
     return () => { cancelled = true; };
   }, [token]);
 
+  // ── Auto-resume from localStorage on refresh ─────────────────────────────
+  // If a previous session was saved for this token, skip the auth screen and
+  // resume directly. Uses the same /start endpoint which returns resumed:true
+  // when the interview already exists.
+  useEffect(() => {
+    if (!jobInfo) return; // wait until job info is loaded
+    try {
+      const saved = localStorage.getItem(`hireiq_session_${token}`);
+      if (!saved) return;
+      const { name, email } = JSON.parse(saved) as { name: string; email: string; interviewId: string };
+      if (!name || !email) return;
+      // Auto-trigger start with saved credentials
+      isStartingRef.current = true;
+      setScreen("loading");
+      interviewAPI.startInterview(token, name, email).then((r) => {
+        setCandidateName(name);
+        setCandidateEmail(email);
+        setApplicationId(r.interview_id);
+        if (r.resumed && r.transcript?.length) {
+          const hydrated: ConversationMessage[] = (r.transcript as unknown[]).map((raw) => {
+            const entry = raw as Record<string, unknown>;
+            return {
+              id: nanoid(),
+              role: entry.role as "ai" | "candidate",
+              content: (entry.content as string) ?? "",
+              timestamp: (entry.timestamp as string) ?? new Date().toISOString(),
+              action: entry.action as ConversationMessage["action"],
+              requirement_id: (entry.requirement_id as string | null) ?? null,
+              requirement_label: (entry.requirement_label as string | null) ?? null,
+              cardStatus: (entry.action === "request_file" || entry.action === "request_link") ? ("complete" as const) : undefined,
+            };
+          });
+          setMessages(hydrated);
+          setScreen("conversation");
+        } else {
+          setScreen("conversation");
+          kickoffConversation(r.interview_id, false, []);
+        }
+      }).catch(() => {
+        // Resume failed — clear saved session and show welcome screen
+        try { localStorage.removeItem(`hireiq_session_${token}`); } catch { /* ignore */ }
+        isStartingRef.current = false;
+        setScreen("welcome");
+      });
+    } catch { /* ignore localStorage errors */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobInfo]);
+
   // ── Google OAuth return ────────────────────────────────────────────────────
   // Supabase processes the OAuth tokens from the URL hash during module
   // initialisation — BEFORE React mounts and effects run. That means
@@ -641,6 +689,10 @@ export default function ApplicationPage() {
       setCandidateName(name);
       setCandidateEmail(email);
       setApplicationId(r.interview_id);
+      // Persist session so refresh auto-resumes without re-entering name/email
+      try {
+        localStorage.setItem(`hireiq_session_${token}`, JSON.stringify({ name, email, interviewId: r.interview_id }));
+      } catch { /* localStorage unavailable — not critical */ }
 
       if (r.resumed && r.transcript?.length) {
         // Hydrate existing transcript — no kickoff needed, transcript already has messages.
@@ -919,6 +971,8 @@ export default function ApplicationPage() {
     setSubmitError("");
     try {
       await interviewAPI.confirmSubmission(applicationId);
+      // Clear saved session — application is done
+      try { localStorage.removeItem(`hireiq_session_${token}`); } catch { /* ignore */ }
       setScreen("complete");
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Submission failed. Please try again.");
