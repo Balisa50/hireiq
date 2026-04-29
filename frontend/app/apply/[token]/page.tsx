@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { Paperclip, Link2, Send, AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
-import { interviewAPI } from "@/lib/api";
+import { interviewAPI, pingBackendHealth } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import type { JobPublicInfo } from "@/lib/types";
 
@@ -391,6 +391,13 @@ export default function ApplicationPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // ── Keep Render warm — ping every 4 minutes so backend doesn't cold-start ──
+  useEffect(() => {
+    pingBackendHealth();
+    const id = setInterval(pingBackendHealth, 240_000);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Load job info ──────────────────────────────────────────────────────────
   useEffect(() => {
     interviewAPI.getJobInfo(token)
@@ -400,13 +407,24 @@ export default function ApplicationPage() {
       })
       .catch((err: Error) => {
         const m = err.message.toLowerCase();
-        setErrorMsg(
-          m.includes("expired") || m.includes("longer active")
-            ? "This application link has expired. Please contact the company for a new link."
-            : m.includes("not found")
-            ? "This application link is not valid. Please check the link and try again."
-            : "Something went wrong. Please refresh.",
-        );
+        if (
+          m.includes("closed") ||
+          m.includes("longer accepting") ||
+          m.includes("no longer active") ||
+          m.includes("longer active")
+        ) {
+          setErrorMsg("closed");
+        } else if (m.includes("paused")) {
+          setErrorMsg("paused");
+        } else if (m.includes("deadline") || m.includes("expired")) {
+          setErrorMsg("deadline");
+        } else if (m.includes("limit") || m.includes("capacity")) {
+          setErrorMsg("limit");
+        } else if (m.includes("not found") || m.includes("invalid")) {
+          setErrorMsg("not_found");
+        } else {
+          setErrorMsg("unknown");
+        }
         setScreen("error");
       });
   }, [token]);
@@ -756,11 +774,117 @@ export default function ApplicationPage() {
   }
 
   if (screen === "error") {
+    const isPositionClosed = ["closed", "paused", "deadline", "limit"].includes(errorMsg);
+
+    const errorContent = {
+      closed: {
+        heading: "This position is no longer accepting applications.",
+        body: "The company has closed this role. Check back later or visit their careers page for other openings.",
+        icon: (
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5"
+            strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mx-auto text-muted">
+            <circle cx="24" cy="24" r="20" />
+            <line x1="15" y1="24" x2="33" y2="24" />
+          </svg>
+        ),
+      },
+      paused: {
+        heading: "Applications for this position are temporarily paused.",
+        body: "The hiring team has paused new applications. Please check back later — this link will become active again once applications reopen.",
+        icon: (
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5"
+            strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mx-auto text-muted">
+            <circle cx="24" cy="24" r="20" />
+            <rect x="17" y="16" width="5" height="16" rx="1" />
+            <rect x="26" y="16" width="5" height="16" rx="1" />
+          </svg>
+        ),
+      },
+      deadline: {
+        heading: "The application deadline for this position has passed.",
+        body: "This role is no longer accepting new applications. Contact the company directly if you believe this is an error.",
+        icon: (
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5"
+            strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mx-auto text-muted">
+            <rect x="8" y="12" width="32" height="30" rx="2" />
+            <line x1="16" y1="8" x2="16" y2="16" />
+            <line x1="32" y1="8" x2="32" y2="16" />
+            <line x1="8" y1="22" x2="40" y2="22" />
+            <line x1="24" y1="30" x2="24" y2="36" />
+            <line x1="18" y1="33" x2="30" y2="33" />
+          </svg>
+        ),
+      },
+      limit: {
+        heading: "This position has reached its maximum number of applications.",
+        body: "The company is no longer accepting new applications for this role at this time.",
+        icon: (
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5"
+            strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mx-auto text-muted">
+            <circle cx="24" cy="24" r="20" />
+            <path d="M16 32c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+            <circle cx="24" cy="20" r="5" />
+          </svg>
+        ),
+      },
+      not_found: {
+        heading: "This application link is not valid.",
+        body: "The link you followed may be incorrect or has been removed. Please check the URL and try again.",
+        icon: (
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5"
+            strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mx-auto text-muted">
+            <circle cx="24" cy="24" r="20" />
+            <line x1="24" y1="16" x2="24" y2="26" />
+            <circle cx="24" cy="32" r="1.5" fill="currentColor" />
+          </svg>
+        ),
+      },
+      unknown: {
+        heading: "Something went wrong.",
+        body: "We couldn't load this application. Please refresh the page or try again later.",
+        icon: (
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5"
+            strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mx-auto text-muted">
+            <circle cx="24" cy="24" r="20" />
+            <line x1="24" y1="16" x2="24" y2="26" />
+            <circle cx="24" cy="32" r="1.5" fill="currentColor" />
+          </svg>
+        ),
+      },
+    }[errorMsg] ?? {
+      heading: "Something went wrong.",
+      body: "We couldn't load this application. Please refresh the page or try again later.",
+      icon: null,
+    };
+
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4">
-        <Mark className="w-6 h-6 text-muted mb-6" />
-        <div className="bg-white border border-border rounded-[4px] p-8 max-w-sm w-full text-center">
-          <p className="text-[13px] text-sub leading-relaxed">{errorMsg}</p>
+      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4 py-12" dir="ltr">
+        <div className="max-w-[400px] w-full text-center space-y-6">
+          <Mark className="w-6 h-6 text-muted mx-auto" />
+
+          <div className="bg-white border border-border rounded-[4px] p-8 space-y-4">
+            {errorContent.icon}
+
+            <div className="space-y-2">
+              <h1 className="text-[17px] font-semibold text-ink leading-snug"
+                style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+                {errorContent.heading}
+              </h1>
+              <p className="text-[13px] text-sub leading-relaxed">
+                {errorContent.body}
+              </p>
+            </div>
+
+            {isPositionClosed && (
+              <div className="pt-2 border-t border-border">
+                <p className="text-[11px] text-muted">
+                  If you think this is a mistake, please contact the hiring team directly.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <p className="text-[11px] text-muted">Secured by HireIQ</p>
         </div>
       </div>
     );
