@@ -59,7 +59,7 @@ function stripMarkdown(text: string): string {
 // ── Score ring ────────────────────────────────────────────────────────────────
 
 function ScoreRing({ score }: { score: number }) {
-  const r    = 52;
+  const r    = 62;
   const circ = 2 * Math.PI * r;
   const [displayed, setDisplayed] = useState(0);
 
@@ -80,17 +80,19 @@ function ScoreRing({ score }: { score: number }) {
   const label  = score >= 70 ? "Strong candidate" : score >= 50 ? "Good candidate" : score >= 35 ? "Average candidate" : "Weak candidate";
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width="140" height="140" viewBox="0 0 140 140" className="-rotate-90">
-        <circle cx="70" cy="70" r={r} fill="none" stroke="#E8E4DF" strokeWidth="10" />
-        <circle cx="70" cy="70" r={r} fill="none" stroke={color} strokeWidth="10"
-          strokeDasharray={circ} strokeDashoffset={offset}
-          strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.016s linear" }} />
-      </svg>
-      <div className="-mt-[100px] mb-[60px] flex flex-col items-center">
-        <span className="text-[48px] font-bold text-ink leading-none">{displayed}</span>
-        <span className="text-[13px] text-muted mt-1">Overall Fit Score</span>
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative w-[160px] h-[160px]">
+        <svg width="160" height="160" viewBox="0 0 160 160" className="-rotate-90">
+          <circle cx="80" cy="80" r={r} fill="none" stroke="#E8E4DF" strokeWidth="10" />
+          <circle cx="80" cy="80" r={r} fill="none" stroke={color} strokeWidth="10"
+            strokeDasharray={circ} strokeDashoffset={offset}
+            strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.016s linear" }} />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-[48px] font-bold text-ink leading-none">{displayed}</span>
+        </div>
       </div>
+      <span className="text-[13px] text-muted">Overall Fit Score</span>
       <p className="text-[13px] font-medium" style={{ color }}>{label}</p>
     </div>
   );

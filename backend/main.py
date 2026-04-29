@@ -70,8 +70,11 @@ if settings.allowed_origins:
         o = o.strip().rstrip("/")
         if o and o not in _origins:
             _origins.append(o)
-# Always allow the canonical production frontend
-_production_origins = ["https://hireiq-ab.vercel.app"]
+# Always allow the canonical production frontend(s)
+_production_origins = [
+    "https://hireiq-ab.vercel.app",
+    "https://hireiq-frontend-three.vercel.app",
+]
 for o in _production_origins:
     if o not in _origins:
         _origins.append(o)

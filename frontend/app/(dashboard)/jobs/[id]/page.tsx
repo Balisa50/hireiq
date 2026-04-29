@@ -15,19 +15,19 @@ import Button from "@/components/ui/Button";
 import ScoreBadge from "@/components/ui/ScoreBadge";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  scored:        { label: "Scored",        color: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
-  shortlisted:   { label: "Shortlisted",   color: "text-green-400 bg-green-400/10 border-green-400/20" },
-  accepted:      { label: "Accepted",      color: "text-sky-400 bg-sky-400/10 border-sky-400/20" },
-  rejected:      { label: "Rejected",      color: "text-red-400 bg-red-400/10 border-red-400/20" },
-  auto_rejected: { label: "Auto-Rejected", color: "text-red-400 bg-red-400/10 border-red-400/20" },
-  completed:     { label: "Completed",     color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" },
-  in_progress:   { label: "In Progress",   color: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
+  scored:        { label: "Scored",        color: "text-blue-700 bg-blue-50 border-blue-200" },
+  shortlisted:   { label: "Shortlisted",   color: "text-green-700 bg-green-50 border-green-200" },
+  accepted:      { label: "Accepted",      color: "text-sky-700 bg-sky-50 border-sky-200" },
+  rejected:      { label: "Rejected",      color: "text-red-700 bg-red-50 border-red-200" },
+  auto_rejected: { label: "Auto-Rejected", color: "text-red-700 bg-red-50 border-red-200" },
+  completed:     { label: "Completed",     color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
+  in_progress:   { label: "In Progress",   color: "text-amber-700 bg-amber-50 border-amber-200" },
 };
 
 function StatusBadge({ status }: { status: string }) {
   const config = STATUS_LABELS[status] ?? {
     label: status,
-    color: "text-[var(--text-muted)] bg-white/5 border-[var(--border)]",
+    color: "text-muted bg-[var(--bg)] border-border",
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${config.color}`}>
@@ -145,7 +145,7 @@ export default function JobDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-ink" />
       </div>
     );
   }
@@ -153,8 +153,8 @@ export default function JobDetailPage() {
   if (error || !job) {
     return (
       <div className="max-w-xl mx-auto py-12 text-center">
-        <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-4" />
-        <p className="text-red-400">{error || "Job not found."}</p>
+        <AlertCircle className="w-10 h-10 text-danger mx-auto mb-4" />
+        <p className="text-danger">{error || "Job not found."}</p>
         <Button variant="ghost" className="mt-4" onClick={() => router.back()}>
           Go Back
         </Button>
@@ -167,12 +167,12 @@ export default function JobDetailPage() {
   const isPaused      = isActive && job.is_paused;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-12">
+    <div className="max-w-4xl mx-auto space-y-6 pb-12">
       {/* Back + actions */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+          className="flex items-center gap-1.5 text-sm text-sub hover:text-ink transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Jobs
         </button>
@@ -181,7 +181,7 @@ export default function JobDetailPage() {
           {isActive && (
             <Button variant="secondary" size="sm" onClick={copyLink}>
               {linkCopied ? (
-                <><Check className="w-3.5 h-3.5 text-green-400" /> Copied!</>
+                <><Check className="w-3.5 h-3.5 text-green-600" /> Copied!</>
               ) : (
                 <><Copy className="w-3.5 h-3.5" /> Copy Application Link</>
               )}
@@ -225,44 +225,44 @@ export default function JobDetailPage() {
       </div>
 
       {/* Header */}
-      <div className="glass rounded-2xl p-6">
+      <div className="bg-white border border-border rounded-[4px] p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <span
                 className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
                   isPaused
-                    ? "text-amber-400 bg-amber-400/10 border-amber-400/20"
+                    ? "text-amber-700 bg-amber-50 border-amber-200"
                     : isActive
-                    ? "text-green-400 bg-green-400/10 border-green-400/20"
-                    : "text-[var(--text-muted)] bg-white/5 border-[var(--border)]"
+                    ? "text-green-700 bg-green-50 border-green-200"
+                    : "text-muted bg-[var(--bg)] border-border"
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-amber-400" : isActive ? "bg-green-400 animate-pulse" : "bg-[var(--text-dim)]"}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-amber-500" : isActive ? "bg-green-500 animate-pulse" : "bg-muted"}`} />
                 {isPaused ? "Paused" : isActive ? "Active" : "Closed"}
               </span>
             </div>
-            <h1 className="text-2xl font-bold text-white">{job.title}</h1>
+            <h1 className="text-2xl font-bold text-ink">{job.title}</h1>
             <div className="flex flex-wrap items-center gap-4 mt-2">
               {job.department && (
-                <span className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
+                <span className="flex items-center gap-1.5 text-sm text-sub">
                   <Briefcase className="w-3.5 h-3.5" />
                   {job.department}
                 </span>
               )}
               {job.location && (
-                <span className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
+                <span className="flex items-center gap-1.5 text-sm text-sub">
                   <MapPin className="w-3.5 h-3.5" />
                   {job.location}
                 </span>
               )}
               {job.employment_type && (
-                <span className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
+                <span className="flex items-center gap-1.5 text-sm text-sub">
                   <Clock className="w-3.5 h-3.5" />
                   {EMPLOYMENT_TYPE_LABELS[job.employment_type] ?? job.employment_type}
                 </span>
               )}
-              <span className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
+              <span className="flex items-center gap-1.5 text-sm text-sub">
                 <Calendar className="w-3.5 h-3.5" />
                 Posted{" "}
                 {new Date(job.created_at).toLocaleDateString("en-GB", {
@@ -274,49 +274,49 @@ export default function JobDetailPage() {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-5 border-t border-[var(--border)]">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-5 border-t border-border">
           <div>
-            <div className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] mb-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted mb-1">
               <Users className="w-3.5 h-3.5" /> Total Candidates
             </div>
-            <p className="text-2xl font-bold text-white">{job.interview_count}</p>
+            <p className="text-2xl font-bold text-ink">{job.interview_count}</p>
           </div>
           <div>
-            <div className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] mb-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted mb-1">
               <BarChart3 className="w-3.5 h-3.5" /> Average Score
             </div>
-            <p className="text-2xl font-bold text-white">
+            <p className="text-2xl font-bold text-ink">
               {job.average_score !== null ? `${job.average_score}` : "-"}
               {job.average_score !== null && (
-                <span className="text-sm font-normal text-[var(--text-muted)]">/100</span>
+                <span className="text-sm font-normal text-sub">/100</span>
               )}
             </p>
           </div>
           <div>
-            <div className="flex items-center gap-1.5 text-xs text-[var(--text-dim)] mb-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted mb-1">
               Questions
             </div>
-            <p className="text-2xl font-bold text-white">{job.question_count}</p>
+            <p className="text-2xl font-bold text-ink">{job.question_count}</p>
           </div>
         </div>
       </div>
 
       {/* Job controls */}
       {isActive && (
-        <div className="glass rounded-2xl p-5 space-y-4">
+        <div className="bg-white border border-border rounded-[4px] p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider">
+            <h2 className="text-xs font-bold text-muted uppercase tracking-wider">
               Application Controls
             </h2>
             {controlsSaved && (
-              <span className="text-[11px] text-green-400 flex items-center gap-1">
+              <span className="text-[11px] text-green-700 flex items-center gap-1">
                 <Check className="w-3 h-3" /> Saved
               </span>
             )}
           </div>
 
           {job.is_paused && (
-            <div className="flex items-center gap-2 text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-xl px-3 py-2">
+            <div className="flex items-center gap-2 text-amber-700 text-xs bg-amber-50 border border-amber-200 rounded-[4px] px-3 py-2">
               <PauseCircle className="w-3.5 h-3.5 shrink-0" />
               Applications are paused — new candidates cannot start.
             </div>
@@ -324,21 +324,21 @@ export default function JobDetailPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-[var(--text-muted)]">
+              <label className="block text-xs font-medium text-sub">
                 Application deadline
               </label>
               <input
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500 transition-colors [color-scheme:dark]"
+                className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors"
               />
-              <p className="text-[10px] text-[var(--text-dim)]">
+              <p className="text-[10px] text-muted">
                 Job auto-closes after this date. Leave blank for no deadline.
               </p>
             </div>
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-[var(--text-muted)]">
+              <label className="block text-xs font-medium text-sub">
                 Application limit
               </label>
               <input
@@ -347,9 +347,9 @@ export default function JobDetailPage() {
                 max={10000}
                 value={appLimit}
                 onChange={(e) => setAppLimit(Number(e.target.value))}
-                className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-brand-500 transition-colors"
+                className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors"
               />
-              <p className="text-[10px] text-[var(--text-dim)]">
+              <p className="text-[10px] text-muted">
                 Max applications before auto-closing. 0 = unlimited.
               </p>
             </div>
@@ -363,17 +363,17 @@ export default function JobDetailPage() {
 
       {/* Interview link */}
       {isActive && (
-        <div className="glass rounded-2xl p-5">
-          <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-3">
+        <div className="bg-white border border-border rounded-[4px] p-5">
+          <h2 className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
             Application Link
           </h2>
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex-1 min-w-0 bg-[var(--bg)] border border-[var(--border)] rounded-xl px-4 py-2.5 font-mono text-sm text-brand-400 truncate">
+            <div className="flex-1 min-w-0 bg-[var(--bg)] border border-border rounded-[4px] px-4 py-2.5 font-mono text-sm text-sub truncate">
               {interviewLink}
             </div>
             <Button variant="secondary" size="sm" onClick={copyLink}>
               {linkCopied ? (
-                <><Check className="w-3.5 h-3.5 text-green-400" /> Copied!</>
+                <><Check className="w-3.5 h-3.5 text-green-600" /> Copied!</>
               ) : (
                 <><Copy className="w-3.5 h-3.5" /> Copy</>
               )}
@@ -382,7 +382,7 @@ export default function JobDetailPage() {
               href={interviewLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-white transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs text-sub hover:text-ink transition-colors"
             >
               <ExternalLink className="w-3.5 h-3.5" /> Preview
             </a>
@@ -392,15 +392,15 @@ export default function JobDetailPage() {
 
       {/* Focus areas */}
       {job.focus_areas.length > 0 && (
-        <div className="glass rounded-2xl p-5">
-          <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-3">
+        <div className="bg-white border border-border rounded-[4px] p-5">
+          <h2 className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
             Application Focus Areas
           </h2>
           <div className="flex flex-wrap gap-2">
             {job.focus_areas.map((area) => (
               <span
                 key={area}
-                className="px-3 py-1.5 rounded-xl text-xs font-medium bg-brand-500/10 border border-brand-500/20 text-brand-300"
+                className="px-3 py-1.5 rounded-[4px] text-xs font-medium bg-[var(--bg)] border border-border text-sub"
               >
                 {area}
               </span>
@@ -411,26 +411,26 @@ export default function JobDetailPage() {
 
       {/* Interview questions */}
       {job.questions.length > 0 && (
-        <div className="glass rounded-2xl p-5">
-          <h2 className="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-4">
+        <div className="bg-white border border-border rounded-[4px] p-5">
+          <h2 className="text-xs font-bold text-muted uppercase tracking-wider mb-4">
             Application Questions ({job.questions.length})
           </h2>
           <div className="space-y-3">
             {job.questions.map((q, i) => (
               <div
                 key={q.id}
-                className="flex items-start gap-3 rounded-xl bg-white/2 border border-[var(--border)] px-4 py-3"
+                className="flex items-start gap-3 rounded-[4px] bg-[var(--bg)] border border-border px-4 py-3"
               >
-                <span className="w-6 h-6 rounded-full bg-brand-500/15 text-brand-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                <span className="w-6 h-6 rounded-full bg-border text-sub text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
                   {i + 1}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white">{q.question}</p>
+                  <p className="text-sm text-ink">{q.question}</p>
                   <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-[10px] text-[var(--text-dim)] bg-white/5 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] text-muted bg-white border border-border px-2 py-0.5 rounded-full">
                       {q.type}
                     </span>
-                    <span className="text-[10px] text-[var(--text-dim)]">{q.focus_area}</span>
+                    <span className="text-[10px] text-muted">{q.focus_area}</span>
                   </div>
                 </div>
               </div>
@@ -475,14 +475,14 @@ export default function JobDetailPage() {
       {/* Candidates */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-white">
+          <h2 className="text-base font-bold text-ink">
             Candidates{" "}
-            <span className="text-[var(--text-dim)] font-normal text-sm">({candidates.length})</span>
+            <span className="text-muted font-normal text-sm">({candidates.length})</span>
           </h2>
           {candidates.length > 0 && (
             <Link
               href={`/candidates?job=${id}`}
-              className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
+              className="text-xs text-sub hover:text-ink transition-colors"
             >
               View all →
             </Link>
@@ -490,16 +490,16 @@ export default function JobDetailPage() {
         </div>
 
         {candidates.length === 0 ? (
-          <div className="glass rounded-2xl py-14 text-center">
-            <Users className="w-10 h-10 text-[var(--text-dim)] mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-white mb-1">No candidates yet</h3>
-            <p className="text-[var(--text-muted)] text-sm">
+          <div className="bg-white border border-border rounded-[4px] py-14 text-center">
+            <Users className="w-10 h-10 text-muted mx-auto mb-3" />
+            <h3 className="text-base font-semibold text-ink mb-1">No candidates yet</h3>
+            <p className="text-sub text-sm">
               Share the application link to start receiving applicants.
             </p>
           </div>
         ) : (
-          <div className="glass rounded-2xl overflow-hidden">
-            <div className="hidden md:grid grid-cols-[2fr_120px_100px_120px_120px_24px] gap-4 px-5 py-3 border-b border-[var(--border)] text-xs font-semibold text-[var(--text-dim)] uppercase tracking-wide">
+          <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+            <div className="hidden md:grid grid-cols-[2fr_120px_100px_120px_120px_24px] gap-4 px-5 py-3 border-b border-border text-xs font-semibold text-muted uppercase tracking-wide">
               <span>Candidate</span>
               <span>Score</span>
               <span>Duration</span>
@@ -511,23 +511,23 @@ export default function JobDetailPage() {
               <Link
                 key={c.id}
                 href={`/candidates/${c.id}`}
-                className="grid grid-cols-1 md:grid-cols-[2fr_120px_100px_120px_120px_24px] gap-4 px-5 py-4 border-b border-[var(--border)] hover:bg-white/2 transition-colors items-center group"
+                className="grid grid-cols-1 md:grid-cols-[2fr_120px_100px_120px_120px_24px] gap-4 px-5 py-4 border-b border-border hover:bg-[var(--bg)] transition-colors items-center group"
               >
                 <div>
-                  <p className="text-sm font-semibold text-white">{c.candidate_name}</p>
-                  <p className="text-xs text-[var(--text-muted)]">{c.candidate_email}</p>
+                  <p className="text-sm font-semibold text-ink">{c.candidate_name}</p>
+                  <p className="text-xs text-sub">{c.candidate_email}</p>
                 </div>
                 <ScoreBadge score={c.overall_score} size="sm" />
-                <span className="text-sm text-[var(--text-muted)]">
+                <span className="text-sm text-sub">
                   {c.interview_duration_minutes !== null
                     ? `${c.interview_duration_minutes}m`
                     : "-"}
                 </span>
                 <StatusBadge status={c.status} />
-                <span className="text-xs text-[var(--text-muted)] truncate">
+                <span className="text-xs text-sub truncate">
                   {c.hiring_recommendation ?? "-"}
                 </span>
-                <ChevronRight className="w-4 h-4 text-[var(--text-dim)] group-hover:text-brand-400 transition-colors" />
+                <ChevronRight className="w-4 h-4 text-muted group-hover:text-ink transition-colors" />
               </Link>
             ))}
           </div>
