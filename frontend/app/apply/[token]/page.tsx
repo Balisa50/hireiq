@@ -371,7 +371,7 @@ function CandidateMessageBubble({ content, showTimestamp, timestamp }: {
       )}
       <p
         className="text-[15px] text-ink border-r-2 border-[#E8E4DF] pr-3.5 max-w-[85%] leading-relaxed w-fit"
-        style={{ textAlign: "right", direction: "ltr" }}
+        style={{ textAlign: "left", direction: "ltr" }}
       >
         {content}
       </p>
