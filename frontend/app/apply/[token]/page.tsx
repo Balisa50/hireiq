@@ -945,6 +945,7 @@ export default function ApplicationPage() {
           wakeBackend();
           setScreen("auth");
         }}
+      />
     );
   }
 
