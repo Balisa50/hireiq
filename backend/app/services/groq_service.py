@@ -728,6 +728,38 @@ def get_first_interview_message(
     }
 
 
+# Default candidate-info config used as a fallback when a job row stores an
+# empty {} for candidate_info_config. Older jobs (created before these flags
+# existed) and jobs whose creation form skipped these sections both end up
+# with empty dicts. Without this fallback the AI would only ever ask for
+# name, email, and phone for those jobs.
+_DEFAULT_CANDIDATE_INFO_CONFIG: dict = {
+    "collect_phone":                  True,
+    "collect_date_of_birth":          True,
+    "collect_nationality":            True,
+    "collect_country_of_residence":   True,
+    "collect_current_location":       True,
+    "collect_full_address":           True,
+    "collect_current_job_title":      True,
+    "collect_current_employer":       True,
+    "collect_total_years_exp":        True,
+    "collect_notice_period":          True,
+    "collect_expected_salary":        True,
+    "collect_employment_history":     True,
+    "collect_education_history":      True,
+    "collect_willing_to_relocate":    True,
+    "collect_references":             True,
+    "references_count":               2,
+}
+
+
+def _is_meaningfully_empty(d: dict) -> bool:
+    """A config dict is 'empty' if it has no keys, or every value is falsy."""
+    if not d:
+        return True
+    return not any(v for v in d.values() if v not in (0, False, None, ""))
+
+
 def _build_structured_fields_block(
     candidate_info_config: dict,
     eligibility_criteria: dict,
@@ -738,8 +770,15 @@ def _build_structured_fields_block(
     Build the dynamic 'STRUCTURED FIELDS' block listing every field the AI must
     collect, in order. Driven entirely by what the employer enabled on the job.
     Fields with a False/empty flag are NOT included so the AI never asks them.
+
+    Fallback: if candidate_info_config is empty (older job rows or rows where
+    the creation UI never set the flags), use _DEFAULT_CANDIDATE_INFO_CONFIG so
+    the AI still collects a comprehensive structured set instead of just the
+    three minimum fields (name/email/phone).
     """
     info  = candidate_info_config or {}
+    if _is_meaningfully_empty(info):
+        info = dict(_DEFAULT_CANDIDATE_INFO_CONFIG)
     elig  = eligibility_criteria  or {}
     dei   = dei_config or {}
 
