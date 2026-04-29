@@ -423,6 +423,7 @@ export default function ApplicationPage() {
   const inputRef            = useRef<HTMLTextAreaElement>(null);
   const lastShownTime       = useRef<number>(0);
   const isStartingRef       = useRef(false);
+  const kickoffCalledRef    = useRef(false);
   const [pendingOAuth, setPendingOAuth] = useState<{ name: string; email: string } | null>(null);
 
   // ── Derive pending action from last AI message ─────────────────────────────
@@ -489,10 +490,15 @@ export default function ApplicationPage() {
   }, [token]);
 
   // ── Supabase OAuth state change ───────────────────────────────────────────
+  // IMPORTANT: only handle SIGNED_IN (fresh Google OAuth redirect), NOT INITIAL_SESSION.
+  // INITIAL_SESSION fires on every page load with any existing Supabase session in localStorage
+  // (e.g. a logged-in dashboard user). That would set pendingOAuth immediately, and the drain
+  // effect would fire the moment screen hits "auth" — causing a 1-2s flash before conversation.
+  // SIGNED_IN only fires after a real OAuth callback redirect, so Google auth still works correctly.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session && !applicationId) {
+        if (event === "SIGNED_IN" && session && !applicationId) {
           const fullName = (
             session.user.user_metadata?.full_name
             ?? session.user.user_metadata?.name
@@ -604,6 +610,10 @@ export default function ApplicationPage() {
 
   // ── Kick off conversation (first AI message) ───────────────────────────────
   const kickoffConversation = useCallback(async (appId: string, resumed: boolean, existingConv: unknown[]) => {
+    // Guard: React concurrent mode can invoke this twice. Only the first call proceeds.
+    if (kickoffCalledRef.current) return;
+    kickoffCalledRef.current = true;
+
     const thinkingId = nanoid();
     setMessages((prev) => {
       const base = resumed && existingConv.length ? prev : [];
