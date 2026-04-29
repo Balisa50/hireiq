@@ -181,7 +181,7 @@ async def _call_groq_conversation(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=45) as client:
+        async with httpx.AsyncClient(timeout=15) as client:
             response = await client.post(
                 GROQ_URL,
                 json=payload,
@@ -287,7 +287,7 @@ async def _call_gemini_conversation(
 
         for attempt in range(1, 3):
             try:
-                async with httpx.AsyncClient(timeout=45) as client:
+                async with httpx.AsyncClient(timeout=15) as client:
                     response = await client.post(url, json=payload)
 
                 if response.status_code == 200:
