@@ -677,6 +677,10 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
         candidate_context=candidate_context,
         experience_level=job.get("experience_level", "any"),
         skills=job.get("skills") or [],
+        department=job.get("department", "") or "",
+        candidate_info_config=job.get("candidate_info_config") or {},
+        eligibility_criteria=job.get("eligibility_criteria")  or {},
+        dei_config=job.get("dei_config") or {},
     )
 
     if not ai_response:

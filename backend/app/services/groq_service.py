@@ -728,6 +728,116 @@ def get_first_interview_message(
     }
 
 
+def _build_structured_fields_block(
+    candidate_info_config: dict,
+    eligibility_criteria: dict,
+    dei_config: dict,
+    references_count: int = 2,
+) -> str:
+    """
+    Build the dynamic 'STRUCTURED FIELDS' block listing every field the AI must
+    collect, in order. Driven entirely by what the employer enabled on the job.
+    Fields with a False/empty flag are NOT included so the AI never asks them.
+    """
+    info  = candidate_info_config or {}
+    elig  = eligibility_criteria  or {}
+    dei   = dei_config or {}
+
+    # ── A. Personal information ───────────────────────────────────────────
+    personal: list[str] = [
+        "Full name",
+        "Email address",
+    ]
+    if info.get("collect_phone", True):              personal.append("Phone number")
+    if info.get("collect_current_location"):         personal.append("Current city / location")
+    if info.get("collect_country_of_residence"):     personal.append("Country of residence")
+    if info.get("collect_full_address"):             personal.append("Full postal address")
+    if info.get("collect_date_of_birth"):            personal.append("Date of birth")
+    if info.get("collect_nationality"):              personal.append("Nationality")
+
+    # ── B. Professional background ────────────────────────────────────────
+    professional: list[str] = []
+    if info.get("collect_current_job_title"):    professional.append("Current job title")
+    if info.get("collect_current_employer"):     professional.append("Current employer")
+    if info.get("collect_total_years_exp"):      professional.append("Total years of professional experience")
+    if info.get("collect_employment_history"):
+        professional.append(
+            "Brief employment history -- last 2-3 roles with company, title, and dates"
+        )
+    if info.get("collect_education_history"):
+        professional.append(
+            "Education history -- institution, degree, field of study, graduation year"
+        )
+    if info.get("collect_notice_period"):        professional.append("Notice period or earliest start date")
+    if info.get("collect_expected_salary"):      professional.append("Expected salary")
+    if info.get("collect_willing_to_relocate"):  professional.append("Willingness to relocate")
+
+    # ── C. Eligibility checks ─────────────────────────────────────────────
+    eligibility: list[str] = []
+    min_edu = elig.get("min_education", "none")
+    if min_edu and min_edu != "none":
+        eligibility.append(
+            f"Highest education attained -- the role requires at least {min_edu.replace('_', ' ')}"
+        )
+    fields_of_study = elig.get("fields_of_study") or []
+    if fields_of_study:
+        eligibility.append(
+            f"Field of study -- preferred fields: {', '.join(fields_of_study)}"
+        )
+    min_exp = elig.get("min_experience_years", 0) or 0
+    if min_exp > 0:
+        ctx = elig.get("experience_context", "").strip()
+        suffix = f" ({ctx})" if ctx else ""
+        eligibility.append(
+            f"Years of relevant experience -- the role requires at least {min_exp} years{suffix}"
+        )
+    certs = elig.get("required_certifications") or []
+    for cert in certs:
+        eligibility.append(f"Certification required: {cert} -- ask if held, with year obtained")
+    if elig.get("min_gpa") is not None:
+        eligibility.append(f"GPA -- minimum required: {elig['min_gpa']}")
+    if elig.get("work_auth_required"):
+        eligibility.append("Work authorisation status for the role's location")
+    for lang in (elig.get("required_languages") or []):
+        name  = lang.get("language", "")
+        level = lang.get("proficiency", "")
+        if name:
+            eligibility.append(f"Language: {name} -- required level: {level}")
+
+    # ── D. References ─────────────────────────────────────────────────────
+    references: list[str] = []
+    if info.get("collect_references"):
+        n = max(1, int(references_count or 2))
+        references.append(
+            f"{n} professional reference(s) -- name, relationship, company, and email/phone"
+        )
+
+    # ── E. DEI (optional, gated by dei_config.enabled) ────────────────────
+    dei_fields: list[str] = []
+    if dei.get("enabled"):
+        if dei.get("collect_ethnicity"):  dei_fields.append("Ethnicity / race (optional, voluntary)")
+        if dei.get("collect_gender"):     dei_fields.append("Gender identity (optional, voluntary)")
+        if dei.get("collect_disability"): dei_fields.append("Disability status (optional, voluntary)")
+        if dei.get("collect_veteran"):    dei_fields.append("Veteran status (optional, voluntary)")
+
+    # ── Render block ──────────────────────────────────────────────────────
+    def section(title: str, items: list[str]) -> str:
+        if not items:
+            return ""
+        body = "\n".join(f"  - {item}" for item in items)
+        return f"\n[{title}]\n{body}\n"
+
+    parts = [
+        section("A. PERSONAL INFORMATION",       personal),
+        section("B. PROFESSIONAL BACKGROUND",    professional),
+        section("C. ELIGIBILITY CHECKS",         eligibility),
+        section("D. REFERENCES",                 references),
+        section("E. DIVERSITY (voluntary, ask gently and explain it is optional)", dei_fields),
+    ]
+    rendered = "".join(p for p in parts if p)
+    return rendered.strip("\n")
+
+
 async def generate_conversation_response(
     job_title: str,
     company_name: str,
@@ -742,6 +852,9 @@ async def generate_conversation_response(
     experience_level: str = "any",
     skills: list[str] | None = None,
     department: str = "",
+    candidate_info_config: dict | None = None,
+    eligibility_criteria: dict | None = None,
+    dei_config: dict | None = None,
 ) -> dict | None:
     """
     Generate the next AI message in a conversational application.
@@ -783,6 +896,17 @@ async def generate_conversation_response(
     skills_text    = ", ".join(skills) if skills else "see job description"
     seniority_text = experience_level.replace("_", " ").title() if experience_level and experience_level != "any" else "Not specified"
     dept_line      = f"Department: {department}\n" if department else ""
+
+    # Build the dynamic structured-fields block from the employer's job config.
+    # This is what makes the AI ask EVERY field the employer enabled, not just
+    # the hardcoded 5-field list.
+    refs_count = (candidate_info_config or {}).get("references_count", 2)
+    structured_fields_block = _build_structured_fields_block(
+        candidate_info_config or {},
+        eligibility_criteria  or {},
+        dei_config            or {},
+        references_count=refs_count,
+    )
 
     # Build dynamic prompt sections up front to avoid inline + operator bugs
     questions_list = pre_generated_questions or []
@@ -841,17 +965,33 @@ async def generate_conversation_response(
         f"Address as '{first_name}' at most once every 5 messages. Keep it natural.\n\n"
 
         f"---\n\n"
-        "WHAT YOU MUST COLLECT\n"
-        "Collect all of the following before closing. Never re-ask anything already answered.\n\n"
-        "Personal details (collect in order, one at a time):\n"
-        "  1. Full name\n"
-        "  2. Email address\n"
-        "  3. Phone number\n"
-        "  4. Current location\n"
-        "  5. Current employment status\n\n"
+        "MANDATORY COLLECTION ORDER\n"
+        "This is a job APPLICATION, not a technical interview. Your primary job is to "
+        "collect every structured field the employer configured below, in this exact order. "
+        "Do NOT skip any field. Do NOT jump to deep behavioural or technical role questions "
+        "until every single structured field has an answer. Each message asks exactly ONE thing.\n\n"
+
+        "ORDER:\n"
+        "  1. Structured fields (sections A through E below) -- collect first, in order\n"
+        "  2. Knockout / screening questions (if any)\n"
+        "  3. Required documents (request at the smartest natural moment)\n"
+        "  4. Custom role questions (the pre-generated list)\n"
+        "  5. Closing\n\n"
+
+        "STRUCTURED FIELDS -- ASK EACH ONE, IN ORDER, ONE PER MESSAGE\n"
+        "Skip nothing in this list. If a field is listed here, the employer requires it. "
+        "Move to the next field only after the candidate answers the current one. "
+        "If an answer is implausible (e.g. impossible date, malformed email), ask once for clarification.\n\n"
+        f"{structured_fields_block}\n\n"
+
+        "FORBIDDEN AT THIS STAGE\n"
+        "Do not ask deep technical interview questions ('walk me through how you would "
+        "validate a complex actuarial model', 'design a system that handles X'). "
+        "This is structured application data collection plus the employer's pre-set role "
+        "questions only. Save deep technical probing for the live interview stage.\n\n"
         + role_questions_section
         + knockout_section
-        + "SEVERITY EXECUTION RULES -- follow these exactly:\n"
+        + "SEVERITY EXECUTION RULES -- follow these exactly (apply ONLY to the role questions above, NOT to structured fields):\n"
         "  SURFACE: Ask the question once. Accept any answer, even brief. Move on immediately. No follow-ups.\n"
         "  STANDARD: If the answer is vague or thin, ask one follow-up for more specificity. "
         "Frame it helpfully: 'Could you walk me through a specific example of that?' Then accept and move on.\n"
@@ -905,8 +1045,10 @@ async def generate_conversation_response(
 
         "---\n\n"
         "CLOSING\n"
-        "Only close when complete: all 5 personal details collected, all role questions covered, "
-        "ALL required documents received.\n"
+        "Only close when EVERY structured field above has been answered, every knockout "
+        "question (if any) answered, every required document received, and every role "
+        "question covered. If a single structured field is missing, you are not done -- "
+        "loop back and ask it.\n"
         f"Closing message exactly: 'That is everything I need. Thank you for your time and for "
         f"applying to {company_name}. The team will be in touch if your application is selected to move forward.'\n"
         "Then set action to 'complete'. Never close early.\n\n"
