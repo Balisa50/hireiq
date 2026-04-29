@@ -388,6 +388,9 @@ export default function ApplicationPage() {
   const [jobInfo, setJobInfo]   = useState<JobPublicInfo | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Loading screen subtext (shown while retrying on cold-start)
+  const [loadingSubtext, setLoadingSubtext]   = useState("");
+
   // Auth state
   const [isAuthLoading, setIsAuthLoading]     = useState(false);
   const [googleLoading, setGoogleLoading]     = useState(false);
@@ -494,6 +497,7 @@ export default function ApplicationPage() {
         // when cold and wake the dyno — the retry will succeed once it's ready.
         if (isNetworkError(err) && attempt <= 4) {
           const delay = attempt === 1 ? 8_000 : attempt === 2 ? 15_000 : attempt === 3 ? 20_000 : 25_000;
+          if (!cancelled) setLoadingSubtext("Connecting to server…");
           await new Promise((r) => setTimeout(r, delay));
           if (!cancelled) await load(attempt + 1);
           return;
@@ -599,8 +603,10 @@ export default function ApplicationPage() {
         const msg = (err instanceof Error ? err.message : "").toLowerCase();
         const isNetwork = msg.includes("failed to fetch") || msg.includes("network") || msg.includes("fetch");
         if (isNetwork && attempt === 1) {
-          // Backend cold-starting (Render free tier). Wait for it to wake up.
+          // Backend cold-starting (Render free tier). Give feedback and wait.
+          setAuthGlobalError("Server is warming up, please wait a moment…");
           await new Promise((r) => setTimeout(r, 20_000));
+          setAuthGlobalError("");
           return tryStart(2);
         }
         throw err;
@@ -685,11 +691,12 @@ export default function ApplicationPage() {
       // First attempt failed — backend may be cold-starting on Render free tier.
       // Render needs up to 50 s to wake; wait 30 s then retry once.
       try {
+        setAiError("Server is warming up — this takes a few seconds. Retrying…");
         await new Promise((r) => setTimeout(r, 30_000));
+        setAiError("");
         await attemptSend();
       } catch {
         setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
-        // Reset guard so the user can retry by refreshing or re-triggering.
         kickoffCalledRef.current = false;
         setAiError("Could not connect to the AI. Please refresh the page to try again.");
       }
@@ -897,7 +904,7 @@ export default function ApplicationPage() {
     return (
       <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center gap-4">
         <Mark className="w-7 h-7 text-muted" />
-        <p className="text-[13px] text-muted">Loading…</p>
+        <p className="text-[13px] text-muted">{loadingSubtext || "Loading…"}</p>
       </div>
     );
   }
