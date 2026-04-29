@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { Paperclip, Link2, Send, AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
-import { interviewAPI, pingBackendHealth } from "@/lib/api";
+import { interviewAPI, pingBackendHealth, wakeBackend, waitForBackendWarm } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import type { JobPublicInfo } from "@/lib/types";
 
@@ -427,6 +427,9 @@ export default function ApplicationPage() {
   const lastShownTime       = useRef<number>(0);
   const isStartingRef       = useRef(false);
   const kickoffCalledRef    = useRef(false);
+  // Set to true once the backend has responded to at least one CORS GET.
+  // Used as a gate before POST requests to avoid cold-start CORS errors.
+  const backendWarmRef      = useRef(false);
   // Track whether this page session explicitly started a Google OAuth flow.
   // sessionStorage survives the OAuth redirect so we can distinguish a fresh
   // user-initiated sign-in from an automatic token-refresh event (both fire
@@ -460,8 +463,11 @@ export default function ApplicationPage() {
   }, [messages, scrollToBottom]);
 
   // ── Keep Render warm — ping every 4 minutes so backend doesn't cold-start ──
+  // Also fire a no-cors wake on mount: guaranteed to reach the dyno even if
+  // it is sleeping and Cloudflare is not yet returning CORS headers.
   useEffect(() => {
-    pingBackendHealth();
+    wakeBackend();         // no-cors — wakes dyno regardless of CORS state
+    pingBackendHealth();   // regular CORS GET — updates backendWarmRef if it succeeds
     const id = setInterval(pingBackendHealth, 240_000);
     return () => clearInterval(id);
   }, []);
@@ -488,6 +494,7 @@ export default function ApplicationPage() {
       try {
         const info = await interviewAPI.getJobInfo(token);
         if (cancelled) return;
+        backendWarmRef.current = true; // backend returned a CORS GET → confirmed warm
         setJobInfo(info);
         setScreen((prev) => prev === "loading" ? "welcome" : prev);
       } catch (err: unknown) {
@@ -595,6 +602,20 @@ export default function ApplicationPage() {
     setIsAuthLoading(true);
     setAuthGlobalError("");
 
+    // ── Warmup gate ──────────────────────────────────────────────────────────
+    // Before sending any POST request we must confirm the backend is warm.
+    // If it has gone cold (unlikely but possible if user took >15 min), poll
+    // GET /health until we get a proper CORS response, then proceed.
+    // wakeBackend() fires a no-cors request first — guaranteed to reach the
+    // Render dyno and trigger its wake cycle even if CORS headers are missing.
+    if (!backendWarmRef.current) {
+      wakeBackend();
+      setAuthGlobalError("Connecting to server, please wait…");
+      await waitForBackendWarm(55_000);
+      setAuthGlobalError("");
+      backendWarmRef.current = true;
+    }
+
     // Attempt startInterview — retries once after 20 s if the backend is cold.
     const tryStart = async (attempt = 1) => {
       try {
@@ -603,10 +624,12 @@ export default function ApplicationPage() {
         const msg = (err instanceof Error ? err.message : "").toLowerCase();
         const isNetwork = msg.includes("failed to fetch") || msg.includes("network") || msg.includes("fetch");
         if (isNetwork && attempt === 1) {
-          // Backend cold-starting (Render free tier). Give feedback and wait.
+          // Unexpected network failure — wait for confirmed warm then retry.
+          wakeBackend();
           setAuthGlobalError("Server is warming up, please wait a moment…");
-          await new Promise((r) => setTimeout(r, 20_000));
+          await waitForBackendWarm(55_000);
           setAuthGlobalError("");
+          backendWarmRef.current = true;
           return tryStart(2);
         }
         throw err;
@@ -688,11 +711,13 @@ export default function ApplicationPage() {
     try {
       await attemptSend();
     } catch {
-      // First attempt failed — backend may be cold-starting on Render free tier.
-      // Render needs up to 50 s to wake; wait 30 s then retry once.
+      // First attempt failed — backend may still be stabilising after a cold-start.
+      // Poll /health until it responds with CORS headers (up to 55 s), then retry.
       try {
         setAiError("Server is warming up — this takes a few seconds. Retrying…");
-        await new Promise((r) => setTimeout(r, 30_000));
+        wakeBackend(); // fire no-cors wake signal to accelerate dyno start
+        await waitForBackendWarm(55_000);
+        backendWarmRef.current = true;
         setAiError("");
         await attemptSend();
       } catch {
@@ -913,8 +938,13 @@ export default function ApplicationPage() {
     return (
       <WelcomeScreen
         jobInfo={jobInfo!}
-        onStart={() => setScreen("auth")}
-      />
+        onStart={() => {
+          // Fire a no-cors wake signal the moment the user enters the auth screen.
+          // If somehow the backend has gone cold since the welcome screen loaded,
+          // this starts the wake cycle while the user fills the form.
+          wakeBackend();
+          setScreen("auth");
+        }}
     );
   }
 
