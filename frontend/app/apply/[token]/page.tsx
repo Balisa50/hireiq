@@ -25,7 +25,7 @@ import type { JobPublicInfo } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type Screen = "loading" | "auth" | "conversation" | "review" | "complete" | "error";
+type Screen = "loading" | "welcome" | "auth" | "conversation" | "review" | "complete" | "error";
 
 interface ConversationMessage {
   id: string;
@@ -121,6 +121,65 @@ function Spinner({ className = "w-4 h-4" }: { className?: string }) {
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
     </svg>
+  );
+}
+
+// ── Welcome Screen ─────────────────────────────────────────────────────────────
+
+function WelcomeScreen({
+  jobInfo,
+  onStart,
+}: {
+  jobInfo: JobPublicInfo;
+  onStart: () => void;
+}) {
+  return (
+    <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4 py-12" dir="ltr">
+      <div className="max-w-[480px] w-full space-y-8">
+
+        {/* Brand mark */}
+        <div className="flex justify-center">
+          <Mark className="w-7 h-7 text-ink" />
+        </div>
+
+        {/* Job context */}
+        <div className="text-center space-y-2">
+          <p className="text-[12px] font-semibold text-muted uppercase tracking-widest">
+            {jobInfo.company_name}
+          </p>
+          <h1
+            className="text-[30px] font-bold text-ink leading-tight"
+            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+          >
+            {jobInfo.title}
+          </h1>
+        </div>
+
+        {/* What to expect */}
+        <div className="bg-white border border-border rounded-[4px] divide-y divide-border">
+          {[
+            { icon: "01", text: "You'll have a short conversation with our AI assistant — it asks questions, you type your answers." },
+            { icon: "02", text: "Be specific and honest. There are no trick questions — just tell your story." },
+            { icon: "03", text: "Takes around 10–15 minutes. Your progress is saved if you need to pause." },
+          ].map(({ icon, text }) => (
+            <div key={icon} className="flex items-start gap-4 px-5 py-4">
+              <span className="text-[11px] font-semibold text-muted tabular-nums shrink-0 mt-0.5">{icon}</span>
+              <p className="text-[13px] text-sub leading-relaxed">{text}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={onStart}
+          className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3.5 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors flex items-center justify-center gap-2"
+        >
+          Start Application <ChevronRight className="w-4 h-4" />
+        </button>
+
+        <p className="text-center text-[11px] text-muted">Secured by HireIQ</p>
+      </div>
+    </div>
   );
 }
 
@@ -403,7 +462,7 @@ export default function ApplicationPage() {
     interviewAPI.getJobInfo(token)
       .then((info) => {
         setJobInfo(info);
-        setScreen("auth");
+        setScreen("welcome");
       })
       .catch((err: Error) => {
         const m = err.message.toLowerCase();
@@ -506,6 +565,8 @@ export default function ApplicationPage() {
       setApplicationId(r.interview_id);
 
       if (r.resumed && r.transcript?.length) {
+        // Hydrate existing transcript — no kickoff needed, transcript already has messages.
+        // Calling kickoff here would add the last AI message a second time → duplicate.
         const hydrated: ConversationMessage[] = (r.transcript as unknown[]).map((raw) => {
           const entry = raw as Record<string, unknown>;
           return {
@@ -522,10 +583,12 @@ export default function ApplicationPage() {
           };
         });
         setMessages(hydrated);
+        setScreen("conversation");
+      } else {
+        // Fresh start — kick off to get the opening greeting from the backend.
+        setScreen("conversation");
+        await kickoffConversation(r.interview_id, false, []);
       }
-
-      setScreen("conversation");
-      await kickoffConversation(r.interview_id, r.resumed, r.transcript ?? []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
       if (msg.toLowerCase().includes("already submitted")) {
@@ -770,6 +833,15 @@ export default function ApplicationPage() {
         <Mark className="w-7 h-7 text-muted" />
         <p className="text-[13px] text-muted">Loading…</p>
       </div>
+    );
+  }
+
+  if (screen === "welcome") {
+    return (
+      <WelcomeScreen
+        jobInfo={jobInfo!}
+        onStart={() => setScreen("auth")}
+      />
     );
   }
 
