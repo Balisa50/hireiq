@@ -783,6 +783,41 @@ async def generate_conversation_response(
     seniority_text = experience_level.replace("_", " ").title() if experience_level and experience_level != "any" else "Not specified"
     dept_line      = f"Department: {department}\n" if department else ""
 
+    # Build dynamic prompt sections up front to avoid inline + operator bugs
+    questions_list = pre_generated_questions or []
+
+    if questions_list:
+        role_questions_section = (
+            "ROLE QUESTIONS WITH SEVERITY SETTINGS\n"
+            "These are the questions to cover. Each has a severity level. Execute them EXACTLY as instructed:\n\n"
+            + "\n".join(
+                f"  [{q.get('severity', 'standard').upper()}] {q.get('question', '')}"
+                for q in questions_list
+                if q.get("question")
+            )
+            + "\n\n"
+        )
+    else:
+        role_questions_section = "Role-relevant questions: ask about their background, experience, and fit for the role.\n\n"
+
+    has_knockouts = any(q.get("knockout_enabled") for q in questions_list)
+    if has_knockouts:
+        knockout_section = (
+            "KNOCKOUT / SCREENING QUESTIONS -- ask these FIRST, before any role questions:\n"
+            + "\n".join(
+                f"  [KNOCKOUT] {q.get('question', '')} "
+                f"(reject if: {q.get('knockout_rejection_reason', 'threshold not met')})"
+                for q in questions_list
+                if q.get("knockout_enabled")
+            )
+            + "\n\n"
+            "Ask each knockout question once. It is a SURFACE question. "
+            "Do not probe. Accept the answer and move on. "
+            "The system handles auto-rejection -- you just need to collect the answer clearly.\n\n"
+        )
+    else:
+        knockout_section = ""
+
     system_prompt = (
         f"You are a professional application assistant at {company_name}. "
         f"You are warm, helpful, and clear. Your job is to guide applicants through completing "
@@ -813,33 +848,9 @@ async def generate_conversation_response(
         "  3. Phone number\n"
         "  4. Current location\n"
         "  5. Current employment status\n\n"
-        + (
-            "ROLE QUESTIONS WITH SEVERITY SETTINGS\n"
-            "These are the questions to cover. Each has a severity level. Execute them EXACTLY as instructed:\n\n"
-            + "\n".join(
-                f"  [{q.get('severity', 'standard').upper()}] {q.get('question', '')}"
-                for q in pre_generated_questions
-                if q.get("question")
-            )
-            + "\n\n"
-            if pre_generated_questions else
-            "Role-relevant questions: ask about their background, experience, and fit for the role.\n\n"
-        ) +
-        + (
-            "KNOCKOUT / SCREENING QUESTIONS -- ask these FIRST, before any role questions:\n"
-            + "\n".join(
-                f"  [KNOCKOUT] {q.get('question', '')} "
-                f"(reject if: {q.get('knockout_rejection_reason', 'threshold not met')})"
-                for q in pre_generated_questions
-                if q.get("knockout_enabled")
-            )
-            + "\n\n"
-            "Ask each knockout question once. It is a SURFACE question. "
-            "Do not probe. Accept the answer and move on. "
-            "The system handles auto-rejection -- you just need to collect the answer clearly.\n\n"
-            if any(q.get("knockout_enabled") for q in pre_generated_questions) else ""
-        ) +
-        "SEVERITY EXECUTION RULES -- follow these exactly:\n"
+        + role_questions_section
+        + knockout_section
+        + "SEVERITY EXECUTION RULES -- follow these exactly:\n"
         "  SURFACE: Ask the question once. Accept any answer, even brief. Move on immediately. No follow-ups.\n"
         "  STANDARD: If the answer is vague or thin, ask one follow-up for more specificity. "
         "Frame it helpfully: 'Could you walk me through a specific example of that?' Then accept and move on.\n"
