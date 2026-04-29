@@ -15,7 +15,7 @@ Handles the full candidate interview lifecycle:
 import logging
 import re as _re
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import Response
 from app.auth import get_authenticated_company_id, verify_company_owns_resource
 from app.database import supabase
@@ -463,12 +463,70 @@ async def submit_candidate_link(request: SubmitLinkRequest) -> dict:
     return {"saved": True}
 
 
+async def _run_scoring_in_background(interview_id: str, interview: dict) -> None:
+    """
+    Run the (slow, 20-40s) Groq scoring call after the HTTP response has
+    already been returned to the candidate. Writes the assessment back to the
+    interviews row when done. Any failure is logged but never raised — the
+    candidate already saw their submission confirmed.
+    """
+    try:
+        job               = interview.get("jobs", {}) or {}
+        company           = (job.get("companies") or {})
+        candidate_context = interview.get("candidate_context") or None
+        candidate_name    = interview.get("candidate_name", "")
+
+        assessment = await score_candidate(
+            job_title=job.get("title", ""),
+            company_name=company.get("company_name", ""),
+            job_description=job.get("job_description", ""),
+            focus_areas=job.get("focus_areas") or [],
+            transcript=interview.get("transcript") or [],
+            candidate_name=candidate_name,
+            candidate_context=candidate_context,
+            experience_level=job.get("experience_level", "any"),
+            skills=job.get("skills") or [],
+            ai_deterrent_enabled=bool(job.get("ai_deterrent_enabled", True)),
+        )
+
+        if not assessment:
+            logger.warning("Background scoring returned no assessment for %s", interview_id)
+            return
+
+        concerns      = assessment.get("areas_of_concern") or []
+        red_flags     = assessment.get("red_flags") or []
+        identity_flag = assessment.get("identity_flag")
+        if identity_flag:
+            red_flags.insert(0, f"IDENTITY: {identity_flag}")
+        if red_flags:
+            concerns = red_flags + concerns
+
+        supabase.table("interviews").update({
+            "overall_score":                   assessment.get("overall_score"),
+            "score_breakdown":                 assessment.get("score_breakdown"),
+            "executive_summary":               assessment.get("executive_summary"),
+            "key_strengths":                   assessment.get("key_strengths"),
+            "areas_of_concern":                concerns,
+            "recommended_follow_up_questions": assessment.get("recommended_follow_up_questions"),
+            "hiring_recommendation":           assessment.get("hiring_recommendation"),
+            "document_interview_alignment":    assessment.get("document_interview_alignment"),
+            "status":                          "scored",
+        }).eq("id", interview_id).execute()
+
+    except Exception as error:
+        logger.error("Background scoring failed for %s: %s", interview_id, error)
+
+
 @router.post("/public/confirm/{interview_id}", response_model=dict)
-async def confirm_candidate_submission(interview_id: str) -> dict:
+async def confirm_candidate_submission(
+    interview_id: str,
+    background_tasks: BackgroundTasks,
+) -> dict:
     """
     Candidate explicitly confirms their application after reviewing on the review screen.
-    Transitions pending_review → completed → scored.
-    Idempotent: if already completed/scored, returns success without re-running scoring.
+    Transitions pending_review -> completed, then schedules scoring in the background
+    so the candidate's submit button never times out on Render's 30s request limit.
+    Idempotent: if already completed/scored, returns success without re-scoring.
     """
     iv_result = (
         supabase.table("interviews")
@@ -493,51 +551,17 @@ async def confirm_candidate_submission(interview_id: str) -> dict:
             detail="Interview is not pending review. It may still be in progress.",
         )
 
-    # Mark as completed
+    # Mark as completed BEFORE returning so the candidate sees confirmation
     supabase.table("interviews").update({
         "status":        "completed",
         "completed_at":  datetime.now(timezone.utc).isoformat(),
         "last_saved_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", interview_id).execute()
 
-    job               = interview.get("jobs", {}) or {}
-    company           = (job.get("companies") or {})
-    candidate_context = interview.get("candidate_context") or None
-    candidate_name    = interview.get("candidate_name", "")
-
-    assessment = await score_candidate(
-        job_title=job.get("title", ""),
-        company_name=company.get("company_name", ""),
-        job_description=job.get("job_description", ""),
-        focus_areas=job.get("focus_areas") or [],
-        transcript=interview.get("transcript") or [],
-        candidate_name=candidate_name,
-        candidate_context=candidate_context,
-        experience_level=job.get("experience_level", "any"),
-        skills=job.get("skills") or [],
-        ai_deterrent_enabled=bool(job.get("ai_deterrent_enabled", True)),
-    )
-
-    if assessment:
-        concerns      = assessment.get("areas_of_concern") or []
-        red_flags     = assessment.get("red_flags") or []
-        identity_flag = assessment.get("identity_flag")
-        if identity_flag:
-            red_flags.insert(0, f"IDENTITY: {identity_flag}")
-        if red_flags:
-            concerns = red_flags + concerns
-
-        supabase.table("interviews").update({
-            "overall_score":                   assessment.get("overall_score"),
-            "score_breakdown":                 assessment.get("score_breakdown"),
-            "executive_summary":               assessment.get("executive_summary"),
-            "key_strengths":                   assessment.get("key_strengths"),
-            "areas_of_concern":                concerns,
-            "recommended_follow_up_questions": assessment.get("recommended_follow_up_questions"),
-            "hiring_recommendation":           assessment.get("hiring_recommendation"),
-            "document_interview_alignment":    assessment.get("document_interview_alignment"),
-            "status":                          "scored",
-        }).eq("id", interview_id).execute()
+    # Schedule the slow Groq scoring call to run AFTER the response is returned.
+    # This avoids Render's 30s request timeout (which causes the NetworkError
+    # the candidate was seeing on the submit button).
+    background_tasks.add_task(_run_scoring_in_background, interview_id, interview)
 
     return {"confirmed": True}
 
