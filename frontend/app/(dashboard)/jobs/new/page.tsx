@@ -105,7 +105,7 @@ function FieldSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors appearance-none cursor-pointer"
+        className="w-full bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors appearance-none cursor-pointer"
       >
         {children}
       </select>
@@ -834,7 +834,7 @@ export default function NewJobPage() {
             <label className="block text-sm font-medium text-ink">Number of Openings</label>
             <input type="number" min={1} max={99} value={openings}
               onChange={(e) => setOpenings(Math.max(1, Math.min(99, parseInt(e.target.value, 10) || 1)))}
-              className={`w-full bg-white border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors ${errors.openings ? "border-danger" : "border-border"}`} />
+              className={`w-full bg-white border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors ${errors.openings ? "border-danger" : "border-border"}`} />
             {errors.openings && <p className="text-[13px] text-danger">{errors.openings}</p>}
           </div>
           <Input label="Job Code" value={jobCode} onChange={(e) => setJobCode(e.target.value)}
@@ -858,7 +858,7 @@ export default function NewJobPage() {
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder={workArrangement === "remote" ? "e.g. Worldwide / US only" : "e.g. London, UK"}
-              className={`w-full bg-white border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted ${errors.location ? "border-danger" : "border-border"}`}
+              className={`w-full bg-white border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors placeholder:text-muted ${errors.location ? "border-danger" : "border-border"}`}
             />
             {errors.location && <p className="text-[13px] text-danger">{errors.location}</p>}
           </div>
@@ -881,13 +881,13 @@ export default function NewJobPage() {
                 <label className="block text-sm font-medium text-ink">Min Salary</label>
                 <input type="number" min={0} value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)}
                   placeholder="e.g. 60000"
-                  className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted" />
+                  className="w-full bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors placeholder:text-muted" />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-sm font-medium text-ink">Max Salary</label>
                 <input type="number" min={0} value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)}
                   placeholder="e.g. 90000"
-                  className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted" />
+                  className="w-full bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors placeholder:text-muted" />
               </div>
             </div>
             {errors.salary && <p className="text-[13px] text-danger">{errors.salary}</p>}
@@ -915,7 +915,7 @@ export default function NewJobPage() {
             onChange={(e) => setBenefitsSummary(e.target.value)}
             rows={2}
             placeholder="e.g. Health insurance, 25 days PTO, remote stipend…"
-            className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none resize-none placeholder:text-muted focus:border-ink transition-colors"
+            className="w-full bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none resize-none placeholder:text-muted focus:border-ink transition-colors"
           />
         </div>
       </Card>
@@ -932,7 +932,7 @@ export default function NewJobPage() {
             onChange={(e) => setJobDescription(e.target.value)}
             rows={8}
             placeholder="Describe the role: responsibilities, day-to-day work, success criteria, team context…"
-            className={`w-full bg-white border rounded-[4px] px-4 py-3 text-sm text-ink outline-none resize-none placeholder:text-muted transition-colors focus:border-ink ${errors.desc ? "border-danger" : "border-border"}`}
+            className={`w-full bg-white border rounded-[4px] px-4 py-3 text-base text-ink outline-none resize-none placeholder:text-muted transition-colors focus:border-ink ${errors.desc ? "border-danger" : "border-border"}`}
           />
           {errors.desc && <p className="text-[13px] text-danger mt-1">{errors.desc}</p>}
         </div>
@@ -991,7 +991,7 @@ export default function NewJobPage() {
               <label className="block text-sm font-medium text-ink">Min Years of Experience</label>
               <input type="number" min={0} max={30} value={minExpYears}
                 onChange={(e) => setMinExpYears(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors" />
+                className="w-full bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors" />
             </div>
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-ink">
@@ -1000,7 +1000,7 @@ export default function NewJobPage() {
               <input type="number" min={0} max={4} step={0.1} value={minGPA}
                 onChange={(e) => setMinGPA(e.target.value)}
                 placeholder="e.g. 3.0"
-                className={`w-full bg-white border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted ${errors.gpa ? "border-danger" : "border-border"}`} />
+                className={`w-full bg-white border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors placeholder:text-muted ${errors.gpa ? "border-danger" : "border-border"}`} />
               {errors.gpa && <p className="text-[13px] text-danger">{errors.gpa}</p>}
             </div>
           </div>
@@ -1012,7 +1012,7 @@ export default function NewJobPage() {
               value={experienceContext}
               onChange={(e) => setExperienceContext(e.target.value)}
               placeholder="e.g. SaaS product development, financial services, B2B sales…"
-              className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
+              className="w-full bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
             />
           </div>
         </div>
@@ -1061,7 +1061,7 @@ export default function NewJobPage() {
                       value={q.question}
                       onChange={(e) => updateKnockoutQ(q.id, { question: e.target.value })}
                       placeholder="e.g. Are you authorised to work without sponsorship?"
-                      className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
+                      className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none focus:border-ink transition-colors placeholder:text-muted"
                     />
                     <button type="button" onClick={() => removeKnockoutQ(q.id)}
                       className="text-muted hover:text-danger transition-colors mt-2 shrink-0">
@@ -1311,7 +1311,7 @@ export default function NewJobPage() {
                     onChange={(e) => updateCustomQ(q.id, { question: e.target.value })}
                     rows={2}
                     placeholder="Type your interview question…"
-                    className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none resize-none focus:border-ink transition-colors placeholder:text-muted"
+                    className="flex-1 bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none resize-none focus:border-ink transition-colors placeholder:text-muted"
                   />
                   <button type="button" onClick={() => removeCustomQ(q.id)}
                     className="text-muted hover:text-danger transition-colors mt-2 shrink-0">
@@ -1361,7 +1361,7 @@ export default function NewJobPage() {
                 value={deterrentMessage}
                 onChange={(e) => setDeterrentMessage(e.target.value)}
                 rows={3}
-                className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none resize-none focus:border-ink transition-colors"
+                className="w-full bg-white border border-border rounded-[4px] px-3 py-2.5 text-base text-ink outline-none resize-none focus:border-ink transition-colors"
               />
             </div>
           </div>

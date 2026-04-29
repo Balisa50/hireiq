@@ -28,7 +28,7 @@ export default function Input({ label, error, hint, className, id, type, ...prop
           id={inputId}
           type={isPassword ? (showPassword ? "text" : "password") : type}
           className={clsx(
-            "w-full bg-white border rounded-[4px] px-3 py-2 text-sm text-ink",
+            "w-full bg-white border rounded-[4px] px-3 py-2.5 text-base text-ink",
             "placeholder:text-muted outline-none transition-colors",
             "focus:border-ink",
             isPassword && "pr-9",
