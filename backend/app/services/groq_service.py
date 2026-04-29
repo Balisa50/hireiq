@@ -1136,7 +1136,9 @@ async def generate_conversation_response(
         else:
             gemini_contents.append(msg)
 
-    raw = await _call_gemini_conversation(
+    # Use Groq directly — faster and more reliable than Gemini for real-time conversation.
+    # Gemini's cold-start latency causes "Failed to fetch" on the candidate page.
+    raw = await _call_groq_conversation(
         system_prompt=system_prompt,
         contents=gemini_contents,
         max_tokens=600,
