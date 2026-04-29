@@ -500,47 +500,69 @@ export default function ApplicationPage() {
       return msg.includes("failed to fetch") || msg.includes("network") || msg.includes("fetch");
     };
 
+    // ── STEP 1: Restore from localStorage IMMEDIATELY (no network needed) ──────
+    // This runs synchronously so a refresh always brings back the conversation
+    // even when the backend is cold or unreachable.
+    let restoredFromStorage = false;
+    try {
+      const saved = localStorage.getItem(SESSION_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as {
+          interviewId: string;
+          messages: ConversationMessage[];
+          candidateName?: string;
+          candidateEmail?: string;
+          jobInfo?: JobPublicInfo;
+        };
+        if (parsed.interviewId && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+          if (parsed.jobInfo) setJobInfo(parsed.jobInfo);
+          setApplicationId(parsed.interviewId);
+          setCandidateName(parsed.candidateName ?? "");
+          setCandidateEmail(parsed.candidateEmail ?? "");
+          setMessages(parsed.messages);
+          setScreen("conversation");
+          restoredFromStorage = true;
+        }
+      }
+    } catch { /* ignore */ }
+
+    // ── STEP 2: Always fetch fresh job info from backend ─────────────────────
+    // After a restore: updates jobInfo in the background, checks the job is still active.
+    // Without a restore: loads jobInfo so the welcome screen can render.
     const load = async (attempt = 1): Promise<void> => {
       try {
         const info = await interviewAPI.getJobInfo(token);
         if (cancelled) return;
         backendWarmRef.current = true;
         setJobInfo(info);
-        // Bug 1 + 3: check localStorage BEFORE showing welcome — never flash it twice
-        try {
-          const saved = localStorage.getItem(`hireiq_apply_${token}`);
-          if (saved) {
-            const parsed = JSON.parse(saved) as { interviewId: string; messages: ConversationMessage[]; candidateName?: string; candidateEmail?: string };
-            if (parsed.interviewId && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
-              setApplicationId(parsed.interviewId);
-              setCandidateName(parsed.candidateName ?? "");
-              setCandidateEmail(parsed.candidateEmail ?? "");
-              setMessages(parsed.messages);
-              if (!cancelled) setScreen("conversation");
-              return;
-            }
-          }
-        } catch { /* ignore */ }
-        if (!cancelled) setScreen((prev) => prev === "loading" ? "welcome" : prev);
+        // Only move to welcome if nothing was restored from storage
+        if (!restoredFromStorage && !cancelled) {
+          setScreen((prev) => prev === "loading" ? "welcome" : prev);
+        }
       } catch (err: unknown) {
         if (cancelled) return;
         // Render free-tier cold-start: retry up to 4 times with increasing delay.
-        // GET requests have no preflight (api.ts fix), so they reach Render even
-        // when cold and wake the dyno — the retry will succeed once it's ready.
         if (isNetworkError(err) && attempt <= 4) {
           const delay = attempt === 1 ? 8_000 : attempt === 2 ? 15_000 : attempt === 3 ? 20_000 : 25_000;
-          if (!cancelled) setLoadingSubtext("Connecting to server…");
+          // Only show "connecting" subtext when on loading screen (no restore happened)
+          if (!restoredFromStorage && !cancelled) setLoadingSubtext("Connecting to server…");
           await new Promise((r) => setTimeout(r, delay));
           if (!cancelled) await load(attempt + 1);
           return;
         }
-        setErrorMsg(classifyError((err instanceof Error ? err.message : "").toLowerCase()));
-        setScreen("error");
+        // Only show error screen if there was no saved session to fall back on
+        if (!restoredFromStorage) {
+          setErrorMsg(classifyError((err instanceof Error ? err.message : "").toLowerCase()));
+          setScreen("error");
+        }
+        // If a session was restored and the backend is dead, the user can still
+        // see their conversation — they just won't be able to send new messages yet.
       }
     };
 
     load();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // ── Persist conversation to localStorage on every message change ─────────
@@ -548,14 +570,15 @@ export default function ApplicationPage() {
     if (!applicationId || messages.length === 0) return;
     try {
       const toSave = messages.filter((m) => !m.isTyping);
-      localStorage.setItem(`hireiq_apply_${token}`, JSON.stringify({
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
         interviewId: applicationId,
         messages: toSave,
         candidateName,
         candidateEmail,
+        jobInfo,
       }));
     } catch { /* ignore */ }
-  }, [messages, applicationId, token, candidateName, candidateEmail]);
+  }, [messages, applicationId, token, candidateName, candidateEmail, jobInfo, SESSION_KEY]);
 
   // ── Progress ───────────────────────────────────────────────────────────────
   useEffect(() => {
