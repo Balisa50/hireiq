@@ -9,19 +9,15 @@ from datetime import datetime
 
 
 class StartInterviewRequest(BaseModel):
-    candidate_name: str
+    candidate_name: str = ""
     candidate_email: EmailStr
 
     @field_validator("candidate_name")
     @classmethod
     def validate_candidate_name(cls, name: str) -> str:
         name = name.strip()
-        if not name:
-            raise ValueError("Full name is required.")
         if len(name) > 100:
             raise ValueError("Name must be 100 characters or fewer.")
-        if len(name) < 2:
-            raise ValueError("Please enter your full name.")
         return name
 
 
@@ -212,3 +208,4 @@ class JobPublicInfo(BaseModel):
     question_count: int
     custom_intro_message: Optional[str] = None
     candidate_requirements: list[dict] = []
+    job_description: Optional[str] = None
