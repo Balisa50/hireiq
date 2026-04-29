@@ -369,12 +369,17 @@ function CandidateMessageBubble({ content, showTimestamp, timestamp }: {
       {showTimestamp && (
         <p className="text-[11px]" style={{ color: "#9C9590" }}>{time}</p>
       )}
-      <p
-        className="text-[15px] text-ink border-r-2 border-[#E8E4DF] pr-3.5 max-w-[85%] leading-relaxed"
-        style={{ textAlign: "right", direction: "ltr" }}
+      <div
+        className="max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-2.5"
+        style={{ backgroundColor: "#1A1714" }}
       >
-        {content}
-      </p>
+        <p
+          className="text-[15px] leading-relaxed"
+          style={{ color: "#FFFFFF", textAlign: "left", direction: "ltr" }}
+        >
+          {content}
+        </p>
+      </div>
     </div>
   );
 }
