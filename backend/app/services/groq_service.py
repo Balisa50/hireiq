@@ -908,12 +908,13 @@ async def generate_conversation_response(
         '"requirement_id": null, "requirement_label": null}'
     )
 
-    # Build OpenAI-format messages from conversation history
+    # Build OpenAI-format messages from conversation history.
+    # Groq requires the first non-system message to be "user".
+    # If the conversation starts with an AI greeting, prepend a dummy user turn.
     groq_messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
-    # Ensure conversation starts with a user turn
-    has_user_first = any(m.get("role") == "candidate" for m in conversation)
-    if not has_user_first:
+    first_role = conversation[0].get("role") if conversation else None
+    if not conversation or first_role == "ai":
         groq_messages.append({"role": "user", "content": "Ready."})
 
     for msg in conversation:
