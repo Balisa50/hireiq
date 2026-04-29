@@ -50,8 +50,15 @@ async function apiFetch<T>(
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
+  // Only set Content-Type for requests that carry a body.
+  // GET/HEAD requests have no body — sending Content-Type on them turns a
+  // "simple" CORS request into a preflighted one. On Render free tier the
+  // dyno sleeps and the load balancer handles the OPTIONS preflight without
+  // CORS headers, causing net::ERR_FAILED before the dyno even wakes up.
+  const method = (options.method ?? "GET").toUpperCase();
+  const hasBody = method !== "GET" && method !== "HEAD";
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
     ...(options.headers as Record<string, string> | undefined),
   };
 

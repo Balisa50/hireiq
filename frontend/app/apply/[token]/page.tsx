@@ -463,69 +463,73 @@ export default function ApplicationPage() {
     return () => clearInterval(id);
   }, []);
 
-  // ── Load job info ──────────────────────────────────────────────────────────
+  // ── Load job info — retries on network failure (Render free-tier cold-start) ──
   useEffect(() => {
-    interviewAPI.getJobInfo(token)
-      .then((info) => {
+    let cancelled = false;
+
+    const classifyError = (m: string) => {
+      if (m.includes("closed") || m.includes("longer accepting") || m.includes("no longer active") || m.includes("longer active")) return "closed";
+      if (m.includes("paused")) return "paused";
+      if (m.includes("deadline") || m.includes("expired")) return "deadline";
+      if (m.includes("limit") || m.includes("capacity")) return "limit";
+      if (m.includes("not found") || m.includes("invalid")) return "not_found";
+      return "unknown";
+    };
+
+    const isNetworkError = (e: unknown) => {
+      const msg = (e instanceof Error ? e.message : "").toLowerCase();
+      return msg.includes("failed to fetch") || msg.includes("network") || msg.includes("fetch");
+    };
+
+    const load = async (attempt = 1): Promise<void> => {
+      try {
+        const info = await interviewAPI.getJobInfo(token);
+        if (cancelled) return;
         setJobInfo(info);
-        // Only advance to welcome from loading. If the user has already clicked
-        // through to "auth" (or further) by the time this resolves, don't reset.
         setScreen((prev) => prev === "loading" ? "welcome" : prev);
-      })
-      .catch((err: Error) => {
-        const m = err.message.toLowerCase();
-        if (
-          m.includes("closed") ||
-          m.includes("longer accepting") ||
-          m.includes("no longer active") ||
-          m.includes("longer active")
-        ) {
-          setErrorMsg("closed");
-        } else if (m.includes("paused")) {
-          setErrorMsg("paused");
-        } else if (m.includes("deadline") || m.includes("expired")) {
-          setErrorMsg("deadline");
-        } else if (m.includes("limit") || m.includes("capacity")) {
-          setErrorMsg("limit");
-        } else if (m.includes("not found") || m.includes("invalid")) {
-          setErrorMsg("not_found");
-        } else {
-          setErrorMsg("unknown");
+      } catch (err: unknown) {
+        if (cancelled) return;
+        // Render free-tier cold-start: retry up to 4 times with increasing delay.
+        // GET requests have no preflight (api.ts fix), so they reach Render even
+        // when cold and wake the dyno — the retry will succeed once it's ready.
+        if (isNetworkError(err) && attempt <= 4) {
+          const delay = attempt === 1 ? 8_000 : attempt === 2 ? 15_000 : attempt === 3 ? 20_000 : 25_000;
+          await new Promise((r) => setTimeout(r, delay));
+          if (!cancelled) await load(attempt + 1);
+          return;
         }
+        setErrorMsg(classifyError((err instanceof Error ? err.message : "").toLowerCase()));
         setScreen("error");
-      });
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
   }, [token]);
 
-  // ── Supabase OAuth state change ───────────────────────────────────────────
-  // Only process SIGNED_IN if the user explicitly started a Google OAuth flow
-  // in this browser session (flagged in sessionStorage before the redirect).
-  // This prevents automatic token-refresh events (also SIGNED_IN in Supabase v2)
-  // from silently pre-filling pendingOAuth and causing the auth form to flash/
-  // auto-submit without user interaction.
+  // ── Google OAuth return ────────────────────────────────────────────────────
+  // Supabase processes the OAuth tokens from the URL hash during module
+  // initialisation — BEFORE React mounts and effects run. That means
+  // onAuthStateChange("SIGNED_IN") fires before we can subscribe, so we
+  // always miss it. Instead: on mount, if OAUTH_FLAG is set, call getSession()
+  // directly to read the session Supabase already established.
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (
-          event === "SIGNED_IN" &&
-          session &&
-          !applicationId &&
-          typeof sessionStorage !== "undefined" &&
-          sessionStorage.getItem(OAUTH_FLAG)
-        ) {
-          sessionStorage.removeItem(OAUTH_FLAG);
-          const fullName = (
-            session.user.user_metadata?.full_name
-            ?? session.user.user_metadata?.name
-            ?? ""
-          ) as string;
-          const email = session.user.email ?? "";
-          if (!fullName || !email) return;
-          setGoogleLoading(false);
-          setPendingOAuth({ name: fullName, email });
-        }
-      }
-    );
-    return () => subscription.unsubscribe();
+    if (typeof sessionStorage === "undefined") return;
+    if (!sessionStorage.getItem(OAUTH_FLAG)) return;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return; // OAuth hasn't completed or failed — leave flag for next load
+      sessionStorage.removeItem(OAUTH_FLAG);
+      const fullName = (
+        session.user.user_metadata?.full_name
+        ?? session.user.user_metadata?.name
+        ?? ""
+      ) as string;
+      const email = session.user.email ?? "";
+      if (!fullName || !email) return;
+      setGoogleLoading(false);
+      setPendingOAuth({ name: fullName, email });
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -586,8 +590,25 @@ export default function ApplicationPage() {
     isStartingRef.current = true;
     setIsAuthLoading(true);
     setAuthGlobalError("");
+
+    // Attempt startInterview — retries once after 20 s if the backend is cold.
+    const tryStart = async (attempt = 1) => {
+      try {
+        return await interviewAPI.startInterview(token, name, email);
+      } catch (err: unknown) {
+        const msg = (err instanceof Error ? err.message : "").toLowerCase();
+        const isNetwork = msg.includes("failed to fetch") || msg.includes("network") || msg.includes("fetch");
+        if (isNetwork && attempt === 1) {
+          // Backend cold-starting (Render free tier). Wait for it to wake up.
+          await new Promise((r) => setTimeout(r, 20_000));
+          return tryStart(2);
+        }
+        throw err;
+      }
+    };
+
     try {
-      const r = await interviewAPI.startInterview(token, name, email);
+      const r = await tryStart();
       setCandidateName(name);
       setCandidateEmail(email);
       setApplicationId(r.interview_id);
@@ -661,10 +682,10 @@ export default function ApplicationPage() {
     try {
       await attemptSend();
     } catch {
-      // First attempt failed — backend may be cold-starting (Render free tier).
-      // Wait 5 s and retry once before giving up.
+      // First attempt failed — backend may be cold-starting on Render free tier.
+      // Render needs up to 50 s to wake; wait 30 s then retry once.
       try {
-        await new Promise((r) => setTimeout(r, 5000));
+        await new Promise((r) => setTimeout(r, 30_000));
         await attemptSend();
       } catch {
         setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
