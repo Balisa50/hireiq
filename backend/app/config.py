@@ -28,8 +28,12 @@ class Settings(BaseSettings):
     rate_limit_ai: int = 20
 
     # Timeouts (seconds)
-    groq_timeout_seconds: int = 15
-    groq_retry_delay_seconds: int = 3
+    # Conversation responses can take 15-25s on long transcripts. We size the
+    # per-attempt timeout above the worst observed Groq latency so the user
+    # doesn't see "AI temporarily unavailable" mid-conversation. Total budget
+    # for one /public/message call: 30s + 1s + 30s = 61s worst case.
+    groq_timeout_seconds: int = 30
+    groq_retry_delay_seconds: int = 1
 
     # Content limits
     max_job_description_chars: int = 10_000
