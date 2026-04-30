@@ -942,7 +942,14 @@ async def list_candidates(
     min_score: int | None = None,
     max_score: int | None = None,
 ) -> list[CandidateSummary]:
-    """Return all candidates for the authenticated company."""
+    """
+    Return all candidates for the authenticated company.
+
+    By default we exclude `in_progress` and `pending_review` interviews — these
+    are drafts where the candidate has not yet clicked "Submit Application" on
+    the review screen. Employers must never see, score, or act on drafts.
+    Pass `status_filter` to opt-in to a specific draft state if needed.
+    """
     query = (
         supabase.table("interviews")
         .select("*, jobs(title)")
@@ -954,6 +961,13 @@ async def list_candidates(
         query = query.eq("job_id", job_id)
     if status_filter:
         query = query.eq("status", status_filter)
+    else:
+        # Hide drafts by default. Only fully-submitted applications surface.
+        query = query.in_(
+            "status",
+            ["completed", "scored", "shortlisted", "rejected",
+             "auto_rejected", "accepted"],
+        )
     if min_score is not None:
         query = query.gte("overall_score", min_score)
     if max_score is not None:
@@ -1013,6 +1027,15 @@ async def get_interview_report(
 
     interview = result.data[0]
     verify_company_owns_resource(interview["company_id"], company_id, "interview")
+
+    # Block detail access for drafts. The candidate has not yet clicked
+    # "Submit Application" on the review screen, so the employer must not see
+    # any of the data yet.
+    if interview.get("status") in ("in_progress", "pending_review"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found.",
+        )
 
     # Enrich submitted_files with fresh signed URLs for the company to download
     raw_files = interview.get("submitted_files") or []
