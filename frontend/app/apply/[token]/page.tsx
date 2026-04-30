@@ -502,42 +502,8 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
 
 // ── AI Message Bubble ──────────────────────────────────────────────────────────
 
-/** Set of message ids that have already finished their typewriter animation.
- *  Module-level so it survives parent re-renders (e.g. progress updates) and
- *  prevents the same bubble from re-typing every time it re-renders. */
-const TYPED_MESSAGE_IDS = new Set<string>();
-
 function AIMessageBubble({ message }: { message: ConversationMessage }) {
-  const full           = message.content || "";
-  const shouldAnimate  = !!message.animate && !TYPED_MESSAGE_IDS.has(message.id) && full.length > 0;
-  const initialDelayMs = message.animateDelayMs ?? 0;
-  const [shown, setShown] = useState<string>(shouldAnimate ? "" : full);
-  const [started, setStarted] = useState<boolean>(!shouldAnimate || initialDelayMs <= 0);
-
-  // Optional initial delay before the typewriter starts.
-  useEffect(() => {
-    if (!shouldAnimate || initialDelayMs <= 0) return;
-    const t = setTimeout(() => setStarted(true), initialDelayMs);
-    return () => clearTimeout(t);
-  }, [shouldAnimate, initialDelayMs]);
-
-  // Typewriter — ~37 chars per second (27ms per char).
-  useEffect(() => {
-    if (!shouldAnimate || !started) return;
-    let i = 0;
-    const id = window.setInterval(() => {
-      i += 1;
-      setShown(full.slice(0, i));
-      if (i >= full.length) {
-        window.clearInterval(id);
-        TYPED_MESSAGE_IDS.add(message.id);
-      }
-    }, 27);
-    return () => window.clearInterval(id);
-  }, [shouldAnimate, started, full, message.id]);
-
-  const isTypingDots = message.isTyping || (shouldAnimate && !started);
-
+  const isTypingDots = !!message.isTyping;
   return (
     <div className="flex items-start gap-3" dir="ltr">
       <div className="w-6 h-6 rounded-full bg-white border border-border flex items-center justify-center shrink-0 mt-1">
@@ -553,9 +519,9 @@ function AIMessageBubble({ message }: { message: ConversationMessage }) {
           <span className="text-[16px] text-muted animate-pulse"
             style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>_</span>
         ) : (
-          <p className="text-[16px] text-ink leading-[1.75]"
+          <p className="text-[16px] text-ink leading-[1.75] whitespace-pre-wrap"
             style={{ fontFamily: "'Playfair Display', Georgia, serif", textAlign: "left", direction: "ltr" }}>
-            {shown}
+            {message.content}
           </p>
         )}
       </div>
@@ -868,6 +834,9 @@ export default function ApplicationPage() {
     kickoffCalledRef.current = true;
 
     const thinkingId = nanoid();
+    const aiMsgId    = nanoid();
+    const isFirst    = !resumed || existingConv.length === 0;
+
     setMessages((prev) => {
       const base = resumed && existingConv.length ? prev : [];
       return [...base, {
@@ -875,39 +844,88 @@ export default function ApplicationPage() {
       }];
     });
 
-    const attemptSend = async () => {
-      const resp = await interviewAPI.sendMessage(appId, "");
-      // First message gets a 2.5s reveal delay so it feels like the assistant
-      // noticed the candidate arrive — never pre-loaded.
-      const isFirst = !resumed || existingConv.length === 0;
-      setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
-        id:                nanoid(),
-        role:              "ai",
-        content:           resp.message,
-        timestamp:         new Date().toISOString(),
-        animate:           true,
-        animateDelayMs:    isFirst ? 2500 : 0,
-        action:            resp.action,
-        requirement_id:    resp.requirement_id,
-        requirement_label: resp.requirement_label,
-        cardStatus:        (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
-      }]));
+    // Hold the thinking dots for 2.5s on a fresh kickoff so the message
+    // doesn't pop the instant the page loads.
+    const minHoldUntil = isFirst ? Date.now() + 2500 : 0;
+    const waitForHold = async () => {
+      const remaining = minHoldUntil - Date.now();
+      if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
+    };
+
+    let firstTokenSeen = false;
+
+    const handleEvent = (ev: import("@/lib/api").StreamEvent): void => {
+      if (ev.type === "first" || ev.type === "resume" || ev.type === "knockout") {
+        setMessages((prev) =>
+          prev.filter((m) => m.id !== thinkingId).concat([{
+            id:                aiMsgId,
+            role:              "ai",
+            content:           ev.message,
+            timestamp:         new Date().toISOString(),
+            action:            ev.action,
+            requirement_id:    "requirement_id" in ev ? ev.requirement_id : null,
+            requirement_label: "requirement_label" in ev ? ev.requirement_label : null,
+            cardStatus:        (ev.action === "request_file" || ev.action === "request_link") ? "idle" : undefined,
+          }])
+        );
+        return;
+      }
+      if (ev.type === "token") {
+        if (!firstTokenSeen) {
+          firstTokenSeen = true;
+          setMessages((prev) =>
+            prev.filter((m) => m.id !== thinkingId).concat([{
+              id:        aiMsgId,
+              role:      "ai",
+              content:   ev.text,
+              timestamp: new Date().toISOString(),
+              action:    "continue",
+            }])
+          );
+        } else {
+          setMessages((prev) => prev.map((m) =>
+            m.id === aiMsgId ? { ...m, content: m.content + ev.text } : m
+          ));
+        }
+        return;
+      }
+      if (ev.type === "done") {
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== aiMsgId) return m;
+          return {
+            ...m,
+            content:           ev.message,
+            action:            ev.action,
+            requirement_id:    ev.requirement_id,
+            requirement_label: ev.requirement_label,
+            cardStatus:        (ev.action === "request_file" || ev.action === "request_link") ? "idle" : undefined,
+          };
+        }));
+        return;
+      }
+      if (ev.type === "error") {
+        setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
+        setAiError(ev.message);
+      }
+    };
+
+    const attemptStream = async () => {
+      await waitForHold();
+      await interviewAPI.streamMessage(appId, "", handleEvent);
     };
 
     try {
-      await attemptSend();
+      await attemptStream();
     } catch {
-      // First attempt failed — backend may still be stabilising after a cold-start.
-      // Poll /health until it responds with CORS headers (up to 55 s), then retry.
       try {
-        setAiError("Server is warming up — this takes a few seconds. Retrying…");
-        wakeBackend(); // fire no-cors wake signal to accelerate dyno start
+        setAiError("Server is warming up, this takes a few seconds. Retrying…");
+        wakeBackend();
         await waitForBackendWarm(55_000);
         backendWarmRef.current = true;
         setAiError("");
-        await attemptSend();
+        await attemptStream();
       } catch {
-        setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
+        setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
         initialized.current = false;
         kickoffCalledRef.current = false;
         setAiError("Could not connect to the AI. Please refresh the page to try again.");
@@ -915,29 +933,68 @@ export default function ApplicationPage() {
     }
   }, []);
 
-  // ── Shared: post auto candidate message + get next AI reply ───────────────
+  // ── Shared: post auto candidate message + stream next AI reply ───────────
   const sendAutoMessage = useCallback(async (text: string) => {
     setIsWaitingForAI(true);
     const thinkingId = nanoid();
+    const aiMsgId    = nanoid();
     setMessages((prev) => [
       ...prev,
       { id: nanoid(), role: "candidate", content: text, timestamp: new Date().toISOString() },
       { id: thinkingId, role: "ai", content: "", timestamp: new Date().toISOString(), isTyping: true },
     ]);
+
+    let firstTokenSeen = false;
+    let didComplete    = false;
+
     try {
-      const resp = await interviewAPI.sendMessage(applicationId, text);
-      setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
-        id:                nanoid(),
-        role:              "ai",
-        content:           resp.message,
-        timestamp:         new Date().toISOString(),
-        animate:           true,
-        action:            resp.action,
-        requirement_id:    resp.requirement_id,
-        requirement_label: resp.requirement_label,
-        cardStatus:        (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
-      }]));
-      if (resp.action === "complete") {
+      await interviewAPI.streamMessage(applicationId, text, (ev) => {
+        if (ev.type === "first" || ev.type === "resume" || ev.type === "knockout") {
+          setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
+            id:                aiMsgId,
+            role:              "ai",
+            content:           ev.message,
+            timestamp:         new Date().toISOString(),
+            action:            ev.action,
+            requirement_id:    "requirement_id" in ev ? ev.requirement_id : null,
+            requirement_label: "requirement_label" in ev ? ev.requirement_label : null,
+            cardStatus:        (ev.action === "request_file" || ev.action === "request_link") ? "idle" : undefined,
+          }]));
+          if (ev.action === "complete") didComplete = true;
+        } else if (ev.type === "token") {
+          if (!firstTokenSeen) {
+            firstTokenSeen = true;
+            setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
+              id:        aiMsgId,
+              role:      "ai",
+              content:   ev.text,
+              timestamp: new Date().toISOString(),
+              action:    "continue",
+            }]));
+          } else {
+            setMessages((prev) => prev.map((m) =>
+              m.id === aiMsgId ? { ...m, content: m.content + ev.text } : m
+            ));
+          }
+        } else if (ev.type === "done") {
+          setMessages((prev) => prev.map((m) => {
+            if (m.id !== aiMsgId) return m;
+            return {
+              ...m,
+              content:           ev.message,
+              action:            ev.action,
+              requirement_id:    ev.requirement_id,
+              requirement_label: ev.requirement_label,
+              cardStatus:        (ev.action === "request_file" || ev.action === "request_link") ? "idle" : undefined,
+            };
+          }));
+          if (ev.action === "complete") didComplete = true;
+        } else if (ev.type === "error") {
+          setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
+          setAiError(ev.message);
+        }
+      });
+      if (didComplete) {
         setProgressPct(100);
         setApplicationComplete(true);
         setTimeout(() => setScreen("review"), 1800);
@@ -972,31 +1029,69 @@ export default function ApplicationPage() {
       { id: thinkingId, role: "ai", content: "", timestamp: now, isTyping: true },
     ]);
 
+    const aiMsgId       = nanoid();
+    let firstTokenSeen  = false;
+    let didComplete     = false;
+
     try {
-      const resp = await interviewAPI.sendMessage(applicationId, text);
-      setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
-        id:                nanoid(),
-        role:              "ai",
-        content:           resp.message,
-        timestamp:         new Date().toISOString(),
-        animate:           true,
-        action:            resp.action,
-        requirement_id:    resp.requirement_id,
-        requirement_label: resp.requirement_label,
-        cardStatus:        (resp.action === "request_file" || resp.action === "request_link") ? "idle" : undefined,
-      }]));
-      if (resp.action === "complete") {
+      await interviewAPI.streamMessage(applicationId, text, (ev) => {
+        if (ev.type === "first" || ev.type === "resume" || ev.type === "knockout") {
+          setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
+            id:                aiMsgId,
+            role:              "ai",
+            content:           ev.message,
+            timestamp:         new Date().toISOString(),
+            action:            ev.action,
+            requirement_id:    "requirement_id" in ev ? ev.requirement_id : null,
+            requirement_label: "requirement_label" in ev ? ev.requirement_label : null,
+            cardStatus:        (ev.action === "request_file" || ev.action === "request_link") ? "idle" : undefined,
+          }]));
+          if (ev.action === "complete") didComplete = true;
+        } else if (ev.type === "token") {
+          if (!firstTokenSeen) {
+            firstTokenSeen = true;
+            setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
+              id:        aiMsgId,
+              role:      "ai",
+              content:   ev.text,
+              timestamp: new Date().toISOString(),
+              action:    "continue",
+            }]));
+          } else {
+            setMessages((prev) => prev.map((m) =>
+              m.id === aiMsgId ? { ...m, content: m.content + ev.text } : m
+            ));
+          }
+        } else if (ev.type === "done") {
+          setMessages((prev) => prev.map((m) => {
+            if (m.id !== aiMsgId) return m;
+            return {
+              ...m,
+              content:           ev.message,
+              action:            ev.action,
+              requirement_id:    ev.requirement_id,
+              requirement_label: ev.requirement_label,
+              cardStatus:        (ev.action === "request_file" || ev.action === "request_link") ? "idle" : undefined,
+            };
+          }));
+          if (ev.action === "complete") didComplete = true;
+        } else if (ev.type === "error") {
+          setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
+          setAiError(ev.message);
+        }
+      });
+      if (didComplete) {
         setProgressPct(100);
         setApplicationComplete(true);
         setTimeout(() => setScreen("review"), 1800);
       }
     } catch (err: unknown) {
-      setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
+      setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
       setAiError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setIsWaitingForAI(false);
-      // Intentionally NOT auto-focusing the input — the bar must stay collapsed
-      // at the bottom and only expand when the candidate clicks it themselves.
+      // Intentionally NOT auto-focusing the input, the bar stays collapsed
+      // and only expands when the candidate clicks it themselves.
     }
   }, [inputValue, isWaitingForAI, hasCardPending, applicationComplete, applicationId]);
 
