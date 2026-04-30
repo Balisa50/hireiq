@@ -521,7 +521,7 @@ function AIMessageBubble({ message }: { message: ConversationMessage }) {
     return () => clearTimeout(t);
   }, [shouldAnimate, initialDelayMs]);
 
-  // Typewriter — ~20 chars per second (50ms per char).
+  // Typewriter — ~37 chars per second (27ms per char).
   useEffect(() => {
     if (!shouldAnimate || !started) return;
     let i = 0;
@@ -532,12 +532,11 @@ function AIMessageBubble({ message }: { message: ConversationMessage }) {
         window.clearInterval(id);
         TYPED_MESSAGE_IDS.add(message.id);
       }
-    }, 50);
+    }, 27);
     return () => window.clearInterval(id);
   }, [shouldAnimate, started, full, message.id]);
 
   const isTypingDots = message.isTyping || (shouldAnimate && !started);
-  const showCaret    = shouldAnimate && started && shown.length < full.length;
 
   return (
     <div className="flex items-start gap-3" dir="ltr">
@@ -557,9 +556,6 @@ function AIMessageBubble({ message }: { message: ConversationMessage }) {
           <p className="text-[16px] text-ink leading-[1.75]"
             style={{ fontFamily: "'Playfair Display', Georgia, serif", textAlign: "left", direction: "ltr" }}>
             {shown}
-            {showCaret && (
-              <span className="inline-block w-[2px] h-[1em] bg-ink/60 align-[-2px] ml-[1px]" />
-            )}
           </p>
         )}
       </div>
