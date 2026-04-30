@@ -582,7 +582,10 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
     """
     iv_result = (
         supabase.table("interviews")
-        .select("*, jobs(title, job_description, focus_areas, questions, candidate_requirements, companies(company_name))")
+        .select(
+            "*, jobs(*, "
+            "companies(company_name, custom_intro_message))"
+        )
         .eq("id", str(request.interview_id))
         .execute()
     )
@@ -603,7 +606,18 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
 
     # ── First message: return hardcoded greeting ──────────────────────────────
     if not conversation:
-        first_msg = get_first_interview_message(candidate_name, company_name, job["title"])
+        # Resolve the opening message: per-job override first, then the
+        # company-wide custom_intro_message, then the hardcoded default.
+        opening = (
+            (job.get("opening_message") or "")
+            or (company.get("custom_intro_message") or "")
+        )
+        first_msg = get_first_interview_message(
+            candidate_name,
+            company_name,
+            job["title"],
+            custom_opening_message=opening,
+        )
         new_conv   = [{
             "role":      "ai",
             "content":   first_msg["message"],
@@ -628,7 +642,12 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
                 "requirement_label": last_ai.get("requirement_label"),
             }
         # Shouldn't happen — return first message as fallback
-        first_msg = get_first_interview_message(candidate_name, company_name, job["title"])
+        first_msg = get_first_interview_message(
+            candidate_name,
+            company_name,
+            job["title"],
+            custom_opening_message=job.get("opening_message", "") or "",
+        )
         return first_msg
 
     # ── Normal turn: append candidate message + generate AI response ──────────

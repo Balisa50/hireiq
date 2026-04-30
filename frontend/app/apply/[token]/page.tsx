@@ -435,6 +435,8 @@ export default function ApplicationPage() {
   const [isSubmitting, setIsSubmitting]   = useState(false);
   const [submitError, setSubmitError]     = useState("");
   const [detailEdits, setDetailEdits] = useState<Record<string, string>>({});
+  // Edits to candidate answers, keyed by message id (m.id). Sent on submit.
+  const [answerEdits, setAnswerEdits] = useState<Record<string, string>>({});
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef            = useRef<HTMLTextAreaElement>(null);
@@ -880,6 +882,41 @@ export default function ApplicationPage() {
     setIsSubmitting(true);
     setSubmitError("");
     try {
+      // If the candidate edited any answers in the review screen, persist the
+      // updated transcript before marking the interview complete so the
+      // employer + scoring engine see the corrected text.
+      const hasAnswerEdits = Object.keys(answerEdits).length > 0;
+      const hasDetailEdits = Object.keys(detailEdits).length > 0;
+      if (hasAnswerEdits || hasDetailEdits) {
+        const editedTranscript = messages.map((m) => {
+          if (m.role === "candidate" && answerEdits[m.id] !== undefined) {
+            return { ...m, content: answerEdits[m.id] };
+          }
+          return m;
+        });
+        // Append a synthetic "candidate corrections" turn so the personal-detail
+        // edits are visible to the scoring engine even if they don't map 1:1
+        // to existing transcript turns.
+        if (hasDetailEdits) {
+          const correctionsText = Object.entries(detailEdits)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\n");
+          editedTranscript.push({
+            id:        `corrections-${Date.now()}`,
+            role:      "candidate",
+            content:   `Corrections from review screen:\n${correctionsText}`,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        try {
+          await interviewAPI.submitInterview(applicationId, editedTranscript as never);
+        } catch (saveErr) {
+          // Don't block submission on save failure — the interview already has
+          // the original transcript saved server-side. Just log it.
+          console.warn("Failed to persist transcript edits:", saveErr);
+        }
+      }
+
       await interviewAPI.confirmSubmission(applicationId);
       // Clear saved session — application is done
       try { localStorage.removeItem(`hireiq_apply_${token}`); } catch { /* ignore */ }
@@ -889,7 +926,7 @@ export default function ApplicationPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [applicationId]);
+  }, [applicationId, answerEdits, detailEdits, messages, token]);
 
   // ── Screens ────────────────────────────────────────────────────────────────
 
@@ -1042,17 +1079,30 @@ export default function ApplicationPage() {
     const submittedDocs = messages.filter(
       (m) => m.role === "ai" && m.cardStatus === "complete",
     );
-    const keyAnswers = messages.filter((m, i) => {
-      if (m.role !== "candidate") return false;
-      if (m.content.split(" ").length < 10) return false;
+    // Pair every substantive candidate answer with the AI question that
+    // preceded it, skipping the personal-detail q/a (those have their own
+    // section above). Show every one — fully editable.
+    type QA = { id: string; question: string; answer: string };
+    const qaPairs: QA[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role !== "candidate") continue;
+      if (m.content.trim().split(/\s+/).length < 4) continue;
       const prevAi = messages.slice(0, i).filter((x) => x.role === "ai").at(-1);
-      if (prevAi && PERSONAL_RE.test(prevAi.content ?? "")) return false;
-      return true;
-    }).slice(0, 3);
+      if (prevAi && PERSONAL_RE.test(prevAi.content ?? "")) continue;
+      qaPairs.push({
+        id:       m.id,
+        question: prevAi?.content ?? "Question",
+        answer:   m.content,
+      });
+    }
 
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-start px-4 py-12" dir="ltr">
-        <div className="max-w-[520px] w-full space-y-5">
+      <div
+        className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-start px-4 py-12 animate-slide-up"
+        dir="ltr"
+      >
+        <div className="max-w-[640px] w-full space-y-5">
           {/* Header */}
           <div className="text-center space-y-2">
             <Mark className="w-7 h-7 text-ink mx-auto" />
@@ -1127,19 +1177,33 @@ export default function ApplicationPage() {
             </div>
           )}
 
-          {/* Key answers preview */}
-          {keyAnswers.length > 0 && (
+          {/* Your answers — every substantive Q/A, fully editable */}
+          {qaPairs.length > 0 && (
             <div className="bg-white border border-border rounded-[4px] overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
                 <h2 className="text-[11px] font-semibold text-sub uppercase tracking-wider">Your Answers</h2>
               </div>
               <div className="divide-y divide-border">
-                {keyAnswers.map((m, idx) => (
-                  <div key={m.id} className="px-5 py-3">
-                    <p className="text-[11px] text-muted mb-1">Answer {idx + 1}</p>
-                    <p className="text-[13px] text-ink leading-relaxed line-clamp-3">{m.content}</p>
-                  </div>
-                ))}
+                {qaPairs.map(({ id, question, answer }, idx) => {
+                  const currentValue = answerEdits[id] !== undefined ? answerEdits[id] : answer;
+                  return (
+                    <div key={id} className="px-5 py-4 space-y-2">
+                      <p className="text-[11px] text-muted leading-snug">
+                        Q{idx + 1}. {question}
+                      </p>
+                      <textarea
+                        value={currentValue}
+                        dir="ltr"
+                        rows={Math.min(8, Math.max(2, Math.ceil(currentValue.length / 60)))}
+                        onChange={(e) =>
+                          setAnswerEdits((prev) => ({ ...prev, [id]: e.target.value }))
+                        }
+                        className="w-full text-[13px] text-ink leading-relaxed bg-transparent border border-border rounded-[4px] px-3 py-2 outline-none focus:border-ink transition-colors resize-y"
+                        style={{ textAlign: "left" }}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1152,8 +1216,12 @@ export default function ApplicationPage() {
             </div>
           )}
 
-          {/* Actions */}
+          {/* Mandatory review-instruction line + single Submit button */}
           <div className="space-y-3 pt-1">
+            <p className="text-[12px] text-sub text-center leading-relaxed px-2">
+              Take a moment to review your answers. This is your last chance to
+              make changes before submitting.
+            </p>
             <button
               onClick={handleConfirmSubmit}
               disabled={isSubmitting}
@@ -1164,12 +1232,6 @@ export default function ApplicationPage() {
               ) : (
                 <>Submit Application <ChevronRight className="w-4 h-4" /></>
               )}
-            </button>
-            <button
-              onClick={() => setScreen("conversation")}
-              className="w-full bg-transparent border border-border rounded-[4px] px-4 py-3 text-[13px] text-sub hover:text-ink hover:border-ink transition-colors"
-            >
-              ← Review your answers
             </button>
           </div>
 
@@ -1183,25 +1245,42 @@ export default function ApplicationPage() {
 
   // ── Complete screen ────────────────────────────────────────────────────────
   if (screen === "complete") {
-    const firstName = candidateName.trim().split(" ")[0] || candidateName;
+    const company = jobInfo?.company_name ?? "the company";
+    const role    = jobInfo?.title ?? "this role";
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-4" dir="ltr">
-        <div className="max-w-sm w-full text-center space-y-4">
-          <svg className="w-12 h-12 mx-auto text-ink" viewBox="0 0 48 48" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <div
+        className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center px-6 animate-slide-up"
+        dir="ltr"
+      >
+        <div className="max-w-md w-full text-center space-y-6">
+          <svg className="w-14 h-14 mx-auto text-ink" viewBox="0 0 48 48" fill="none"
+            stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="24" cy="24" r="22" />
             <polyline points="14 24 21 31 34 17" />
           </svg>
-          <h1 className="text-[28px] font-bold text-ink"
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
-            You&apos;re all set{firstName ? `, ${firstName}` : ""}.
+          <h1
+            className="text-[32px] font-bold text-ink leading-tight"
+            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+          >
+            Application Submitted
           </h1>
-          <p className="text-[13px] text-sub leading-relaxed">
-            Your application has been submitted to{" "}
-            <strong>{jobInfo?.company_name}</strong>. They&apos;ll be in touch if you&apos;re
-            selected to move forward.
-          </p>
-          <p className="text-[11px] text-muted pt-6">Secured by HireIQ</p>
+          <div className="text-[14px] text-sub leading-relaxed space-y-4">
+            <p>
+              Thank you for applying for the <strong>{role}</strong> role at{" "}
+              <strong>{company}</strong>. We&apos;ve received everything we need.
+              Our team will be in touch if you&apos;re selected to move forward.
+            </p>
+            <p>We wish you the very best.</p>
+            <p className="text-ink">— The {company} Team</p>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={() => { try { window.close(); } catch { /* ignore */ } }}
+              className="text-[12px] text-muted hover:text-ink transition-colors underline underline-offset-4"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     );

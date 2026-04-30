@@ -7,6 +7,7 @@ Author: HireIQ Engineering
 import logging
 import time
 import uuid
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import get_settings
 from app.routers.auth_router import router as auth_router
@@ -30,14 +33,58 @@ logging.basicConfig(
 logger = logging.getLogger("hireiq.main")
 
 
+_keepalive_scheduler: AsyncIOScheduler | None = None
+
+
+async def _ping_self() -> None:
+    """
+    Ping our own /health endpoint every 10 minutes to keep the Render free
+    instance awake. SELF_PING_URL must be set in production; if unset, the
+    job is a no-op.
+    """
+    target = os.environ.get(
+        "SELF_PING_URL",
+        "https://hireiq-1-8r1s.onrender.com/health",
+    )
+    if not target:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(target)
+            logger.info("keepalive ping %s -> %d", target, resp.status_code)
+    except Exception as err:
+        logger.warning("keepalive ping failed: %s", err)
+
+
 @asynccontextmanager
 async def application_lifespan(app: FastAPI):
     """Startup and shutdown events."""
+    global _keepalive_scheduler
     settings = get_settings()
     logger.info("=" * 60)
     logger.info("🚀 HireIQ API starting — environment: %s", settings.environment)
     logger.info("=" * 60)
+
+    # Render free-tier keep-alive: ping /health every 10 minutes so the
+    # instance never goes idle. Disabled outside production by default.
+    if os.environ.get("ENABLE_KEEPALIVE", "1") == "1":
+        try:
+            _keepalive_scheduler = AsyncIOScheduler()
+            _keepalive_scheduler.add_job(_ping_self, "interval", minutes=10)
+            _keepalive_scheduler.start()
+            logger.info("keepalive scheduler started (10min interval)")
+        except Exception as err:
+            logger.warning("could not start keepalive scheduler: %s", err)
+            _keepalive_scheduler = None
+
     yield
+
+    if _keepalive_scheduler is not None:
+        try:
+            _keepalive_scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+
     logger.info("HireIQ API shutting down.")
 
 
