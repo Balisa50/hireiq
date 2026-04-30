@@ -1734,18 +1734,20 @@ async def stream_conversation_response(
             chunk_count, len(accumulator), type(err).__name__, err,
             exc_info=True,
         )
-        # Friendly-message override for known failure modes.
-        err_str        = str(err)
-        friendly       = "Something went wrong, please try again."
+        # Friendly-message override for known failure modes. These messages
+        # show up in the chat as a calm, conversational note — never as a
+        # red system error.
+        err_str  = str(err)
+        friendly = "Give me a second, send that one more time?"
         if "Groq HTTP 429" in err_str or "rate_limit_exceeded" in err_str:
             wait_match = re.search(r"try again in (\d+m\s*\d*\.?\d*s|\d+\.?\d*s)", err_str)
             wait_str   = wait_match.group(1).strip() if wait_match else "a few minutes"
             friendly   = (
-                f"The AI service is temporarily over capacity. "
-                f"Please try again in {wait_str}."
+                f"I'm at capacity for the moment. "
+                f"Give it about {wait_str} and try again, your progress is saved."
             )
         elif "Groq HTTP 401" in err_str:
-            friendly = "AI service authentication failed. The team has been notified."
+            friendly = "I'm having trouble connecting on my end. The team has been pinged."
 
         yield {
             "type":    "error",

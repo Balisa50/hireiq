@@ -505,7 +505,12 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
 function AIMessageBubble({ message }: { message: ConversationMessage }) {
   const isTypingDots = !!message.isTyping;
   return (
-    <div className="flex items-start gap-3" dir="ltr">
+    <div
+      className="flex items-start gap-3"
+      dir="ltr"
+      data-msg-id={message.id}
+      style={{ scrollMarginTop: "72px" }}
+    >
       <div className="w-6 h-6 rounded-full bg-white border border-border flex items-center justify-center shrink-0 mt-1">
         {isTypingDots ? (
           <span className="w-1.5 h-4 bg-muted rounded-full animate-pulse inline-block" />
@@ -632,18 +637,50 @@ export default function ApplicationPage() {
       : "continue";
   const hasCardPending = pendingAction !== "continue";
 
-  // ── Scroll to bottom ──────────────────────────────────────────────────────
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      const container = scrollContainerRef.current;
-      if (!container) return;
-      container.scrollTop = container.scrollHeight;
-    });
-  }, []);
+  // ── Smart scroll: Claude.ai-style ─────────────────────────────────────────
+  // - When a NEW AI message appears, scroll so its TOP is just under the
+  //   header (so the candidate reads from the start without scrolling).
+  // - When the same AI message grows during streaming, do not auto-scroll
+  //   so the candidate's eye stays at the top of the message.
+  // - When a NEW candidate message is sent, snap to bottom (their input is
+  //   always at the bottom, they want confirmation it sent).
+  const lastSeenAiIdRef        = useRef<string | null>(null);
+  const lastSeenCandidateIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const lastAi = [...messages].reverse().find((m) => m.role === "ai" && !m.isTyping);
+    const lastCd = [...messages].reverse().find((m) => m.role === "candidate");
+
+    // New AI message arrived (id changed) -> scroll its top into view.
+    if (lastAi && lastAi.id !== lastSeenAiIdRef.current) {
+      lastSeenAiIdRef.current = lastAi.id;
+      requestAnimationFrame(() => {
+        const node = document.querySelector(`[data-msg-id="${lastAi.id}"]`) as HTMLElement | null;
+        if (node) {
+          node.scrollIntoView({ block: "start", behavior: "smooth" });
+        } else {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+      return;
+    }
+
+    // New candidate message sent -> snap to bottom.
+    if (lastCd && lastCd.id !== lastSeenCandidateIdRef.current) {
+      lastSeenCandidateIdRef.current = lastCd.id;
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+      return;
+    }
+
+    // No id change (just a token-update on an existing AI message): do
+    // nothing. The candidate's eye stays anchored at the top of the
+    // streaming reply.
+  }, [messages]);
 
   // ── Keep Render warm — ping every 4 minutes so backend doesn't cold-start ──
   // Also fire a no-cors wake on mount: guaranteed to reach the dyno even if
@@ -915,7 +952,7 @@ export default function ApplicationPage() {
           message: ev.message,
         });
         setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
-        setAiError(ev.message || "Something went wrong, please try again.");
+        setAiError(ev.message || "Give me a second, I lost my train of thought. Send your last message again?");
       }
     };
 
@@ -928,7 +965,7 @@ export default function ApplicationPage() {
       await attemptStream();
     } catch {
       try {
-        setAiError("Server is warming up, this takes a few seconds. Retrying…");
+        setAiError("Just a moment while I get set up...");
         wakeBackend();
         await waitForBackendWarm(55_000);
         backendWarmRef.current = true;
@@ -938,7 +975,7 @@ export default function ApplicationPage() {
         setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
         initialized.current = false;
         kickoffCalledRef.current = false;
-        setAiError("Could not connect to the AI. Please refresh the page to try again.");
+        setAiError("Looks like my connection dropped. Refresh the page and we'll pick up where we left off.");
       }
     }
   }, []);
@@ -1008,7 +1045,7 @@ export default function ApplicationPage() {
             message: ev.message,
           });
           setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
-          setAiError(ev.message || "Something went wrong, please try again.");
+          setAiError(ev.message || "Give me a second, I lost my train of thought. Send your last message again?");
         }
       });
       if (didComplete) {
@@ -1018,7 +1055,7 @@ export default function ApplicationPage() {
       }
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId));
-      setAiError("Could not continue. Please try again.");
+      setAiError("Give me a second, send that one more time?");
     } finally {
       setIsWaitingForAI(false);
     }
@@ -1101,7 +1138,7 @@ export default function ApplicationPage() {
             message: ev.message,
           });
           setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
-          setAiError(ev.message || "Something went wrong, please try again.");
+          setAiError(ev.message || "Give me a second, I lost my train of thought. Send your last message again?");
         }
       });
       if (didComplete) {
@@ -1111,7 +1148,7 @@ export default function ApplicationPage() {
       }
     } catch (err: unknown) {
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
-      setAiError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setAiError(err instanceof Error && err.message ? err.message : "Give me a second, send that one more time?");
     } finally {
       setIsWaitingForAI(false);
       // Intentionally NOT auto-focusing the input, the bar stays collapsed
@@ -1197,7 +1234,7 @@ export default function ApplicationPage() {
       setLinkValue("");
       await sendAutoMessage(`Here's my ${reqLabel}: ${cleaned}`);
     } catch (e) {
-      setBarError(e instanceof Error ? e.message : "Submission failed. Please try again.");
+      setBarError(e instanceof Error ? e.message : "That didn't go through. Try the Submit button once more.");
     }
   }, [lastAiMsg, linkValue, applicationId, sendAutoMessage]);
 
@@ -1263,7 +1300,7 @@ export default function ApplicationPage() {
       try { localStorage.removeItem(`hireiq_apply_${token}`); } catch { /* ignore */ }
       setScreen("complete");
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Submission failed. Please try again.");
+      setSubmitError(e instanceof Error ? e.message : "That didn't go through. Try the Submit button once more.");
     } finally {
       setIsSubmitting(false);
     }
@@ -1601,19 +1638,19 @@ export default function ApplicationPage() {
             </div>
           )}
 
-          {/* Block summary — shown when validation fails */}
+          {/* Block summary — shown when validation needs attention */}
           {blockingCount > 0 && (
-            <div className="flex items-start gap-2 rounded-[4px] bg-red-50 border border-danger/20 px-3 py-2.5 text-[13px] text-danger">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>Please fix the highlighted fields before submitting.</span>
+            <div className="flex items-start gap-2 rounded-[6px] border border-border bg-white/80 px-3 py-2.5 text-[13px] text-sub">
+              <span className="mt-[5px] inline-block h-1.5 w-1.5 rounded-full bg-muted shrink-0" />
+              <span>A few highlighted fields need a quick look before you submit.</span>
             </div>
           )}
 
           {/* Submit error */}
           {submitError && (
-            <div className="flex items-start gap-2 rounded-[4px] bg-red-50 border border-danger/20 px-3 py-2.5 text-[13px] text-danger">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              {submitError}
+            <div className="flex items-start gap-2 rounded-[6px] border border-border bg-white/80 px-3 py-2.5 text-[13px] text-sub">
+              <span className="mt-[5px] inline-block h-1.5 w-1.5 rounded-full bg-muted shrink-0" />
+              <span>{submitError}</span>
             </div>
           )}
 
@@ -1752,10 +1789,14 @@ export default function ApplicationPage() {
       <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg)] border-t border-border" dir="ltr">
         <div className="max-w-[680px] mx-auto px-4 py-3">
           {(aiError || barError) && (
-            <p className="text-[12px] text-danger mb-2 flex items-center gap-1">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              {aiError || barError}
-            </p>
+            <div
+              className="mb-2 flex items-start gap-2 rounded-[6px] border border-border bg-white/80 px-3 py-2 text-[12px] text-sub"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="mt-[2px] inline-block h-1.5 w-1.5 rounded-full bg-muted shrink-0" />
+              <span className="leading-snug">{aiError || barError}</span>
+            </div>
           )}
 
           {/* FILE ATTACH BAR */}
