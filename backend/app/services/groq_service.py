@@ -695,29 +695,43 @@ def get_first_interview_message(
     job_title: str,
     resumed: bool = False,
     last_ai_message: str = "",
+    custom_opening_message: str = "",
 ) -> dict:
     """
-    Return the hardcoded opening AI message.
-    Never AI-generated to prevent hallucinations on the opening line.
-    No em dashes anywhere in this message.
+    Return the opening AI message. Never AI-generated to prevent hallucinations
+    on the opening line.
+
+    Resolution order:
+      1. If `resumed` -> short welcome-back blurb based on last AI message
+      2. If employer set a custom opening -> use it verbatim ({job_title} and
+         {company_name} placeholders are interpolated; candidate_name is NEVER
+         interpolated, name personalisation begins after the first answer)
+      3. Default opener (no candidate_name).
     """
-    first_name = candidate_name.split()[0] if candidate_name else "there"
-    company    = company_name.strip() if company_name else "the company"
-    role       = job_title.strip()    if job_title    else "this role"
+    company = company_name.strip() if company_name else "the company"
+    role    = job_title.strip()    if job_title    else "this role"
 
     if resumed and last_ai_message:
+        first_name    = candidate_name.split()[0] if candidate_name else "there"
         last_sentence = last_ai_message.split(".")[0].strip()
         message = (
             f"Welcome back, {first_name}. We left off at: \"{last_sentence}.\" "
             f"Ready to continue?"
         )
+    elif custom_opening_message and custom_opening_message.strip():
+        # Interpolate role + company placeholders. NEVER candidate_name.
+        message = (
+            custom_opening_message.strip()
+            .replace("{job_title}",   role)
+            .replace("{company_name}", company)
+        )
     else:
         message = (
-            f"Hi there, thanks for applying for the {role} role at {company}. "
-            f"I am here to help you complete your application. "
-            f"I will ask you a few questions about your background. "
-            f"Just be specific and honest, there are no trick questions. "
-            f"To get started, could you confirm your full name?"
+            f"Welcome! I'm here to help you complete your application "
+            f"for the {role} role at {company}. This will feel like a "
+            f"real conversation, not a form. Just answer honestly and "
+            f"we'll get through this quickly. To get started, could you "
+            f"confirm your full name?"
         )
 
     return {
@@ -1225,12 +1239,22 @@ async def generate_conversation_response(
 
         "---\n\n"
 
+        "BEFORE CLOSING — MANDATORY\n"
+        "Before sending the closing message, ask exactly this once:\n"
+        f"\"Before I wrap things up — is there anything else you'd like the team "
+        f"at {company_name} to know about you that we haven't covered yet?\"\n"
+        "Accept any answer including \"no\" or \"nothing\". Then close.\n"
+        "Never skip this step.\n\n"
+
+        "---\n\n"
+
         "CLOSING RULES\n"
         "Only close when ALL of the following are true:\n"
         "  All structured fields in sections A-E have been answered\n"
         "  Every knockout question has been answered\n"
         "  Every required document has been received\n"
-        "  Every role question has been covered\n\n"
+        "  Every role question has been covered\n"
+        "  The mandatory \"anything else?\" question above has been asked and answered\n\n"
 
         "If even one field is missing — loop back. Do not close early. Ever.\n\n"
 

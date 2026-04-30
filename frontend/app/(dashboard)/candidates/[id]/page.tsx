@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   Download, CheckCircle2, XCircle, ChevronDown, ChevronUp,
   Clock, Calendar, Mail, RefreshCw, Send, X, Star, Trash2, AlertTriangle,
+  FileText, Link2, ExternalLink,
 } from "lucide-react";
 import { candidatesAPI } from "@/lib/api";
 import type { Interview } from "@/lib/types";
@@ -841,6 +842,62 @@ export default function CandidateReportPage() {
               </ol>
             </Card>
           ) : null}
+
+          {/* Submitted documents & links */}
+          {((interview.submitted_files?.length ?? 0) > 0 ||
+            (interview.submitted_links?.length ?? 0) > 0) && (
+            <div className="bg-white border border-border rounded-[4px] overflow-hidden">
+              <div className="px-6 py-4 border-b border-border">
+                <h3 className="text-sm font-semibold text-ink">Submitted Materials</h3>
+                <p className="text-[12px] text-muted mt-0.5">
+                  Click any file to preview or download. Links open in a new tab.
+                </p>
+              </div>
+              <div className="divide-y divide-border">
+                {(interview.submitted_files ?? []).map((f) => {
+                  const sizeKb = Math.max(1, Math.round((f.file_size ?? 0) / 1024));
+                  const sizeText = sizeKb >= 1024
+                    ? `${(sizeKb / 1024).toFixed(1)} MB`
+                    : `${sizeKb} KB`;
+                  return (
+                    <a
+                      key={f.requirement_id + f.file_path}
+                      href={f.signed_url ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`flex items-center gap-3 px-6 py-3 hover:bg-[var(--bg)] transition-colors ${
+                        f.signed_url ? "" : "pointer-events-none opacity-60"
+                      }`}
+                    >
+                      <FileText className="w-4 h-4 text-muted shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] text-muted">{f.label}</p>
+                        <p className="text-[13px] text-ink truncate">{f.file_name}</p>
+                      </div>
+                      <span className="text-[11px] text-muted">{sizeText}</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-muted shrink-0" />
+                    </a>
+                  );
+                })}
+                {(interview.submitted_links ?? []).map((l) => (
+                  <a
+                    key={l.requirement_id + l.url}
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 px-6 py-3 hover:bg-[var(--bg)] transition-colors"
+                  >
+                    <Link2 className="w-4 h-4 text-muted shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] text-muted">{l.label}</p>
+                      <p className="text-[13px] text-ink truncate">{l.url}</p>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-muted shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Transcript */}
           {interview.transcript?.length > 0 && (() => {
