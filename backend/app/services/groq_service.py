@@ -1394,8 +1394,26 @@ async def generate_conversation_response(
         action = "continue"
 
     return {
-        "message":           str(parsed.get("message", "")).strip(),
+        "message":           _sanitise_ai_message(parsed.get("message", "")),
         "action":            action,
         "requirement_id":    parsed.get("requirement_id"),
         "requirement_label": parsed.get("requirement_label"),
     }
+
+
+# ── Output sanitiser ───────────────────────────────────────────────────────────
+
+# Em-dash, en-dash, and double-hyphen substitutes. The model leans on these
+# despite explicit prompt instructions to avoid them. Strip them deterministically
+# from every conversational reply before the candidate sees it.
+_DASH_PATTERN = re.compile(r"\s*(?:—|–|--)\s*")
+
+def _sanitise_ai_message(text: str) -> str:
+    """Replace em/en dashes and `--` with comma + space, tidy whitespace, trim."""
+    if not text:
+        return ""
+    cleaned = _DASH_PATTERN.sub(", ", str(text))
+    # Collapse only horizontal whitespace runs, never newlines or indentation.
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+,", ",", cleaned)
+    return cleaned.strip()
