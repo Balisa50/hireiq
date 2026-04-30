@@ -32,6 +32,14 @@ interface ConversationMessage {
   content: string;
   timestamp: string;
   isTyping?: boolean;
+  /**
+   * If set, the AI bubble types its content out character-by-character.
+   * Cleared (or absent) on bubbles that have already finished animating
+   * or were restored from localStorage.
+   */
+  animate?: boolean;
+  /** Optional millisecond delay before the typewriter starts. */
+  animateDelayMs?: number;
   action?: "continue" | "request_file" | "request_link" | "complete";
   requirement_id?: string | null;
   requirement_label?: string | null;
@@ -494,11 +502,47 @@ function AuthScreen({ jobInfo, onAuth, onGoogleAuth, isLoading, googleLoading, g
 
 // ── AI Message Bubble ──────────────────────────────────────────────────────────
 
+/** Set of message ids that have already finished their typewriter animation.
+ *  Module-level so it survives parent re-renders (e.g. progress updates) and
+ *  prevents the same bubble from re-typing every time it re-renders. */
+const TYPED_MESSAGE_IDS = new Set<string>();
+
 function AIMessageBubble({ message }: { message: ConversationMessage }) {
+  const full           = message.content || "";
+  const shouldAnimate  = !!message.animate && !TYPED_MESSAGE_IDS.has(message.id) && full.length > 0;
+  const initialDelayMs = message.animateDelayMs ?? 0;
+  const [shown, setShown] = useState<string>(shouldAnimate ? "" : full);
+  const [started, setStarted] = useState<boolean>(!shouldAnimate || initialDelayMs <= 0);
+
+  // Optional initial delay before the typewriter starts.
+  useEffect(() => {
+    if (!shouldAnimate || initialDelayMs <= 0) return;
+    const t = setTimeout(() => setStarted(true), initialDelayMs);
+    return () => clearTimeout(t);
+  }, [shouldAnimate, initialDelayMs]);
+
+  // Typewriter — ~20 chars per second (50ms per char).
+  useEffect(() => {
+    if (!shouldAnimate || !started) return;
+    let i = 0;
+    const id = window.setInterval(() => {
+      i += 1;
+      setShown(full.slice(0, i));
+      if (i >= full.length) {
+        window.clearInterval(id);
+        TYPED_MESSAGE_IDS.add(message.id);
+      }
+    }, 50);
+    return () => window.clearInterval(id);
+  }, [shouldAnimate, started, full, message.id]);
+
+  const isTypingDots = message.isTyping || (shouldAnimate && !started);
+  const showCaret    = shouldAnimate && started && shown.length < full.length;
+
   return (
     <div className="flex items-start gap-3" dir="ltr">
       <div className="w-6 h-6 rounded-full bg-white border border-border flex items-center justify-center shrink-0 mt-1">
-        {message.isTyping ? (
+        {isTypingDots ? (
           <span className="w-1.5 h-4 bg-muted rounded-full animate-pulse inline-block" />
         ) : (
           <Mark className="w-3 h-3 text-muted" />
@@ -506,13 +550,16 @@ function AIMessageBubble({ message }: { message: ConversationMessage }) {
       </div>
 
       <div className="flex-1 min-w-0">
-        {message.isTyping ? (
+        {isTypingDots ? (
           <span className="text-[16px] text-muted animate-pulse"
             style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>_</span>
         ) : (
           <p className="text-[16px] text-ink leading-[1.75]"
             style={{ fontFamily: "'Playfair Display', Georgia, serif", textAlign: "left", direction: "ltr" }}>
-            {message.content}
+            {shown}
+            {showCaret && (
+              <span className="inline-block w-[2px] h-[1em] bg-ink/60 align-[-2px] ml-[1px]" />
+            )}
           </p>
         )}
       </div>
@@ -733,7 +780,16 @@ export default function ApplicationPage() {
   useEffect(() => {
     if (!applicationId || messages.length === 0) return;
     try {
-      const toSave = messages.filter((m) => !m.isTyping);
+      // Strip animate flags before persisting — restored messages must not
+      // re-type after a refresh.
+      const toSave = messages
+        .filter((m) => !m.isTyping)
+        .map((m) => {
+          if (!m.animate && !m.animateDelayMs) return m;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { animate: _a, animateDelayMs: _d, ...rest } = m;
+          return rest;
+        });
       localStorage.setItem(SESSION_KEY, JSON.stringify({
         interviewId: applicationId,
         messages: toSave,
@@ -825,11 +881,16 @@ export default function ApplicationPage() {
 
     const attemptSend = async () => {
       const resp = await interviewAPI.sendMessage(appId, "");
+      // First message gets a 2.5s reveal delay so it feels like the assistant
+      // noticed the candidate arrive — never pre-loaded.
+      const isFirst = !resumed || existingConv.length === 0;
       setMessages((prev) => prev.filter((m) => m.id !== thinkingId).concat([{
         id:                nanoid(),
         role:              "ai",
         content:           resp.message,
         timestamp:         new Date().toISOString(),
+        animate:           true,
+        animateDelayMs:    isFirst ? 2500 : 0,
         action:            resp.action,
         requirement_id:    resp.requirement_id,
         requirement_label: resp.requirement_label,
@@ -874,6 +935,7 @@ export default function ApplicationPage() {
         role:              "ai",
         content:           resp.message,
         timestamp:         new Date().toISOString(),
+        animate:           true,
         action:            resp.action,
         requirement_id:    resp.requirement_id,
         requirement_label: resp.requirement_label,
@@ -921,6 +983,7 @@ export default function ApplicationPage() {
         role:              "ai",
         content:           resp.message,
         timestamp:         new Date().toISOString(),
+        animate:           true,
         action:            resp.action,
         requirement_id:    resp.requirement_id,
         requirement_label: resp.requirement_label,
@@ -936,7 +999,8 @@ export default function ApplicationPage() {
       setAiError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setIsWaitingForAI(false);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      // Intentionally NOT auto-focusing the input — the bar must stay collapsed
+      // at the bottom and only expand when the candidate clicks it themselves.
     }
   }, [inputValue, isWaitingForAI, hasCardPending, applicationComplete, applicationId]);
 
