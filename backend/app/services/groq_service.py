@@ -22,7 +22,20 @@ from app.config import get_settings
 
 logger = logging.getLogger("hireiq.groq")
 
-GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+
+def _default_model() -> str:
+    """Heavyweight Groq model for one-shot tasks (scoring, prefill, email)."""
+    return get_settings().groq_model_default
+
+
+def _chat_model() -> str:
+    """Fast, lighter Groq model for the live conversation stream."""
+    return get_settings().groq_model_chat
+
+
+# Back-compat alias for any imports/tests that referenced GROQ_MODEL directly.
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
@@ -67,15 +80,17 @@ async def _call_groq_with_retry(
     max_tokens: int = 2048,
     temperature: float = 0.7,
     json_mode: bool = False,
+    model: str | None = None,
 ) -> str | None:
     """
     Call Groq via direct httpx REST (OpenAI-compatible endpoint).
     Retries once on failure. Returns text or None on total failure.
+    Defaults to the heavyweight model; pass model="..." to override.
     """
     settings = get_settings()
 
     payload: dict = {
-        "model":       GROQ_MODEL,
+        "model":       model or settings.groq_model_default,
         "messages":    messages,
         "max_tokens":  max_tokens,
         "temperature": temperature,
@@ -114,6 +129,7 @@ async def _stream_groq(
     messages: list[dict],
     max_tokens: int = 2048,
     temperature: float = 0.7,
+    model: str | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream content tokens from Groq. Yields plain-text deltas as they arrive.
@@ -125,7 +141,7 @@ async def _stream_groq(
     """
     settings = get_settings()
     payload: dict = {
-        "model":       GROQ_MODEL,
+        "model":       model or settings.groq_model_chat,
         "messages":    messages,
         "max_tokens":  max_tokens,
         "temperature": temperature,
@@ -1718,9 +1734,22 @@ async def stream_conversation_response(
             chunk_count, len(accumulator), type(err).__name__, err,
             exc_info=True,
         )
+        # Friendly-message override for known failure modes.
+        err_str        = str(err)
+        friendly       = "Something went wrong, please try again."
+        if "Groq HTTP 429" in err_str or "rate_limit_exceeded" in err_str:
+            wait_match = re.search(r"try again in (\d+m\s*\d*\.?\d*s|\d+\.?\d*s)", err_str)
+            wait_str   = wait_match.group(1).strip() if wait_match else "a few minutes"
+            friendly   = (
+                f"The AI service is temporarily over capacity. "
+                f"Please try again in {wait_str}."
+            )
+        elif "Groq HTTP 401" in err_str:
+            friendly = "AI service authentication failed. The team has been notified."
+
         yield {
             "type":    "error",
-            "message": "Something went wrong, please try again.",
+            "message": friendly,
             "detail":  f"{type(err).__name__}: {err}",
             "stage":   "stream_conversation_response",
             "chunks":  chunk_count,

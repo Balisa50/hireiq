@@ -22,6 +22,14 @@ class Settings(BaseSettings):
 
     # Groq
     groq_api_key: str
+    # Heavyweight model for one-shot tasks (scoring, question generation,
+    # candidate emails). Used at most a handful of times per candidate.
+    groq_model_default: str = "llama-3.3-70b-versatile"
+    # Lightweight model for the live conversation stream — fires on EVERY
+    # turn so the system prompt re-sends quickly drain a TPD bucket. The
+    # 8B Instant model has a separate (much larger) bucket and ~3x the
+    # tokens-per-second throughput, which is what we want for streaming.
+    groq_model_chat:    str = "llama-3.1-8b-instant"
 
     # Rate limiting
     rate_limit_general: int = 100
