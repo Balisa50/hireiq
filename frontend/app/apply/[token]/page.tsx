@@ -54,41 +54,203 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const PERSONAL_RE =
-  /\b(your name|full name|email address|phone number|phone|location|where are you|currently based|currently employed|employment status|working at|confirm your)\b/i;
-
 // ── Review helpers ─────────────────────────────────────────────────────────────
 
-interface PersonalDetail { label: string; value: string }
+type FieldType = "text" | "email" | "phone" | "date" | "yes_no" | "number" | "currency";
 
-function extractPersonalDetails(
+interface StructuredField {
+  /** id used to key edits + locate the source candidate message */
+  id:          string;
+  /** Visible label on the review screen */
+  label:       string;
+  /** Detection type — drives validation + rendering */
+  type:        FieldType;
+  /** Extracted value the candidate gave */
+  value:       string;
+  /** Whether this field must validate before submit */
+  required:    boolean;
+  /** Index of the candidate message that produced this value (for editing) */
+  sourceIndex: number | null;
+}
+
+interface OpenAnswer {
+  id:       string;
+  question: string;
+  answer:   string;
+}
+
+/**
+ * Match an AI question against a known structured-field pattern.
+ * Returns the field metadata if matched, null otherwise.
+ */
+const STRUCTURED_PATTERNS: Array<{
+  label: string;
+  type: FieldType;
+  required: boolean;
+  re: RegExp;
+}> = [
+  { label: "Email",                   type: "email",    required: true,  re: /\b(email\s*address|email)\b/i },
+  { label: "Phone number",            type: "phone",    required: true,  re: /\bphone(\s*number)?\b/i },
+  { label: "Date of birth",           type: "date",     required: true,  re: /\b(date\s*of\s*birth|d\.?o\.?b)\b/i },
+  { label: "Nationality",             type: "text",     required: true,  re: /\bnationality|citizenship\b/i },
+  { label: "Country of residence",    type: "text",     required: true,  re: /\bcountry\s+(of|you\s+(live|reside)|currently\s+live)|country\s+of\s+residence\b/i },
+  { label: "Current city / location", type: "text",     required: true,  re: /\bcurrent\s+(city|location)|where\s+(are\s+you\s+based|do\s+you\s+live|are\s+you\s+located)|current\s+location\b/i },
+  { label: "Full postal address",     type: "text",     required: false, re: /\b(full\s+postal\s+address|full\s+address|postal\s+address|home\s+address|street\s+address)\b/i },
+  { label: "Current job title",       type: "text",     required: true,  re: /\b(current\s+job\s+title|current\s+(role|position)|job\s+title|what\s+is\s+your\s+(current\s+)?(role|position|title))\b/i },
+  { label: "Current employer",        type: "text",     required: true,  re: /\b(current\s+(employer|company)|where\s+do\s+you\s+(currently\s+)?work|who\s+do\s+you\s+(currently\s+)?work\s+for|most\s+recent\s+employer)\b/i },
+  { label: "Years of experience",     type: "number",   required: true,  re: /\b(years?\s+of\s+(professional\s+)?experience|how\s+many\s+years|total\s+(years?\s+of\s+)?experience)\b/i },
+  { label: "Notice period",           type: "text",     required: false, re: /\b(notice\s+period|earliest\s+(start|available)|when\s+(can|could)\s+you\s+start|earliest\s+start\s+date)\b/i },
+  { label: "Expected salary",         type: "currency", required: false, re: /\b(expected\s+salary|salary\s+expectation|salary\s+range|how\s+much\s+(do\s+you\s+expect|are\s+you\s+looking))\b/i },
+  { label: "Willing to relocate",     type: "yes_no",   required: false, re: /\b(willing\s+to\s+relocate|open\s+to\s+relocat|relocation)\b/i },
+  { label: "Work authorisation",      type: "yes_no",   required: false, re: /\b(work\s+authorisation|work\s+authorization|right\s+to\s+work|authorised\s+to\s+work|authorized\s+to\s+work|work\s+permit|visa)\b/i },
+  { label: "Highest education",       type: "text",     required: false, re: /\b(highest\s+(education|qualification|degree)|education(\s+level)?\s+(attained|completed)|highest\s+level\s+of\s+education)\b/i },
+  { label: "Full name",               type: "text",     required: true,  re: /\b(full\s+name|your\s+full\s+name|confirm\s+your\s+(full\s+)?name)\b/i },
+];
+
+const PERSONAL_RE = /\b(your name|full name|email address|phone number|phone|location|where are you|currently based|currently employed|employment status|working at|confirm your|date of birth|nationality|country|address|notice|salary|relocate|work authoris|highest education|years of (professional )?experience|current (job title|employer|role|position))\b/i;
+
+/**
+ * Validate a structured field value against its type. Returns an error
+ * string for the user, or empty string if valid.
+ */
+function validateField(value: string, type: FieldType, required: boolean): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return required ? "This field is required." : "";
+  }
+  switch (type) {
+    case "email": {
+      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed);
+      return ok ? "" : "Please enter a valid email address.";
+    }
+    case "phone": {
+      // Strip everything that isn't a digit or leading +; require at least 7 digits.
+      const digits = trimmed.replace(/[^\d]/g, "");
+      if (digits.length < 7) {
+        return "Phone number is too short — please include the full number.";
+      }
+      // Must contain country-code-style prefix OR look international.
+      const startsOk = /^\+?\d/.test(trimmed);
+      return startsOk ? "" : "Please enter a valid phone number.";
+    }
+    case "date": {
+      // Accept ISO, DD/MM/YYYY, or natural like "12 March 1999".
+      const t = new Date(trimmed);
+      if (Number.isNaN(t.getTime())) {
+        // try DD/MM/YYYY -> YYYY-MM-DD
+        const m = trimmed.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+        if (m) {
+          let [, d, mo, y] = m;
+          if (y.length === 2) y = `19${y}`;
+          const t2 = new Date(`${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`);
+          if (!Number.isNaN(t2.getTime())) {
+            if (t2.getTime() > Date.now()) return "Date of birth cannot be in the future.";
+            return "";
+          }
+        }
+        return "Please enter a valid date.";
+      }
+      if (t.getTime() > Date.now()) return "Date of birth cannot be in the future.";
+      return "";
+    }
+    case "number": {
+      const n = parseFloat(trimmed.replace(/[^\d.\-]/g, ""));
+      return Number.isFinite(n) ? "" : "Please enter a number.";
+    }
+    case "currency":
+    case "yes_no":
+    case "text":
+    default:
+      return trimmed.length === 0 && required ? "This field is required." : "";
+  }
+}
+
+/**
+ * Walk the conversation and extract:
+ *   - structured fields (one row per known label, latest answer wins)
+ *   - open-ended Q/A (everything else with a substantive answer)
+ *   - candidate messages that gave each structured field's value (so edits
+ *     can update the underlying transcript)
+ */
+function extractReviewSections(
   messages: ConversationMessage[],
-  name: string,
-  email: string,
-): PersonalDetail[] {
-  const details: PersonalDetail[] = [];
-  if (name)  details.push({ label: "Name",  value: name });
-  if (email) details.push({ label: "Email", value: email });
+  candidateName: string,
+  candidateEmail: string,
+): { fields: StructuredField[]; openAnswers: OpenAnswer[] } {
+  const fields: StructuredField[] = [];
 
-  const PATTERNS: { label: string; re: RegExp }[] = [
-    { label: "Phone",      re: /phone|number/i },
-    { label: "Location",   re: /location|based|city|country|where are you/i },
-    { label: "Employment", re: /current.*employ|working at|current.*role|current.*position/i },
-  ];
+  // Pre-seed name + email from the auth flow if available.
+  if (candidateName.trim()) {
+    fields.push({
+      id:          "preset:full_name",
+      label:       "Full name",
+      type:        "text",
+      value:       candidateName.trim(),
+      required:    true,
+      sourceIndex: null,
+    });
+  }
+  if (candidateEmail.trim()) {
+    fields.push({
+      id:          "preset:email",
+      label:       "Email",
+      type:        "email",
+      value:       candidateEmail.trim(),
+      required:    true,
+      sourceIndex: null,
+    });
+  }
+
+  const sourceMessageIds = new Set<string>();
 
   for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
-    if (msg.role !== "ai" || msg.isTyping || !msg.content) continue;
-    for (const { label, re } of PATTERNS) {
-      if (!details.find((d) => d.label === label) && re.test(msg.content) && msg.content.length < 200) {
-        const next = messages[i + 1];
-        if (next?.role === "candidate" && next.content.trim()) {
-          details.push({ label, value: next.content.trim() });
-        }
+    const ai = messages[i];
+    if (ai.role !== "ai" || !ai.content) continue;
+    if (ai.content.length > 250) continue; // avoid catching long open questions
+
+    const next = messages[i + 1];
+    if (!next || next.role !== "candidate" || !next.content?.trim()) continue;
+
+    for (const pat of STRUCTURED_PATTERNS) {
+      if (!pat.re.test(ai.content)) continue;
+      // Latest answer wins — replace any existing entry for this label.
+      const existingIdx = fields.findIndex((f) => f.label === pat.label);
+      const entry: StructuredField = {
+        id:          next.id,
+        label:       pat.label,
+        type:        pat.type,
+        value:       next.content.trim(),
+        required:    pat.required,
+        sourceIndex: i + 1,
+      };
+      if (existingIdx === -1) {
+        fields.push(entry);
+      } else {
+        fields[existingIdx] = entry;
       }
+      sourceMessageIds.add(next.id);
+      break; // one pattern per AI question
     }
   }
-  return details;
+
+  // Open-ended answers: every substantive candidate message NOT used to
+  // populate a structured field.
+  const openAnswers: OpenAnswer[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role !== "candidate") continue;
+    if (sourceMessageIds.has(m.id)) continue;
+    if (m.content.trim().split(/\s+/).length < 4) continue;
+    const prevAi = messages.slice(0, i).filter((x) => x.role === "ai").at(-1);
+    if (prevAi && PERSONAL_RE.test(prevAi.content ?? "")) continue;
+    openAnswers.push({
+      id:       m.id,
+      question: prevAi?.content ?? "Question",
+      answer:   m.content,
+    });
+  }
+
+  return { fields, openAnswers };
 }
 
 // ── Mark (logo) ────────────────────────────────────────────────────────────────
@@ -1070,32 +1232,28 @@ export default function ApplicationPage() {
 
   // ── Review screen ──────────────────────────────────────────────────────────
   if (screen === "review") {
-    const rawDetails  = extractPersonalDetails(messages, candidateName, candidateEmail);
-    const personalDetails = rawDetails.map((d) => ({
-      label: d.label,
-      value: detailEdits[d.label] !== undefined ? detailEdits[d.label] : d.value,
-    }));
+    const { fields: rawFields, openAnswers } = extractReviewSections(
+      messages, candidateName, candidateEmail,
+    );
+
+    // Apply edits + compute live validation errors per field.
+    const structuredFields = rawFields.map((f) => {
+      const editedValue = detailEdits[f.label];
+      const value = editedValue !== undefined ? editedValue : f.value;
+      const error = validateField(value, f.type, f.required);
+      return { ...f, value, error };
+    });
 
     const submittedDocs = messages.filter(
       (m) => m.role === "ai" && m.cardStatus === "complete",
     );
-    // Pair every substantive candidate answer with the AI question that
-    // preceded it, skipping the personal-detail q/a (those have their own
-    // section above). Show every one — fully editable.
-    type QA = { id: string; question: string; answer: string };
-    const qaPairs: QA[] = [];
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i];
-      if (m.role !== "candidate") continue;
-      if (m.content.trim().split(/\s+/).length < 4) continue;
-      const prevAi = messages.slice(0, i).filter((x) => x.role === "ai").at(-1);
-      if (prevAi && PERSONAL_RE.test(prevAi.content ?? "")) continue;
-      qaPairs.push({
-        id:       m.id,
-        question: prevAi?.content ?? "Question",
-        answer:   m.content,
-      });
-    }
+
+    const fieldErrors      = structuredFields.filter((f) => f.error);
+    const emptyOpenAnswers = openAnswers.filter(
+      (a) => !((answerEdits[a.id] !== undefined ? answerEdits[a.id] : a.answer).trim()),
+    );
+    const blockingCount = fieldErrors.length + emptyOpenAnswers.length;
+    const canSubmit     = blockingCount === 0 && !isSubmitting;
 
     return (
       <div
@@ -1111,30 +1269,75 @@ export default function ApplicationPage() {
               Review your application
             </h1>
             <p className="text-[13px] text-sub">
-              Check everything before it goes to{" "}
+              Nothing has been submitted yet. Check everything before it goes to{" "}
               <strong>{jobInfo?.company_name}</strong>. You can edit any field below.
             </p>
           </div>
 
-          {/* Personal details */}
-          {personalDetails.length > 0 && (
+          {/* Structured fields — show clean extracted values, edit inline */}
+          {structuredFields.length > 0 && (
             <div className="bg-white border border-border rounded-[4px] overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
                 <h2 className="text-[11px] font-semibold text-sub uppercase tracking-wider">Your Details</h2>
               </div>
               <div className="divide-y divide-border">
-                {personalDetails.map(({ label, value }) => (
-                  <div key={label} className="px-5 py-3 flex items-center justify-between gap-4">
-                    <span className="text-[12px] text-muted shrink-0 w-24">{label}</span>
-                    <input
-                      type="text"
-                      value={value}
-                      dir="ltr"
-                      onChange={(e) => setDetailEdits((prev) => ({ ...prev, [label]: e.target.value }))}
-                      className="flex-1 text-[13px] text-ink bg-transparent border-b border-transparent focus:border-border outline-none transition-colors text-right py-0.5 placeholder:text-muted"
-                    />
-                  </div>
-                ))}
+                {structuredFields.map((f) => {
+                  const isYesNo  = f.type === "yes_no";
+                  const inputBase = "flex-1 text-[13px] text-ink bg-transparent border outline-none transition-colors px-2 py-1.5 rounded-[4px] placeholder:text-muted";
+                  const inputClass = `${inputBase} ${f.error
+                    ? "border-danger focus:border-danger"
+                    : "border-transparent hover:border-border focus:border-ink"}`;
+                  return (
+                    <div key={f.label} className="px-5 py-3 space-y-1.5">
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="text-[12px] text-muted shrink-0 w-32 pt-1.5">
+                          {f.label}{f.required && <span className="text-danger ml-0.5">*</span>}
+                        </span>
+                        {isYesNo ? (
+                          <select
+                            value={/^y(es)?$|^true$/i.test(f.value.trim()) ? "Yes"
+                                 : /^n(o)?$|^false$/i.test(f.value.trim()) ? "No"
+                                 : f.value}
+                            onChange={(e) =>
+                              setDetailEdits((prev) => ({ ...prev, [f.label]: e.target.value }))
+                            }
+                            className={inputClass}
+                            style={{ textAlign: "left" }}
+                          >
+                            <option value="">—</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        ) : (
+                          <input
+                            type={f.type === "email" ? "email"
+                                : f.type === "phone" ? "tel"
+                                : f.type === "date"  ? "text"
+                                : f.type === "number" ? "text"
+                                : "text"}
+                            inputMode={f.type === "phone" ? "tel"
+                                     : f.type === "number" ? "numeric"
+                                     : "text"}
+                            value={f.value}
+                            placeholder={f.required ? "Required" : "Optional"}
+                            dir="ltr"
+                            onChange={(e) =>
+                              setDetailEdits((prev) => ({ ...prev, [f.label]: e.target.value }))
+                            }
+                            className={inputClass}
+                            style={{ textAlign: "left" }}
+                          />
+                        )}
+                      </div>
+                      {f.error && (
+                        <p className="text-[11px] text-danger ml-32 pl-2 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          {f.error}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1177,15 +1380,16 @@ export default function ApplicationPage() {
             </div>
           )}
 
-          {/* Your answers — every substantive Q/A, fully editable */}
-          {qaPairs.length > 0 && (
+          {/* Open-ended answers — full original text, fully editable */}
+          {openAnswers.length > 0 && (
             <div className="bg-white border border-border rounded-[4px] overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
                 <h2 className="text-[11px] font-semibold text-sub uppercase tracking-wider">Your Answers</h2>
               </div>
               <div className="divide-y divide-border">
-                {qaPairs.map(({ id, question, answer }, idx) => {
+                {openAnswers.map(({ id, question, answer }, idx) => {
                   const currentValue = answerEdits[id] !== undefined ? answerEdits[id] : answer;
+                  const isEmpty      = !currentValue.trim();
                   return (
                     <div key={id} className="px-5 py-4 space-y-2">
                       <p className="text-[11px] text-muted leading-snug">
@@ -1198,13 +1402,31 @@ export default function ApplicationPage() {
                         onChange={(e) =>
                           setAnswerEdits((prev) => ({ ...prev, [id]: e.target.value }))
                         }
-                        className="w-full text-[13px] text-ink leading-relaxed bg-transparent border border-border rounded-[4px] px-3 py-2 outline-none focus:border-ink transition-colors resize-y"
+                        className={`w-full text-[13px] text-ink leading-relaxed bg-transparent border rounded-[4px] px-3 py-2 outline-none transition-colors resize-y ${
+                          isEmpty
+                            ? "border-danger focus:border-danger"
+                            : "border-border focus:border-ink"
+                        }`}
                         style={{ textAlign: "left" }}
                       />
+                      {isEmpty && (
+                        <p className="text-[11px] text-danger flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          This answer can&apos;t be empty.
+                        </p>
+                      )}
                     </div>
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Block summary — shown when validation fails */}
+          {blockingCount > 0 && (
+            <div className="flex items-start gap-2 rounded-[4px] bg-red-50 border border-danger/20 px-3 py-2.5 text-[13px] text-danger">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>Please fix the highlighted fields before submitting.</span>
             </div>
           )}
 
@@ -1220,12 +1442,13 @@ export default function ApplicationPage() {
           <div className="space-y-3 pt-1">
             <p className="text-[12px] text-sub text-center leading-relaxed px-2">
               Take a moment to review your answers. This is your last chance to
-              make changes before submitting.
+              make changes before submitting. Nothing reaches{" "}
+              <strong>{jobInfo?.company_name}</strong> until you click Submit.
             </p>
             <button
               onClick={handleConfirmSubmit}
-              disabled={isSubmitting}
-              className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3.5 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              disabled={!canSubmit}
+              className="w-full bg-[#1A1714] text-white rounded-[4px] px-4 py-3.5 text-[14px] font-semibold hover:bg-[#2d2926] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
                 <><Spinner className="w-4 h-4" /> Submitting…</>
