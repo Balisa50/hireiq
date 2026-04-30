@@ -674,7 +674,7 @@ export type StreamEvent =
   | { type: "knockout"; message: string; action: "complete" }
   | { type: "token";    text: string }
   | { type: "done";     message: string; action: "continue" | "request_file" | "request_link" | "complete"; requirement_id: string | null; requirement_label: string | null }
-  | { type: "error";    message: string };
+  | { type: "error";    message: string; detail?: string; stage?: string; chunks?: number };
 
 // ── Health check ──────────────────────────────────────────────────────────────
 

@@ -118,6 +118,10 @@ async def _stream_groq(
     """
     Stream content tokens from Groq. Yields plain-text deltas as they arrive.
     Raises on transport errors so the caller can decide how to surface them.
+
+    Uses generous explicit timeouts: connect=10s, write=30s, pool=10s, but
+    read=None (i.e. no per-chunk read timeout) so the stream is never killed
+    while Groq is mid-generation.
     """
     settings = get_settings()
     payload: dict = {
@@ -131,16 +135,20 @@ async def _stream_groq(
         "Authorization": f"Bearer {settings.groq_api_key}",
         "Accept":        "text/event-stream",
     }
+    log = logging.getLogger("hireiq.stream")
 
-    async with httpx.AsyncClient(timeout=settings.groq_timeout_seconds) as client:
+    timeout = httpx.Timeout(connect=10.0, write=30.0, pool=10.0, read=None)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         async with client.stream("POST", GROQ_URL, json=payload, headers=headers) as resp:
             if resp.status_code != 200:
                 body = await resp.aread()
-                raise RuntimeError(
-                    f"Groq stream HTTP {resp.status_code}: {body[:300].decode('utf-8', 'replace')}"
-                )
+                snippet = body[:500].decode("utf-8", "replace")
+                log.error("groq_http_error status=%s body=%s", resp.status_code, snippet)
+                raise RuntimeError(f"Groq HTTP {resp.status_code}: {snippet}")
             async for line in resp.aiter_lines():
-                if not line or not line.startswith("data: "):
+                if not line:
+                    continue
+                if not line.startswith("data: "):
                     continue
                 data_str = line[len("data: "):].strip()
                 if data_str == "[DONE]":
@@ -148,10 +156,11 @@ async def _stream_groq(
                 try:
                     obj = json.loads(data_str)
                 except json.JSONDecodeError:
+                    log.debug("groq_bad_json line=%s", data_str[:200])
                     continue
                 try:
                     delta = obj["choices"][0]["delta"].get("content")
-                except (KeyError, IndexError):
+                except (KeyError, IndexError, TypeError):
                     delta = None
                 if delta:
                     yield delta
@@ -1642,9 +1651,17 @@ async def stream_conversation_response(
         elif role == "candidate":
             groq_messages.append({"role": "user", "content": content})
 
-    accumulator = ""
-    buffer      = ""  # holds tail that may contain a partial sentinel
+    accumulator      = ""
+    buffer           = ""           # may contain a partial-sentinel tail
     sentinel_started = False
+    SENTINEL_START   = "[ACTION:"
+    log              = logging.getLogger("hireiq.stream")
+    chunk_count      = 0
+
+    log.info(
+        "stream_start prompt_chars=%d msgs=%d turn=%d",
+        len(system_prompt), len(groq_messages), candidate_turn_count,
+    )
 
     try:
         async for delta in _stream_groq(
@@ -1652,43 +1669,62 @@ async def stream_conversation_response(
             max_tokens=600,
             temperature=0.75,
         ):
+            chunk_count += 1
             accumulator += delta
             buffer      += delta
 
-            # Once we see the start of the sentinel, stop emitting tokens to
-            # the candidate. Any prose before "[ACTION" was already flushed.
-            if not sentinel_started and "[ACTION" in accumulator:
-                # Flush everything up to "[ACTION", then stop emitting.
-                cut_idx = accumulator.rfind("[ACTION")
-                # We may have already emitted accumulator[:emitted_count] earlier
-                # via buffer flushes — to compute what to emit here, look at
-                # buffer alone and trim its tail at "[ACTION".
-                tail_action_idx = buffer.rfind("[ACTION")
-                if tail_action_idx > 0:
-                    safe = buffer[:tail_action_idx]
-                    yield {"type": "token", "text": _sanitise_ai_message_chunk(safe)}
-                buffer = ""  # nothing more to emit
+            # Once we see the start of the sentinel, stop emitting prose to
+            # the candidate. Whatever prose was before "[ACTION" still in
+            # `buffer` flushes one last time below.
+            if not sentinel_started and SENTINEL_START in buffer:
+                cut = buffer.find(SENTINEL_START)
+                if cut > 0:
+                    yield {"type": "token", "text": _sanitise_ai_message_chunk(buffer[:cut])}
+                buffer = ""
                 sentinel_started = True
                 continue
 
             if sentinel_started:
                 continue
 
-            # Emit when buffer is "safe" — i.e. its tail isn't the start of "[ACTION".
-            # Be conservative: hold back the last 8 chars in case they form "[ACTION:".
-            HOLDBACK = 8
-            if len(buffer) > HOLDBACK:
-                emit  = buffer[:-HOLDBACK]
-                buffer = buffer[-HOLDBACK:]
+            # Smart holdback: only hold back characters at the buffer tail
+            # IF that tail could be the start of "[ACTION:". 99%+ of tokens
+            # don't end with "[", so we emit immediately with zero added latency.
+            hold = 0
+            for i in range(min(len(buffer), len(SENTINEL_START)), 0, -1):
+                if buffer.endswith(SENTINEL_START[:i]):
+                    hold = i
+                    break
+            if hold == 0:
+                if buffer:
+                    yield {"type": "token", "text": _sanitise_ai_message_chunk(buffer)}
+                    buffer = ""
+            else:
+                emit = buffer[:-hold]
+                buffer = buffer[-hold:]
                 if emit:
                     yield {"type": "token", "text": _sanitise_ai_message_chunk(emit)}
-        # Stream finished. Flush remaining buffer if no sentinel ever appeared.
+
+        # Stream finished cleanly. Flush remaining buffer if no sentinel arrived.
         if not sentinel_started and buffer:
             yield {"type": "token", "text": _sanitise_ai_message_chunk(buffer)}
 
+        log.info("stream_end chunks=%d total_chars=%d sentinel=%s",
+                 chunk_count, len(accumulator), sentinel_started)
+
     except Exception as err:
-        logger.error("Streaming failed: %s", err, exc_info=True)
-        yield {"type": "error", "message": "AI is temporarily unavailable. Please try again."}
+        log.error(
+            "stream_fail chunks=%d total_chars=%d err_type=%s err=%s",
+            chunk_count, len(accumulator), type(err).__name__, err,
+            exc_info=True,
+        )
+        yield {
+            "type":    "error",
+            "message": "Something went wrong, please try again.",
+            "detail":  f"{type(err).__name__}: {err}",
+            "stage":   "stream_conversation_response",
+            "chunks":  chunk_count,
+        }
         return
 
     clean_msg, action, req_id, req_label = _parse_action_sentinel(accumulator)

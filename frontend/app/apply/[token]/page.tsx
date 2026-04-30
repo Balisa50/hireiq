@@ -904,8 +904,18 @@ export default function ApplicationPage() {
         return;
       }
       if (ev.type === "error") {
+        // Surface the FULL detail to the browser console so we can diagnose
+        // without Render log access. The candidate sees only the friendly
+        // message.
+        // eslint-disable-next-line no-console
+        console.error("[HireIQ stream error]", {
+          stage:   ev.stage,
+          detail:  ev.detail,
+          chunks:  ev.chunks,
+          message: ev.message,
+        });
         setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
-        setAiError(ev.message);
+        setAiError(ev.message || "Something went wrong, please try again.");
       }
     };
 
@@ -990,8 +1000,15 @@ export default function ApplicationPage() {
           }));
           if (ev.action === "complete") didComplete = true;
         } else if (ev.type === "error") {
+          // eslint-disable-next-line no-console
+          console.error("[HireIQ stream error]", {
+            stage:   ev.stage,
+            detail:  ev.detail,
+            chunks:  ev.chunks,
+            message: ev.message,
+          });
           setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
-          setAiError(ev.message);
+          setAiError(ev.message || "Something went wrong, please try again.");
         }
       });
       if (didComplete) {
@@ -1076,8 +1093,15 @@ export default function ApplicationPage() {
           }));
           if (ev.action === "complete") didComplete = true;
         } else if (ev.type === "error") {
+          // eslint-disable-next-line no-console
+          console.error("[HireIQ stream error]", {
+            stage:   ev.stage,
+            detail:  ev.detail,
+            chunks:  ev.chunks,
+            message: ev.message,
+          });
           setMessages((prev) => prev.filter((m) => m.id !== thinkingId && m.id !== aiMsgId));
-          setAiError(ev.message);
+          setAiError(ev.message || "Something went wrong, please try again.");
         }
       });
       if (didComplete) {
