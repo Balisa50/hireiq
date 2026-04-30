@@ -935,7 +935,12 @@ async def stream_interview_message(request: SendMessageRequest):
         except Exception as err:
             logger.error("stream_conversation_response failed: %s", err, exc_info=True)
             had_error = True
-            yield _sse({"type": "error", "message": "AI is temporarily unavailable. Please try again."})
+            yield _sse({
+                "type":    "error",
+                "message": "Something went wrong, please try again.",
+                "detail":  f"{type(err).__name__}: {err}",
+                "stage":   "router_event_generator",
+            })
 
         if had_error or not full_message:
             return
