@@ -36,10 +36,13 @@ from app.models.interview import (
 from app.services.groq_service import (
     generate_adaptive_next_question,
     generate_conversation_response,
+    stream_conversation_response,
     get_first_interview_message,
     score_candidate,
     generate_candidate_email,
 )
+from fastapi.responses import StreamingResponse
+import json as _json
 from app.services.pdf_service import generate_candidate_report_pdf
 from app.services import file_service
 from app.services import github_service
@@ -757,6 +760,216 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
         }).eq("id", str(request.interview_id)).execute()
 
     return ai_response
+
+
+@router.post("/public/message/stream")
+async def stream_interview_message(request: SendMessageRequest):
+    """
+    Streaming variant of /public/message. Sends an SSE response so the
+    candidate sees tokens appear as Groq generates them. The full transcript
+    is persisted only AFTER the stream completes successfully.
+
+    Event types emitted:
+      data: {"type":"first","message":"...","action":"continue"}        first-message bypass
+      data: {"type":"resume","message":"...","action":"...","requirement_id":...,"requirement_label":...}
+      data: {"type":"knockout","message":"...","action":"complete"}
+      data: {"type":"token","text":"..."}                                 streamed prose chunks
+      data: {"type":"done","message":"...","action":"...","requirement_id":...,"requirement_label":...}
+      data: {"type":"error","message":"..."}                              transport / model failure
+    """
+    iv_result = (
+        supabase.table("interviews")
+        .select("*, jobs(*, companies(company_name, custom_intro_message))")
+        .eq("id", str(request.interview_id))
+        .execute()
+    )
+
+    if not iv_result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
+
+    interview = iv_result.data[0]
+    if interview["status"] not in ("in_progress",):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Interview already submitted.")
+
+    job          = interview.get("jobs", {}) or {}
+    company      = (job.get("companies") or {})
+    company_name = company.get("company_name", "the company")
+    candidate_name = interview.get("candidate_name", "")
+    conversation   = interview.get("transcript") or []
+
+    interview_id = str(request.interview_id)
+
+    def _sse(event: dict) -> bytes:
+        return f"data: {_json.dumps(event)}\n\n".encode("utf-8")
+
+    # ── First message: hardcoded greeting (no streaming needed) ───────────────
+    if not conversation:
+        opening = (
+            (job.get("opening_message") or "")
+            or (company.get("custom_intro_message") or "")
+        )
+        first_msg = get_first_interview_message(
+            candidate_name, company_name, job["title"],
+            custom_opening_message=opening,
+        )
+        new_conv = [{
+            "role":      "ai",
+            "content":   first_msg["message"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action":    "continue",
+        }]
+        supabase.table("interviews").update({
+            "transcript":    new_conv,
+            "last_saved_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", interview_id).execute()
+
+        async def _first_stream():
+            yield _sse({"type": "first", **first_msg})
+        return StreamingResponse(_first_stream(), media_type="text/event-stream")
+
+    # ── Resume (empty candidate_message): replay the last AI message ──────────
+    candidate_msg = request.candidate_message.strip()
+    if not candidate_msg:
+        last_ai = next((m for m in reversed(conversation) if m.get("role") == "ai"), None)
+        replay = last_ai or {"content": "", "action": "continue"}
+        async def _resume_stream():
+            yield _sse({
+                "type":              "resume",
+                "message":           replay.get("content", ""),
+                "action":            replay.get("action", "continue"),
+                "requirement_id":    replay.get("requirement_id"),
+                "requirement_label": replay.get("requirement_label"),
+            })
+        return StreamingResponse(_resume_stream(), media_type="text/event-stream")
+
+    # ── Normal turn: append candidate message + stream the AI response ───────
+    candidate_entry = {
+        "role":      "candidate",
+        "content":   bleach.clean(candidate_msg, tags=[], strip=True),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    updated_conv = conversation + [candidate_entry]
+
+    submitted_files = interview.get("submitted_files") or []
+    submitted_links = interview.get("submitted_links") or []
+    collected_ids   = (
+        [f["requirement_id"] for f in submitted_files]
+        + [l["requirement_id"] for l in submitted_links]
+    )
+    candidate_context = interview.get("candidate_context") or None
+
+    # Knockout check (cheap, sync) — short-circuits without ever hitting Groq.
+    job_questions = job.get("questions") or []
+    knocked_out, ko_reason = _check_knockout(
+        candidate_message=candidate_msg,
+        conversation=updated_conv,
+        questions=job_questions,
+    )
+    if knocked_out:
+        rejection_msg = (
+            "Thank you for your time. Based on your response, there may be a mismatch "
+            "with the requirements for this role. We will keep your details on file but "
+            "are unable to progress your application at this stage."
+        )
+        ko_ai_entry = {
+            "role":              "ai",
+            "content":           rejection_msg,
+            "timestamp":         datetime.now(timezone.utc).isoformat(),
+            "action":            "complete",
+            "requirement_id":    None,
+            "requirement_label": None,
+        }
+        final_conv = updated_conv + [ko_ai_entry]
+        supabase.table("interviews").update({
+            "transcript":      final_conv,
+            "status":          "auto_rejected",
+            "knockout_reason": ko_reason,
+            "last_saved_at":   datetime.now(timezone.utc).isoformat(),
+        }).eq("id", interview_id).execute()
+
+        async def _ko_stream():
+            yield _sse({
+                "type":    "knockout",
+                "message": rejection_msg,
+                "action":  "complete",
+            })
+        return StreamingResponse(_ko_stream(), media_type="text/event-stream")
+
+    async def _event_generator():
+        full_message     = ""
+        final_action     = "continue"
+        final_req_id     = None
+        final_req_label  = None
+        had_error        = False
+
+        try:
+            async for ev in stream_conversation_response(
+                job_title=job.get("title", ""),
+                company_name=company_name,
+                job_description=job.get("job_description", ""),
+                focus_areas=job.get("focus_areas", []),
+                pre_generated_questions=job.get("questions", []),
+                candidate_requirements=job.get("candidate_requirements", []),
+                conversation=updated_conv,
+                candidate_name=candidate_name,
+                collected_requirement_ids=collected_ids,
+                candidate_context=candidate_context,
+                experience_level=job.get("experience_level", "any"),
+                skills=job.get("skills") or [],
+                department=job.get("department", "") or "",
+                candidate_info_config=job.get("candidate_info_config") or {},
+                eligibility_criteria=job.get("eligibility_criteria")  or {},
+                dei_config=job.get("dei_config") or {},
+            ):
+                if ev.get("type") == "token":
+                    yield _sse(ev)
+                elif ev.get("type") == "done":
+                    full_message    = ev.get("message", "")
+                    final_action    = ev.get("action", "continue")
+                    final_req_id    = ev.get("requirement_id")
+                    final_req_label = ev.get("requirement_label")
+                    yield _sse(ev)
+                elif ev.get("type") == "error":
+                    had_error = True
+                    yield _sse(ev)
+        except Exception as err:
+            logger.error("stream_conversation_response failed: %s", err, exc_info=True)
+            had_error = True
+            yield _sse({"type": "error", "message": "AI is temporarily unavailable. Please try again."})
+
+        if had_error or not full_message:
+            return
+
+        # Persist the full transcript only after a successful stream.
+        ai_entry = {
+            "role":              "ai",
+            "content":           full_message,
+            "timestamp":         datetime.now(timezone.utc).isoformat(),
+            "action":            final_action,
+            "requirement_id":    final_req_id,
+            "requirement_label": final_req_label,
+        }
+        final_conv = updated_conv + [ai_entry]
+
+        update_payload = {
+            "transcript":    final_conv,
+            "last_saved_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if final_action == "complete":
+            update_payload["status"] = "pending_review"
+        try:
+            supabase.table("interviews").update(update_payload).eq("id", interview_id).execute()
+        except Exception as err:
+            logger.error("Failed to persist transcript after stream: %s", err, exc_info=True)
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":     "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/public/save-answer")

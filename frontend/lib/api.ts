@@ -561,7 +561,7 @@ export const interviewAPI = {
   },
 
   /**
-   * Conversational interview driver — send a candidate message, receive AI response.
+   * Conversational interview driver, send a candidate message, receive AI response.
    * Pass empty string as candidateMessage for the first call (AI greets first)
    * or for resuming an existing session.
    */
@@ -586,7 +586,95 @@ export const interviewAPI = {
       false,
     );
   },
+
+  /**
+   * Streaming conversational driver. Opens an SSE stream and invokes
+   * `onEvent` for every event received. Resolves once the stream closes.
+   *
+   * Event types:
+   *   "first"    -- hardcoded greeting, no streaming needed
+   *   "resume"   -- replay of last AI message after a refresh
+   *   "knockout" -- knockout-triggered rejection, terminal
+   *   "token"    -- one chunk of streamed prose
+   *   "done"     -- stream finished, carries final action + metadata
+   *   "error"    -- backend / Groq failure
+   */
+  async streamMessage(
+    interviewId: string,
+    candidateMessage: string,
+    onEvent: (ev: StreamEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const resp = await fetch(`${API_BASE_URL}/api/interviews/public/message/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept":       "text/event-stream",
+      },
+      body: JSON.stringify({
+        interview_id:      interviewId,
+        candidate_message: candidateMessage,
+      }),
+      signal,
+    });
+
+    if (!resp.ok || !resp.body) {
+      // Surface a typed error so callers can show "AI temporarily unavailable".
+      let detail = `${resp.status} ${resp.statusText}`;
+      try {
+        const j = await resp.json();
+        detail = j?.detail ?? detail;
+      } catch { /* ignore */ }
+      throw new Error(detail);
+    }
+
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer    = "";
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE events are separated by a blank line ("\n\n").
+        let idx: number;
+        while ((idx = buffer.indexOf("\n\n")) !== -1) {
+          const raw = buffer.slice(0, idx);
+          buffer    = buffer.slice(idx + 2);
+
+          // Each event may have multiple "data: ..." lines per spec, but
+          // the backend always sends one. Concatenate just in case.
+          const dataLines = raw
+            .split("\n")
+            .filter((l) => l.startsWith("data:"))
+            .map((l) => l.slice(5).trimStart());
+          if (!dataLines.length) continue;
+          const payload = dataLines.join("\n");
+          try {
+            const obj = JSON.parse(payload) as StreamEvent;
+            onEvent(obj);
+          } catch {
+            // Ignore malformed events.
+          }
+        }
+      }
+    } finally {
+      try { reader.releaseLock(); } catch { /* ignore */ }
+    }
+  },
 };
+
+// ── Stream event types ────────────────────────────────────────────────────────
+
+export type StreamEvent =
+  | { type: "first";    message: string; action: "continue"; requirement_id: null; requirement_label: null }
+  | { type: "resume";   message: string; action: "continue" | "request_file" | "request_link" | "complete"; requirement_id: string | null; requirement_label: string | null }
+  | { type: "knockout"; message: string; action: "complete" }
+  | { type: "token";    text: string }
+  | { type: "done";     message: string; action: "continue" | "request_file" | "request_link" | "complete"; requirement_id: string | null; requirement_label: string | null }
+  | { type: "error";    message: string };
 
 // ── Health check ──────────────────────────────────────────────────────────────
 
