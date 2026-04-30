@@ -727,11 +727,9 @@ def get_first_interview_message(
         )
     else:
         message = (
-            f"Welcome! I'm here to help you complete your application "
-            f"for the {role} role at {company}. This will feel like a "
-            f"real conversation, not a form. Just answer honestly and "
-            f"we'll get through this quickly. To get started, could you "
-            f"confirm your full name?"
+            f"Welcome to {company}. I'll be guiding you through your "
+            f"application for the {role} role. To get started, could "
+            f"you confirm your full name?"
         )
 
     return {
