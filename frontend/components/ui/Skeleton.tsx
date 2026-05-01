@@ -3,7 +3,7 @@ import { clsx } from "clsx";
 
 interface SkeletonProps {
   className?: string;
-  /** Inline height — use a Tailwind class instead when possible */
+  /** Inline height, use a Tailwind class instead when possible */
   height?: number | string;
 }
 

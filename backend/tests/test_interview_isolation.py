@@ -1,5 +1,5 @@
 """
-Data isolation tests — verify that companies cannot access each other's data.
+Data isolation tests, verify that companies cannot access each other's data.
 """
 
 import pytest
@@ -56,7 +56,7 @@ def test_company_a_cannot_read_company_b_job():
 
     app.dependency_overrides.clear()
 
-    # Must be 403 — company A accessing company B's resource
+    # Must be 403, company A accessing company B's resource
     assert response.status_code == 403
 
 

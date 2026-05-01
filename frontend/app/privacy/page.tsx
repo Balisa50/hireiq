@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 const EFFECTIVE_DATE   = "1 May 2025";
 const CONTACT_EMAIL    = "privacy@hireiq.app";
 const COMPANY_NAME     = "HireIQ Ltd";
-const COMPANY_ADDRESS  = "71–75 Shelton Street, Covent Garden, London, WC2H 9JQ, United Kingdom";
+const COMPANY_ADDRESS  = "71, 75 Shelton Street, Covent Garden, London, WC2H 9JQ, United Kingdom";
 
 function Section({ id, title, children }: {
   id: string;
@@ -136,7 +136,7 @@ export default function PrivacyPage() {
             <Li>Uploaded documents: CV/résumé, cover letter, certificates, portfolio files</Li>
             <Li>Profile links: LinkedIn, GitHub, Dribbble, personal website</Li>
             <Li>
-              AI interview transcript — the complete verbatim record of the candidate's responses
+              AI interview transcript, the complete verbatim record of the candidate's responses
               to AI-generated screening questions
             </Li>
             <Li>
@@ -145,7 +145,7 @@ export default function PrivacyPage() {
             </Li>
             <Li>
               Voluntary diversity data (ethnicity, gender identity, disability status, veteran
-              status) — only if the employer has enabled this and only where permitted by law
+              status), only if the employer has enabled this and only where permitted by law
             </Li>
           </ul>
 
@@ -209,7 +209,7 @@ export default function PrivacyPage() {
             <Li>All data in transit is encrypted using TLS 1.2 or higher</Li>
             <Li>All data at rest is encrypted using AES-256</Li>
             <Li>Access to production databases is restricted by role and IP allowlist</Li>
-            <Li>Passwords are hashed using bcrypt via Supabase Auth — plaintext passwords are never stored</Li>
+            <Li>Passwords are hashed using bcrypt via Supabase Auth, plaintext passwords are never stored</Li>
             <Li>Authentication tokens are short-lived JWTs; refresh tokens are stored securely</Li>
             <Li>Row-level security policies enforce company-level data isolation</Li>
           </ul>
@@ -224,22 +224,22 @@ export default function PrivacyPage() {
           <ul className="space-y-1.5 pl-1">
             <Li>
               <strong className="text-ink">Supabase</strong> (database, authentication, file
-              storage) — EU-hosted, GDPR-compliant
+              storage), EU-hosted, GDPR-compliant
             </Li>
             <Li>
-              <strong className="text-ink">Groq</strong> (AI inference API) — candidate responses
+              <strong className="text-ink">Groq</strong> (AI inference API), candidate responses
               are sent for real-time processing; Groq does not retain inputs after inference
             </Li>
             <Li>
-              <strong className="text-ink">Render</strong> (backend hosting) — receives encrypted
+              <strong className="text-ink">Render</strong> (backend hosting), receives encrypted
               traffic to our API; no direct database access
             </Li>
             <Li>
-              <strong className="text-ink">Vercel</strong> (frontend hosting) — serves the web
+              <strong className="text-ink">Vercel</strong> (frontend hosting), serves the web
               application; does not receive personal data beyond anonymised request logs
             </Li>
             <Li>
-              <strong className="text-ink">Legal and regulatory bodies</strong> — when required
+              <strong className="text-ink">Legal and regulatory bodies</strong>, when required
               by law, court order, or to protect our legal rights
             </Li>
           </ul>

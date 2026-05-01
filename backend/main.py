@@ -62,7 +62,7 @@ async def application_lifespan(app: FastAPI):
     global _keepalive_scheduler
     settings = get_settings()
     logger.info("=" * 60)
-    logger.info("🚀 HireIQ API starting — environment: %s", settings.environment)
+    logger.info("🚀 HireIQ API starting, environment: %s", settings.environment)
     logger.info("=" * 60)
 
     # Render free-tier keep-alive: ping /health every 10 minutes so the
@@ -108,7 +108,7 @@ app.add_middleware(SlowAPIMiddleware)
 # ── CORS ───────────────────────────────────────────────────────────────────────
 settings = get_settings()
 
-# Build allowed origins list — strip trailing slashes to avoid mismatches
+# Build allowed origins list, strip trailing slashes to avoid mismatches
 _origins: list[str] = []
 if settings.frontend_url:
     _origins.append(settings.frontend_url.rstrip("/"))
@@ -132,7 +132,7 @@ if settings.environment == "development":
         "http://localhost:3001",
         "http://127.0.0.1:3000",
     ])
-# Never fall back to "*" — it is incompatible with allow_credentials=True
+# Never fall back to "*", it is incompatible with allow_credentials=True
 allowed_origins = _origins
 
 app.add_middleware(

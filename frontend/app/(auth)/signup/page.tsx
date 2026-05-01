@@ -76,7 +76,7 @@ export default function SignupPage() {
         },
       });
       if (oauthError) throw oauthError;
-      // Page will redirect — keep loading state
+      // Page will redirect, keep loading state
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed. Please try again.");
       setIsGoogleLoading(false);

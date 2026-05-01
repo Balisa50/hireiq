@@ -1,5 +1,5 @@
 """
-HireIQ email service — powered by Resend.
+HireIQ email service, powered by Resend.
 All platform emails route through a single Resend API key (RESEND_API_KEY).
 Companies never configure anything. The from address shows only the company name.
 HireIQ is invisible to candidates.
@@ -24,24 +24,24 @@ async def send_candidate_email(
 ) -> bool:
     """
     Send a candidate notification email via Resend.
-    The from display name is the company name only — HireIQ is not mentioned.
+    The from display name is the company name only, HireIQ is not mentioned.
     Returns True on success, False if API key is missing or the send fails.
     """
     settings = get_settings()
 
     if not settings.resend_api_key:
         logger.warning(
-            "RESEND_API_KEY not configured — candidate email not sent",
+            "RESEND_API_KEY not configured, candidate email not sent",
             extra={"to": to_email, "subject": subject},
         )
         return False
 
-    # Company name in the from field — candidate sees who contacted them, not the platform
+    # Company name in the from field, candidate sees who contacted them, not the platform
     sender_name  = company_name if company_name else "Hiring Team"
     from_address = f"{sender_name} <{settings.resend_from_email}>"
     to_address   = f"{to_name} <{to_email}>" if to_name else to_email
 
-    # HTML body — clean, no platform branding, no footer attribution
+    # HTML body, clean, no platform branding, no footer attribution
     html_paragraphs = "".join(
         f"<p>{para.replace(chr(10), '<br>')}</p>"
         for para in body.split("\n\n")

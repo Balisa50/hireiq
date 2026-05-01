@@ -47,7 +47,7 @@ async def sign_up_company(request: CompanySignupRequest) -> AuthResponse:
     except Exception as error:
         error_str = str(error).lower()
 
-        # "User already registered" — auth row exists, check if companies row also exists
+        # "User already registered", auth row exists, check if companies row also exists
         if "already registered" in error_str or "already been registered" in error_str:
             # Try to log them in to get their ID, then check for companies row
             try:
@@ -58,12 +58,12 @@ async def sign_up_company(request: CompanySignupRequest) -> AuthResponse:
                 if login_resp.user:
                     existing = supabase.table("companies").select("*").eq("id", login_resp.user.id).execute()
                     if existing.data:
-                        # Full account exists — tell them to log in
+                        # Full account exists, tell them to log in
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail="An account with this email already exists. Please log in instead.",
                         )
-                    # Orphaned auth user — complete the companies row now
+                    # Orphaned auth user, complete the companies row now
                     company_id = login_resp.user.id
                     result = supabase.table("companies").insert({
                         "id": company_id,
@@ -92,7 +92,7 @@ async def sign_up_company(request: CompanySignupRequest) -> AuthResponse:
             detail=f"Sign up failed: {str(error)}",
         ) from error
 
-    # Fresh signup — create the companies row
+    # Fresh signup, create the companies row
     try:
         result = supabase.table("companies").insert({
             "id": company_id,
@@ -203,7 +203,7 @@ async def google_oauth_login(
     if result.data:
         company = CompanyResponse(**result.data[0])
     else:
-        # First-time Google sign-in — auto-create a profile
+        # First-time Google sign-in, auto-create a profile
         metadata = user.user_metadata or {}
         display_name = (
             metadata.get("full_name")

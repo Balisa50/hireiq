@@ -48,7 +48,7 @@ def validate_file(file_bytes: bytes, filename: str) -> tuple[bool, str]:
     kind = filetype.guess(file_bytes)
 
     if kind is None:
-        # filetype can't detect — allow plain text (.txt) by extension only
+        # filetype can't detect, allow plain text (.txt) by extension only
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         if ext == "txt":
             return True, ""

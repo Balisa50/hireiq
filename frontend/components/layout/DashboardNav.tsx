@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { href: "/settings",   label: "Settings",    icon: Settings },
 ] as const;
 
-/* The brand mark — speech bubble + check, inline SVG */
+/* The brand mark, speech bubble + check, inline SVG */
 function BrandMark({ className }: { className?: string }) {
   return (
     <svg

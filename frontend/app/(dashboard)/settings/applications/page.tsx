@@ -130,8 +130,8 @@ export default function ApplicationsSettingsPage() {
             className="w-full"
           />
           <div className="flex justify-between text-[13px] text-muted">
-            <span>5 — Quick screen</span>
-            <span>15 — In-depth</span>
+            <span>5, Quick screen</span>
+            <span>15, In-depth</span>
           </div>
         </div>
 

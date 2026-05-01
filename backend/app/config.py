@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Heavyweight model for one-shot tasks (scoring, question generation,
     # candidate emails). Used at most a handful of times per candidate.
     groq_model_default: str = "llama-3.3-70b-versatile"
-    # Lightweight model for the live conversation stream — fires on EVERY
+    # Lightweight model for the live conversation stream, fires on EVERY
     # turn so the system prompt re-sends quickly drain a TPD bucket. The
     # 8B Instant model has a separate (much larger) bucket and ~3x the
     # tokens-per-second throughput, which is what we want for streaming.
@@ -50,13 +50,13 @@ class Settings(BaseSettings):
     min_answer_chars: int = 50
     min_job_description_words: int = 100
 
-    # Resend — candidate email notifications
+    # Resend, candidate email notifications
     # Set RESEND_API_KEY in Render env vars. All platform emails route through it.
     resend_api_key: str = ""
     # Sending address on HireIQ's verified Resend domain.
     resend_from_email: str = "noreply@hireiq.app"
 
-    # Gemini — interview conversation agent only (scoring + email stay on Groq)
+    # Gemini, interview conversation agent only (scoring + email stay on Groq)
     gemini_api_key: str = ""
 
     # Interview settings

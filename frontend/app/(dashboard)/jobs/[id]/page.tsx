@@ -318,7 +318,7 @@ export default function JobDetailPage() {
           {job.is_paused && (
             <div className="flex items-center gap-2 text-amber-700 text-xs bg-amber-50 border border-amber-200 rounded-[4px] px-3 py-2">
               <PauseCircle className="w-3.5 h-3.5 shrink-0" />
-              Applications are paused — new candidates cannot start.
+              Applications are paused, new candidates cannot start.
             </div>
           )}
 

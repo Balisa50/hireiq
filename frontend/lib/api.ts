@@ -51,7 +51,7 @@ async function apiFetch<T>(
   const timeoutId  = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   // Only set Content-Type for requests that carry a body.
-  // GET/HEAD requests have no body — sending Content-Type on them turns a
+  // GET/HEAD requests have no body, sending Content-Type on them turns a
   // "simple" CORS request into a preflighted one. On Render free tier the
   // dyno sleeps and the load balancer handles the OPTIONS preflight without
   // CORS headers, causing net::ERR_FAILED before the dyno even wakes up.
@@ -90,9 +90,9 @@ async function apiFetch<T>(
         } else if (typeof errorBody.error === "string") {
           errorMessage = errorBody.error;
         }
-      } catch { /* JSON parse failed — use default */ }
+      } catch { /* JSON parse failed, use default */ }
 
-      // Only redirect on 401 for authenticated requests — not for login/signup,
+      // Only redirect on 401 for authenticated requests, not for login/signup,
       // and never on the public candidate apply route. AuthProvider.loadCompanyProfile
       // runs on every page including /apply/[token]; a 401 there (expired dashboard
       // token) must NOT redirect the candidate to /login.
@@ -121,7 +121,7 @@ async function apiFetch<T>(
 }
 
 /**
- * Upload a file via multipart form — does NOT set Content-Type so the browser
+ * Upload a file via multipart form, does NOT set Content-Type so the browser
  * can inject the correct multipart boundary automatically.
  */
 async function apiUploadFile<T>(
@@ -132,7 +132,7 @@ async function apiUploadFile<T>(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE_URL}${path}`);
-    // No Content-Type header — XHR sets it with the boundary
+    // No Content-Type header, XHR sets it with the boundary
 
     if (onProgress) {
       xhr.upload.addEventListener("progress", (e) => {
@@ -176,7 +176,7 @@ export const authAPI = {
       return response;
     }
 
-    // Supabase returned no session — immediately sign in to obtain a real token.
+    // Supabase returned no session, immediately sign in to obtain a real token.
     const loginResponse = await apiFetch<AuthResponse>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
@@ -420,7 +420,7 @@ export const candidatesAPI = {
   },
 };
 
-// ── Public interview API (candidate side — no auth) ───────────────────────────
+// ── Public interview API (candidate side, no auth) ───────────────────────────
 
 export const interviewAPI = {
   async getJobInfo(linkToken: string): Promise<JobPublicInfo> {
@@ -690,7 +690,7 @@ export async function pingBackendHealth(): Promise<boolean> {
 /**
  * Fire a no-cors GET to /health to immediately wake the Render dyno.
  * mode:'no-cors' means the request is always sent regardless of whether the
- * backend is returning CORS headers yet — the response is opaque (can't be
+ * backend is returning CORS headers yet, the response is opaque (can't be
  * read), but the dyno receives the request and starts waking up.
  */
 export function wakeBackend(): void {
@@ -721,7 +721,7 @@ export async function waitForBackendWarm(maxWaitMs = 55_000): Promise<boolean> {
       clearTimeout(tid);
       if (res.ok) return true;
     } catch {
-      /* backend still cold — CORS headers not present yet, keep polling */
+      /* backend still cold, CORS headers not present yet, keep polling */
     }
     const remaining = deadline - Date.now();
     if (remaining > 0) {

@@ -14,13 +14,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     // Only redirect to /login if loading is done AND there is genuinely no
     // stored token. A failed API call (network error, cold-start) must not
-    // bounce the user to login — that is handled by auth-context retries.
+    // bounce the user to login, that is handled by auth-context retries.
     if (!isLoading && !isAuthenticated && !authAPI.isAuthenticated()) {
       router.replace("/login");
     }
   }, [isAuthenticated, isLoading, router]);
 
-  // Keep Render warm — ping every 4 minutes
+  // Keep Render warm, ping every 4 minutes
   useEffect(() => {
     const id = setInterval(pingBackendHealth, 240_000);
     return () => clearInterval(id);
@@ -47,7 +47,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen bg-[var(--bg)]">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar — clears the fixed hamburger so page titles are never clipped */}
+        {/* Mobile top bar, clears the fixed hamburger so page titles are never clipped */}
         <div className="md:hidden sticky top-0 z-30 h-14 bg-white border-b border-border shrink-0" />
         <main className="flex-1 px-6 sm:px-8 lg:px-10 py-8 md:py-10 max-w-5xl w-full mx-auto">
           {children}

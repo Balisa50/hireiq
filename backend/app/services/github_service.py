@@ -17,7 +17,7 @@ logger = logging.getLogger("hireiq.github")
 
 GITHUB_API = "https://api.github.com"
 HEADERS = {"Accept": "application/vnd.github.v3+json", "User-Agent": "HireIQ/1.0"}
-TIMEOUT = 8.0   # seconds per request — fast-fail if GitHub is slow
+TIMEOUT = 8.0   # seconds per request, fast-fail if GitHub is slow
 MAX_REPOS = 6
 
 
@@ -37,7 +37,7 @@ def _extract_username(github_url: str) -> Optional[str]:
 async def fetch_github_profile(github_url: str) -> dict:
     """
     Fetch public repo data for the given GitHub URL.
-    Returns a structured dict — never raises; errors are logged and returned
+    Returns a structured dict, never raises; errors are logged and returned
     in the dict under the 'error' key.
     """
     username = _extract_username(github_url)
@@ -75,7 +75,7 @@ async def fetch_github_profile(github_url: str) -> dict:
             repo_details = []
             for repo in repos[:MAX_REPOS]:
                 if repo.get("fork"):
-                    continue  # skip forks — they inflate the profile
+                    continue  # skip forks, they inflate the profile
 
                 detail: dict = {
                     "name":        repo.get("name", ""),
@@ -99,7 +99,7 @@ async def fetch_github_profile(github_url: str) -> dict:
                             # First 600 chars of README is plenty for context
                             detail["readme"] = decoded[:600].strip()
                 except Exception:
-                    pass  # README missing — not a blocker
+                    pass  # README missing, not a blocker
 
                 repo_details.append(detail)
 
@@ -132,7 +132,7 @@ def format_github_for_context(github_data: dict) -> str:
 
     if not repos:
         return (
-            f"GitHub profile: github.com/{username} — "
+            f"GitHub profile: github.com/{username}, "
             f"{public_repos} public repos, none accessible or all are forks. "
             "No actual code evidence available."
         )
@@ -148,7 +148,7 @@ def format_github_for_context(github_data: dict) -> str:
         readme_snippet = r.get("readme", "")
         topics = ", ".join(r.get("topics", [])) if r.get("topics") else ""
 
-        lines.append(f"  Repo: {r['name']} [{lang}] ★{stars} — last updated {updated}")
+        lines.append(f"  Repo: {r['name']} [{lang}] ★{stars}, last updated {updated}")
         lines.append(f"  Description: {desc}")
         if topics:
             lines.append(f"  Topics: {topics}")

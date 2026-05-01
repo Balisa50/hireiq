@@ -126,9 +126,9 @@ export default function TeamSettingsPage() {
         <div className="bg-[var(--bg)] rounded-[4px] border border-border p-4 space-y-2">
           <p className="text-[12px] font-semibold text-ink uppercase tracking-wide">Role permissions</p>
           <div className="space-y-1.5 text-[13px] text-sub">
-            <p><span className="font-medium text-ink">Owner</span> — Full access including billing and account deletion</p>
-            <p><span className="font-medium text-ink">Admin</span> — Manage jobs, candidates and settings (no billing)</p>
-            <p><span className="font-medium text-ink">Recruiter</span> — View and action candidates, read-only on jobs</p>
+            <p><span className="font-medium text-ink">Owner</span>, Full access including billing and account deletion</p>
+            <p><span className="font-medium text-ink">Admin</span>, Manage jobs, candidates and settings (no billing)</p>
+            <p><span className="font-medium text-ink">Recruiter</span>, View and action candidates, read-only on jobs</p>
           </div>
         </div>
         <p className="text-[12px] text-muted">

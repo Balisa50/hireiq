@@ -98,7 +98,7 @@ const STEPS = [
   {
     number: "01",
     title: "Post a job",
-    description: "Paste your job description. HireIQ generates a tailored set of questions — behavioural, technical, situational — calibrated to the role.",
+    description: "Paste your job description. HireIQ generates a tailored set of questions, behavioural, technical, situational, calibrated to the role.",
   },
   {
     number: "02",
@@ -159,7 +159,7 @@ const FEATURES = [
   {
     icon: BarChart3,
     title: "Scored reports",
-    description: "Strengths, concerns, skill breakdown, and a hiring recommendation — for every candidate.",
+    description: "Strengths, concerns, skill breakdown, and a hiring recommendation, for every candidate.",
   },
   {
     icon: Clock,
@@ -296,7 +296,7 @@ const DEEP_FEATURES = [
   {
     label:       "Question generation",
     title:       "Questions that actually test the role",
-    description: "Paste your job description. HireIQ writes the application — behavioural, technical, and situational, calibrated to seniority. Edit or reorder before you publish.",
+    description: "Paste your job description. HireIQ writes the application, behavioural, technical, and situational, calibrated to seniority. Edit or reorder before you publish.",
     bullets:     ["Calibrated to seniority", "Multiple question types", "Editable before publishing"],
     mock:        <MockQuestions />,
     reverse:     false,

@@ -55,7 +55,7 @@ body {
   border-radius: 4px;
 }
 
-/* ── Range input — black thumb/track ───────────────────────────────────── */
+/* ── Range input, black thumb/track ───────────────────────────────────── */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;

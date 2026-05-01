@@ -18,5 +18,5 @@ def create_supabase_service_client() -> Client:
     )
 
 
-# Module-level singleton — shared across the application
+# Module-level singleton, shared across the application
 supabase: Client = create_supabase_service_client()
