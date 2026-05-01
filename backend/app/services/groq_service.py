@@ -39,7 +39,7 @@ def _chat_model() -> str:
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
-# ── Shared helpers ─────────────────────────────────────────────────────────────
+# ── Shared helpers ──────────────────────────────────────────────────────────
 
 def _extract_json_from_text(text: str) -> str:
     """
@@ -73,7 +73,7 @@ def _extract_json_from_text(text: str) -> str:
     return text
 
 
-# ── Core Groq caller ───────────────────────────────────────────────────────────
+# ── Core Groq caller ────────────────────────────────────────────────────────
 
 async def _call_groq_with_retry(
     messages: list[dict],
@@ -123,7 +123,7 @@ async def _call_groq_with_retry(
     return None
 
 
-# ── Streaming Groq caller ─────────────────────────────────────────────────────
+# ── Streaming Groq caller ───────────────────────────────────────────────────
 
 async def _stream_groq(
     messages: list[dict],
@@ -182,7 +182,7 @@ async def _stream_groq(
                     yield delta
 
 
-# ── 1. Question generation ─────────────────────────────────────────────────────
+# ── 1. Question generation ──────────────────────────────────────────────────
 
 async def generate_interview_questions(
     job_title: str,
@@ -276,7 +276,7 @@ async def generate_interview_questions(
         return None
 
 
-# ── 1b. Job pre-fill generation ───────────────────────────────────────────────
+# ── 1b. Job pre-fill generation ────────────────────────────────────────────
 
 async def generate_job_prefill(job_title: str, department: str) -> dict | None:
     """
@@ -349,7 +349,7 @@ async def generate_job_prefill(job_title: str, department: str) -> dict | None:
         return None
 
 
-# ── 2. Adaptive next question ──────────────────────────────────────────────────
+# ── 2. Adaptive next question ───────────────────────────────────────────────
 
 def _format_candidate_context(ctx: dict) -> str:
     """Format the candidate_context dict into a readable string for the prompt."""
@@ -441,7 +441,7 @@ async def generate_adaptive_next_question(
     )
 
 
-# ── 3. Candidate scoring ───────────────────────────────────────────────────────
+# ── 3. Candidate scoring ────────────────────────────────────────────────────
 
 async def score_candidate(
     job_title: str,
@@ -618,7 +618,7 @@ async def score_candidate(
         return None
 
 
-# ── 4. Candidate notification email generation ─────────────────────────────────
+# ── 4. Candidate notification email generation ──────────────────────────────
 
 async def generate_candidate_email(
     status: str,
@@ -762,7 +762,7 @@ async def generate_candidate_email(
         return None
 
 
-# ── 5. Conversational application driver ───────────────────────────────────────
+# ── 5. Conversational application driver ────────────────────────────────────
 
 def get_first_interview_message(
     candidate_name: str,
@@ -869,7 +869,7 @@ def _build_structured_fields_block(
     elig  = eligibility_criteria  or {}
     dei   = dei_config or {}
 
-    # ── A. Personal information ───────────────────────────────────────────
+    # ── A. Personal information ──────────────────────────────────────────────
     personal: list[str] = [
         "Full name",
         "Email address",
@@ -881,7 +881,7 @@ def _build_structured_fields_block(
     if info.get("collect_date_of_birth"):            personal.append("Date of birth")
     if info.get("collect_nationality"):              personal.append("Nationality")
 
-    # ── B. Professional background ────────────────────────────────────────
+    # ── B. Professional background ───────────────────────────────────────────
     professional: list[str] = []
     if info.get("collect_current_job_title"):    professional.append("Current job title")
     if info.get("collect_current_employer"):     professional.append("Current employer")
@@ -898,7 +898,7 @@ def _build_structured_fields_block(
     if info.get("collect_expected_salary"):      professional.append("Expected salary")
     if info.get("collect_willing_to_relocate"):  professional.append("Willingness to relocate")
 
-    # ── C. Eligibility checks ─────────────────────────────────────────────
+    # ── C. Eligibility checks ────────────────────────────────────────────────
     eligibility: list[str] = []
     min_edu = elig.get("min_education", "none")
     if min_edu and min_edu != "none":
@@ -930,7 +930,7 @@ def _build_structured_fields_block(
         if name:
             eligibility.append(f"Language: {name} -- required level: {level}")
 
-    # ── D. References ─────────────────────────────────────────────────────
+    # ── D. References ────────────────────────────────────────────────────────
     references: list[str] = []
     if info.get("collect_references"):
         n = max(1, int(references_count or 2))
@@ -938,7 +938,7 @@ def _build_structured_fields_block(
             f"{n} professional reference(s) -- name, relationship, company, and email/phone"
         )
 
-    # ── E. DEI (optional, gated by dei_config.enabled) ────────────────────
+    # ── E. DEI (optional, gated by dei_config.enabled) ──────────────────────
     dei_fields: list[str] = []
     if dei.get("enabled"):
         if dei.get("collect_ethnicity"):  dei_fields.append("Ethnicity / race (optional, voluntary)")
@@ -946,7 +946,7 @@ def _build_structured_fields_block(
         if dei.get("collect_disability"): dei_fields.append("Disability status (optional, voluntary)")
         if dei.get("collect_veteran"):    dei_fields.append("Veteran status (optional, voluntary)")
 
-    # ── Render block ──────────────────────────────────────────────────────
+    # ── Render block ─────────────────────────────────────────────────────────
     def section(title: str, items: list[str]) -> str:
         if not items:
             return ""
@@ -1158,6 +1158,38 @@ async def generate_conversation_response(
         "YOUR PERSONALITY — READ THIS CAREFULLY\n"
         "You are not robotic. You are not a yes-machine. You have range.\n\n"
 
+        "RESPONSE STYLE — NON-NEGOTIABLE RULES\n"
+        "1. NEVER repeat the candidate's answer back to them. Do not echo a "
+        "name, an email, a number, or any value as the opening of your next "
+        "message.\n"
+        "   WRONG: \"Abdoulie Balisa. What is your email address?\"\n"
+        "   RIGHT: \"What's your email address?\"\n"
+        "   WRONG: \"+2203148206. What is your current city?\"\n"
+        "   RIGHT: \"And what city are you currently in?\"\n"
+        "2. Keep messages to 1-2 sentences maximum. No multi-paragraph "
+        "summaries. No \"You've had some diverse work experience...\" "
+        "preambles. Ask the next question. That is the whole job.\n"
+        "3. Do NOT announce that you've noted something every turn. Silent "
+        "acknowledgment is the default. Just ask the next question.\n"
+        "4. ONE confirmation per field. If the candidate confirms, accept "
+        "instantly and move to the next question.\n"
+        "5. When the candidate says \"let's move on\", \"skip this\", or "
+        "\"come back to it later\", do exactly that. One sentence: \"Noted, "
+        "moving on.\" Then the next question.\n"
+        "6. Acknowledge genuinely impressive things briefly (one short "
+        "phrase, e.g. \"That's impressive.\") and move on. Never dwell. "
+        "Never recap their projects back to them.\n\n"
+
+        "WRONG-FIELD ANSWERS — REDIRECT IMMEDIATELY, ONCE\n"
+        "If the candidate's answer obviously does not match the field you "
+        "asked for, state what you need in one sentence. Do not get confused. "
+        "Do not pair their next reply with the wrong slot in your head.\n"
+        "  Field: Email     Answer: \"Fajikunda\"   -> \"That looks like a location. What's your email address?\"\n"
+        "  Field: Country   Answer: \"Knust\"       -> \"Knust is a university. Which country do you live in?\"\n"
+        "  Field: DOB       Answer: \"Student\"     -> \"I need your date of birth — when were you born?\"\n"
+        "After ONE redirect, accept whatever they give and move on. Never "
+        "ask the same field a third time.\n\n"
+
         "WARM: When someone shares something real — a genuine experience, a vulnerability, "
         "an honest answer — acknowledge it like a human would. Not with hollow praise. "
         "With a real response. \"That's a solid way to think about it.\" \"Makes sense given "
@@ -1273,6 +1305,22 @@ async def generate_conversation_response(
         "in the conversation — not all at the end. CV is usually best requested after "
         "professional background. Portfolio after skills discussion. Certificates after "
         "eligibility checks.\n\n"
+
+        "DOCUMENT REQUEST TIMING — STRICT TRIGGERS\n"
+        "You MUST actually request each pending required document at the right "
+        "moment. Do not finish the conversation with required documents still "
+        "outstanding.\n"
+        "  - CV / Resume: Request immediately after collecting the candidate's "
+        "current job title (or after question 5, whichever comes first). One "
+        "sentence: \"Could you share your CV? PDF or DOCX is fine.\" Then emit "
+        "the request_file action for the CV requirement.\n"
+        "  - Cover Letter: Request right after education history is captured.\n"
+        "  - Portfolio / GitHub: Request when the conversation touches "
+        "technical experience or projects.\n"
+        "  - Optional documents: Ask once. If the candidate declines or skips, "
+        "mark internally as skipped and move on. Never ask twice.\n"
+        "ONE document per turn. NEVER batch. After the candidate confirms an "
+        "upload, move directly to the next field — no recap, no thanks-loop.\n\n"
 
         "---\n\n"
 
@@ -1425,18 +1473,9 @@ async def generate_conversation_response(
         "---\n\n"
 
         "OUTPUT FORMAT\n"
-        "Reply with ONLY plain conversational text — no markdown, no JSON, no preamble.\n"
-        "After your reply text, on a new line, append exactly one ACTION sentinel:\n"
-        "  [ACTION:continue]\n"
-        "  [ACTION:complete]\n"
-        "  [ACTION:request_file|<requirement_id>|<requirement_label>]\n"
-        "  [ACTION:request_link|<requirement_id>|<requirement_label>]\n"
-        "Use continue for normal turns. Use complete only when the closing message "
-        "has been delivered. Use request_file or request_link the moment you need a "
-        "document or URL from the candidate; copy the requirement_id and "
-        "requirement_label exactly from the requirements list. The sentinel is the "
-        "LAST thing in your reply. Nothing comes after it. The candidate never sees "
-        "it — it is stripped server-side."
+        "Valid JSON only. No markdown. No preamble. No explanation outside the JSON.\n"
+        '{"message": "...", "action": "continue | request_file | request_link | complete", '
+        '"requirement_id": null, "requirement_label": null}'
     )
 
     # Build OpenAI-format messages from conversation history.
@@ -1485,41 +1524,7 @@ async def generate_conversation_response(
     }
 
 
-# ── Streaming conversation driver ──────────────────────────────────────────────
-
-# Matches the trailing [ACTION:...] sentinel on a streamed reply.
-_ACTION_SENTINEL_RE = re.compile(
-    r"\[ACTION:\s*(continue|complete|request_file|request_link)"
-    r"(?:\s*\|\s*([^|\]]*?)(?:\s*\|\s*([^\]]*?))?)?\s*\]",
-    re.IGNORECASE,
-)
-
-
-def _parse_action_sentinel(full_text: str) -> tuple[str, str, str | None, str | None]:
-    """
-    Parse the trailing [ACTION:...] sentinel out of a streamed reply.
-
-    Returns (clean_message, action, requirement_id, requirement_label).
-    Defaults to action="continue" if no sentinel is found.
-    """
-    if not full_text:
-        return "", "continue", None, None
-
-    match = _ACTION_SENTINEL_RE.search(full_text)
-    if not match:
-        return _sanitise_ai_message(full_text), "continue", None, None
-
-    action       = match.group(1).lower()
-    requirement_id    = (match.group(2) or "").strip() or None
-    requirement_label = (match.group(3) or "").strip() or None
-    valid = {"continue", "complete", "request_file", "request_link"}
-    if action not in valid:
-        action = "continue"
-
-    # Strip the sentinel and everything after it
-    clean = full_text[: match.start()].rstrip()
-    return _sanitise_ai_message(clean), action, requirement_id, requirement_label
-
+# ── Streaming conversation driver ──────────────────────────────────────────
 
 async def stream_conversation_response(
     job_title: str,
@@ -1540,30 +1545,21 @@ async def stream_conversation_response(
     dei_config: dict | None = None,
 ) -> AsyncIterator[dict]:
     """
-    Stream the next AI conversation reply.
+    Stream the next AI conversation reply using JSON mode.
 
-    Yields events of the form:
-      {"type": "token", "text": "..."}             -- one for each content delta
-      {"type": "done",
-       "message": "<full sanitised reply>",
-       "action": "continue|complete|request_file|request_link",
-       "requirement_id": str|None,
-       "requirement_label": str|None}              -- once at the end
-      {"type": "error", "message": "..."}          -- on transport / model failure
-
-    Token chunks are pre-stripped of any partial sentinel substring so the
-    candidate never sees the [ACTION:...] tag mid-stream.
+    Yields events:
+      {"type": "token", "text": "..."}   -- content delta
+      {"type": "done", "message": "...", "action": "...", "requirement_id": "...", "requirement_label": "..."}
+      {"type": "error", "message": "..."}
     """
-    # Reuse the existing prompt builder by calling generate_conversation_response's
-    # internals — but we need the same system_prompt. The simplest approach is to
-    # build it inline using the same structure.
+    # Build messages like generate_conversation_response but with streaming
     first_name = candidate_name.split()[0] if candidate_name else "the applicant"
 
-    required_items    = [r for r in candidate_requirements if r.get("required")]
-    optional_items    = [r for r in candidate_requirements if not r.get("required")]
-    pending           = [r for r in required_items if r.get("id") not in collected_requirement_ids]
+    required_items = [r for r in candidate_requirements if r.get("required")]
+    optional_items = [r for r in candidate_requirements if not r.get("required")]
+    pending = [r for r in required_items if r.get("id") not in collected_requirement_ids]
     already_collected = [r for r in required_items if r.get("id") in collected_requirement_ids]
-    optional_pending  = [r for r in optional_items if r.get("id") not in collected_requirement_ids]
+    optional_pending = [r for r in optional_items if r.get("id") not in collected_requirement_ids]
 
     pending_lines = (
         "\n".join(f"  - {r['label']} ({'file upload' if r.get('type') == 'file' else 'link'}) [id: {r['id']}]"
@@ -1581,22 +1577,22 @@ async def stream_conversation_response(
     )
 
     candidate_turn_count = sum(1 for m in conversation if m.get("role") == "candidate")
-    skills_text    = ", ".join(skills) if skills else "see job description"
+    skills_text = ", ".join(skills) if skills else "see job description"
     seniority_text = experience_level.replace("_", " ").title() if experience_level and experience_level != "any" else "Not specified"
-    dept_text      = f"Department: {department}\n" if department else ""
+    dept_text = f"Department: {department}\n" if department else ""
 
     refs_count = (candidate_info_config or {}).get("references_count", 2)
-    info_cfg   = candidate_info_config or {}
+    info_cfg = candidate_info_config or {}
     if _is_meaningfully_empty(info_cfg):
         info_cfg = dict(_DEFAULT_CANDIDATE_INFO_CONFIG)
     eligibility_block = _build_eligibility_section(eligibility_criteria or {})
-    references_block  = _build_references_section(info_cfg, refs_count)
-    dei_block         = _build_dei_section(dei_config or {})
+    references_block = _build_references_section(info_cfg, refs_count)
+    dei_block = _build_dei_section(dei_config or {})
 
     questions_list = pre_generated_questions or []
     if questions_list:
         knockout_q = [q for q in questions_list if q.get("knockout_enabled")]
-        regular_q  = [q for q in questions_list if not q.get("knockout_enabled")]
+        regular_q = [q for q in questions_list if not q.get("knockout_enabled")]
         rq_lines: list[str] = []
         if knockout_q:
             rq_lines.append(
@@ -1619,22 +1615,6 @@ async def stream_conversation_response(
             "documents are complete, proceed directly to closing."
         )
 
-    # We delegate the full system prompt construction to the existing function
-    # by calling it for its prompt only. To avoid duplicating ~300 lines of
-    # prompt text, we directly invoke the prompt-build path: replicate the
-    # same call pattern by reusing generate_conversation_response's prompt
-    # builder via a private helper... since that's tightly coupled, just
-    # re-call the JSON-mode function as a fallback path is risky. Instead,
-    # build a compact streaming-aware system prompt that references the same
-    # behavioural rules.
-    #
-    # Pragmatic approach: build the FULL prompt by temporarily monkey-patching
-    # _call_groq_with_retry to capture the messages, then stream them. Cleaner:
-    # extract the prompt-build into a shared helper. For minimal risk we copy
-    # the prompt format here referencing the exact same functions.
-
-    # The full system prompt mirrors generate_conversation_response but ends
-    # with the SENTINEL output format instead of JSON.
     system_prompt = _build_conversation_system_prompt(
         company_name=company_name,
         job_title=job_title,
@@ -1660,126 +1640,62 @@ async def stream_conversation_response(
     if not conversation or first_role == "ai":
         groq_messages.append({"role": "user", "content": "Ready."})
     for msg in conversation:
-        role    = msg.get("role", "")
+        role = msg.get("role", "")
         content = msg.get("content", "")
         if role == "ai":
             groq_messages.append({"role": "assistant", "content": content})
         elif role == "candidate":
             groq_messages.append({"role": "user", "content": content})
 
-    accumulator      = ""
-    buffer           = ""           # may contain a partial-sentinel tail
-    sentinel_started = False
-    SENTINEL_START   = "[ACTION:"
-    log              = logging.getLogger("hireiq.stream")
-    chunk_count      = 0
-
-    log.info(
-        "stream_start prompt_chars=%d msgs=%d turn=%d",
-        len(system_prompt), len(groq_messages), candidate_turn_count,
-    )
+    log = logging.getLogger("hireiq.stream")
+    log.info("stream_start prompt_chars=%d msgs=%d turn=%d",
+             len(system_prompt), len(groq_messages), candidate_turn_count)
 
     try:
-        async for delta in _stream_groq(
+        # Use regular non-streaming call with streaming=False to get full JSON
+        raw = await _call_groq_with_retry(
             messages=groq_messages,
             max_tokens=600,
             temperature=0.75,
-        ):
-            chunk_count += 1
-            accumulator += delta
-            buffer      += delta
-
-            # Once we see the start of the sentinel, stop emitting prose to
-            # the candidate. Whatever prose was before "[ACTION" still in
-            # `buffer` flushes one last time below.
-            if not sentinel_started and SENTINEL_START in buffer:
-                cut = buffer.find(SENTINEL_START)
-                if cut > 0:
-                    yield {"type": "token", "text": _sanitise_ai_message_chunk(buffer[:cut])}
-                buffer = ""
-                sentinel_started = True
-                continue
-
-            if sentinel_started:
-                continue
-
-            # Smart holdback: only hold back characters at the buffer tail
-            # IF that tail could be the start of "[ACTION:". 99%+ of tokens
-            # don't end with "[", so we emit immediately with zero added latency.
-            hold = 0
-            for i in range(min(len(buffer), len(SENTINEL_START)), 0, -1):
-                if buffer.endswith(SENTINEL_START[:i]):
-                    hold = i
-                    break
-            if hold == 0:
-                if buffer:
-                    yield {"type": "token", "text": _sanitise_ai_message_chunk(buffer)}
-                    buffer = ""
-            else:
-                emit = buffer[:-hold]
-                buffer = buffer[-hold:]
-                if emit:
-                    yield {"type": "token", "text": _sanitise_ai_message_chunk(emit)}
-
-        # Stream finished cleanly. Flush remaining buffer if no sentinel arrived.
-        if not sentinel_started and buffer:
-            yield {"type": "token", "text": _sanitise_ai_message_chunk(buffer)}
-
-        log.info("stream_end chunks=%d total_chars=%d sentinel=%s",
-                 chunk_count, len(accumulator), sentinel_started)
-
-    except Exception as err:
-        log.error(
-            "stream_fail chunks=%d total_chars=%d err_type=%s err=%s",
-            chunk_count, len(accumulator), type(err).__name__, err,
-            exc_info=True,
+            json_mode=True,
         )
-        # Friendly-message override for known failure modes. These messages
-        # show up in the chat as a calm, conversational note — never as a
-        # red system error.
-        err_str  = str(err)
-        friendly = "Give me a second, send that one more time?"
-        if "Groq HTTP 429" in err_str or "rate_limit_exceeded" in err_str:
-            wait_match = re.search(r"try again in (\d+m\s*\d*\.?\d*s|\d+\.?\d*s)", err_str)
-            wait_str   = wait_match.group(1).strip() if wait_match else "a few minutes"
-            friendly   = (
-                f"I'm at capacity for the moment. "
-                f"Give it about {wait_str} and try again, your progress is saved."
-            )
-        elif "Groq HTTP 401" in err_str:
-            friendly = "I'm having trouble connecting on my end. The team has been pinged."
-
+        
+        if not raw:
+            yield {"type": "error", "message": "Failed to get response from AI"}
+            return
+            
+        parsed = json.loads(raw)
+        message = parsed.get("message", "")
+        action = parsed.get("action", "continue")
+        req_id = parsed.get("requirement_id")
+        req_label = parsed.get("requirement_label")
+        
+        valid_actions = {"continue", "complete", "request_file", "request_link"}
+        if action not in valid_actions:
+            action = "continue"
+        
+        # Stream the message character by character for a typewriter effect
+        for i, char in enumerate(message):
+            yield {"type": "token", "text": char}
+            if i % 5 == 0:  # Small delay for realism
+                await asyncio.sleep(0.01)
+        
         yield {
-            "type":    "error",
-            "message": friendly,
-            "detail":  f"{type(err).__name__}: {err}",
-            "stage":   "stream_conversation_response",
-            "chunks":  chunk_count,
+            "type": "done",
+            "message": _sanitise_ai_message(message),
+            "action": action,
+            "requirement_id": req_id,
+            "requirement_label": req_label,
         }
-        return
-
-    clean_msg, action, req_id, req_label = _parse_action_sentinel(accumulator)
-    yield {
-        "type":              "done",
-        "message":           clean_msg,
-        "action":            action,
-        "requirement_id":    req_id,
-        "requirement_label": req_label,
-    }
-
-
-def _sanitise_ai_message_chunk(text: str) -> str:
-    """
-    Lightweight per-chunk sanitiser used during streaming. Same dash rules as
-    the full sanitiser but does NOT strip leading/trailing whitespace (we'd
-    lose word boundaries between chunks).
-    """
-    if not text:
-        return ""
-    cleaned = _DASH_PATTERN.sub(", ", str(text))
-    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
-    cleaned = re.sub(r" +,", ",", cleaned)
-    return cleaned
+        
+    except Exception as err:
+        log.error("stream_fail err_type=%s err=%s", type(err).__name__, err, exc_info=True)
+        yield {
+            "type": "error",
+            "message": "Give me a second, send that one more time?",
+            "detail": f"{type(err).__name__}: {err}",
+            "stage": "stream_conversation_response",
+        }
 
 
 def _build_conversation_system_prompt(
@@ -1804,25 +1720,9 @@ def _build_conversation_system_prompt(
 ) -> str:
     """
     Build the conversation-driver system prompt. Same content as the JSON-mode
-    prompt; the ONLY difference is the OUTPUT FORMAT footer (JSON vs sentinel).
-    The streaming endpoint passes for_streaming=True; the legacy JSON path
-    passes for_streaming=False.
+    prompt; the ONLY difference is the OUTPUT FORMAT footer (JSON for both now).
     """
     output_format = (
-        "OUTPUT FORMAT\n"
-        "Reply with ONLY plain conversational text, no markdown, no JSON, no preamble.\n"
-        "After your reply text, on a new line, append exactly one ACTION sentinel:\n"
-        "  [ACTION:continue]\n"
-        "  [ACTION:complete]\n"
-        "  [ACTION:request_file|<requirement_id>|<requirement_label>]\n"
-        "  [ACTION:request_link|<requirement_id>|<requirement_label>]\n"
-        "Use continue for normal turns. Use complete only when the closing message "
-        "has been delivered. Use request_file or request_link the moment you need a "
-        "document or URL from the candidate; copy requirement_id and requirement_label "
-        "exactly from the requirements list. The sentinel is the LAST thing in your "
-        "reply. Nothing comes after it. The candidate never sees it, it is stripped "
-        "server-side."
-        if for_streaming else
         "OUTPUT FORMAT\n"
         "Valid JSON only. No markdown. No preamble. No explanation outside the JSON.\n"
         '{"message": "...", "action": "continue | request_file | request_link | complete", '
@@ -1906,9 +1806,7 @@ def _build_conversation_system_prompt(
         f"Optional:\n{optional_lines}\n\n"
         f"Already collected:\n{collected_lines}\n\n"
         "Request documents one at a time. Request at the most natural moment, not all "
-        "at the end. When asking for a file or link, EMIT the request_file or "
-        "request_link sentinel on the same turn so the frontend can show the right "
-        "input UI.\n\n"
+        "at the end. When asking for a file or link, include the action in your JSON response.\n\n"
         "---\n\n"
         "ROLE QUESTIONS\n"
         f"{role_questions_block}\n\n"
@@ -1925,15 +1823,14 @@ def _build_conversation_system_prompt(
         "and the \"anything else\" question asked. If anything is missing, loop back.\n"
         f"Closing line: \"That's everything we need. Thank you for taking the time, "
         f"your application for the {job_title} role at {company_name} has been "
-        f"submitted. The team will be in touch. Good luck.\" Then emit "
-        "[ACTION:complete].\n\n"
+        f"submitted. The team will be in touch. Good luck.\" Then set action to complete.\n\n"
         f"TURN COUNT: {candidate_turn_count}\n\n"
         "---\n\n"
         f"{output_format}"
     )
 
 
-# ── Output sanitiser ───────────────────────────────────────────────────────────
+# ── Output sanitiser ────────────────────────────────────────────────────────
 
 # Em-dash, en-dash, and double-hyphen substitutes. The model leans on these
 # despite explicit prompt instructions to avoid them. Strip them deterministically
