@@ -82,7 +82,7 @@ async def generate_questions_for_job(
     Generate AI interview questions for a job description.
     Passes candidate_requirements to Groq so it generates questions
     that explicitly reference those submitted materials.
-    Does NOT save the job — returns generated questions for review.
+    Does NOT save the job, returns generated questions for review.
     """
     req_dicts = [r.model_dump() for r in request.candidate_requirements]
 
@@ -114,7 +114,7 @@ async def ai_prefill_job(
     """
     Given a job title and department, return an AI-generated job posting draft:
     description, required_skills, nice_to_have_skills, eligibility_criteria, and questions.
-    Does NOT save anything — purely a generation step for the creation form.
+    Does NOT save anything, purely a generation step for the creation form.
     """
     result = await generate_job_prefill(
         job_title=request.title,

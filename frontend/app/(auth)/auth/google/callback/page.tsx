@@ -18,7 +18,7 @@ export default function GoogleCallbackPage() {
       if (handled) return;
       handled = true;
 
-      // Retry up to 4 times — Render free tier cold-starts can take ~50s.
+      // Retry up to 4 times, Render free tier cold-starts can take ~50s.
       // We wait progressively longer between attempts so a warm server
       // responds on attempt 1 and a cold server gets enough time.
       const delays = [0, 3000, 8000, 15000];
@@ -44,17 +44,17 @@ export default function GoogleCallbackPage() {
           if (!res.ok) {
             const body = await res.json().catch(() => ({})) as { detail?: string };
             lastErr = body.detail ?? lastErr;
-            // 4xx errors are definitive — no point retrying
+            // 4xx errors are definitive, no point retrying
             if (res.status >= 400 && res.status < 500) break;
             continue;
           }
 
-          // Success — persist token and redirect
+          // Success, persist token and redirect
           localStorage.setItem("hireiq_token", token);
           window.location.href = "/dashboard";
           return;
         } catch {
-          // Network error / timeout — try again
+          // Network error / timeout, try again
         }
       }
 
@@ -76,7 +76,7 @@ export default function GoogleCallbackPage() {
 
     // ── Path B: Implicit / already-exchanged session ────────────────────────
     // If the session is already in storage (e.g. implicit flow or a second
-    // render), getSession() returns it immediately — no need to wait for the
+    // render), getSession() returns it immediately, no need to wait for the
     // auth-change event.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.access_token) {

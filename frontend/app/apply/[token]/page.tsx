@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * HireIQ Application — Conversational experience
+ * HireIQ Application, Conversational experience
  *
  * Screens: loading → auth → conversation → review → complete | error
  *
  * Fixes applied:
  *  - File input accepts all types (accept="*\/*") + multiple selection + processes all files
  *  - All text forced LTR (dir="ltr") on containers, textarea, and message bubbles
- *  - Scroll lock: RAF-based scrollTop = scrollHeight — no jerk during streaming
+ *  - Scroll lock: RAF-based scrollTop = scrollHeight, no jerk during streaming
  *  - Textarea: max-height 160px, overflow-y-auto, resets to single line after send
  *  - Review screen: explicit gate before any submission. Backend sets pending_review;
  *    scoring only happens after candidate clicks confirm here.
@@ -71,7 +71,7 @@ interface StructuredField {
   id:          string;
   /** Visible label on the review screen */
   label:       string;
-  /** Detection type — drives validation + rendering */
+  /** Detection type, drives validation + rendering */
   type:        FieldType;
   /** Extracted value the candidate gave */
   value:       string;
@@ -119,7 +119,7 @@ const PERSONAL_RE = /\b(your name|full name|email address|phone number|phone|loc
 
 /**
  * The contract between the AI's `collected_fields` payload and the review
- * screen. Backend whitelists exactly these ids — anything else is dropped
+ * screen. Backend whitelists exactly these ids, anything else is dropped
  * before it reaches the browser, so the keys here are guaranteed clean.
  */
 const FIELD_ID_TABLE: Array<{
@@ -204,7 +204,7 @@ function validateField(value: string, type: FieldType, required: boolean): strin
       // Strip everything that isn't a digit or leading +; require at least 7 digits.
       const digits = trimmed.replace(/[^\d]/g, "");
       if (digits.length < 7) {
-        return "Phone number is too short — please include the full number.";
+        return "Phone number is too short, please include the full number.";
       }
       // Must contain country-code-style prefix OR look international.
       const startsOk = /^\+?\d/.test(trimmed);
@@ -245,7 +245,7 @@ function validateField(value: string, type: FieldType, required: boolean): strin
 /**
  * Pull the actual question sentence out of an AI message. AI messages
  * frequently look like "Gambian nationality. What is your current job
- * title?" — confirming the previous field, then asking the next. We only
+ * title?", confirming the previous field, then asking the next. We only
  * want to match field patterns against the trailing question.
  */
 function extractQuestionSentence(content: string): string {
@@ -411,8 +411,7 @@ function extractReviewSections(
     const next = messages[i + 1];
     if (!next || next.role !== "candidate" || !next.content?.trim()) continue;
 
-    // CRITICAL: only test field patterns against the *question sentence* —
-    // the trailing question, not the leading confirmation. Otherwise an AI
+    // CRITICAL: only test field patterns against the *question sentence*, // the trailing question, not the leading confirmation. Otherwise an AI
     // message like "Gambian nationality. What is your current job title?"
     // mis-matches "nationality" and pairs the next answer to the wrong slot.
     const questionPart = extractQuestionSentence(ai.content);
@@ -560,9 +559,9 @@ function WelcomeScreen({
         {/* What to expect */}
         <div className="bg-white border border-border rounded-[4px] divide-y divide-border">
           {[
-            { icon: "01", text: "You'll have a short conversation with our AI assistant — it asks questions, you type your answers." },
-            { icon: "02", text: "Be specific and honest. There are no trick questions — just tell your story." },
-            { icon: "03", text: "Takes around 10–15 minutes. Your progress is saved if you need to pause." },
+            { icon: "01", text: "You'll have a short conversation with our AI assistant, it asks questions, you type your answers." },
+            { icon: "02", text: "Be specific and honest. There are no trick questions, just tell your story." },
+            { icon: "03", text: "Takes around 10, 15 minutes. Your progress is saved if you need to pause." },
           ].map(({ icon, text }) => (
             <div key={icon} className="flex items-start gap-4 px-5 py-4">
               <span className="text-[11px] font-semibold text-muted tabular-nums shrink-0 mt-0.5">{icon}</span>
@@ -927,17 +926,17 @@ export default function ApplicationPage() {
     // streaming reply.
   }, [messages]);
 
-  // ── Keep Render warm — ping every 4 minutes so backend doesn't cold-start ──
+  // ── Keep Render warm, ping every 4 minutes so backend doesn't cold-start ──
   // Also fire a no-cors wake on mount: guaranteed to reach the dyno even if
   // it is sleeping and Cloudflare is not yet returning CORS headers.
   useEffect(() => {
-    wakeBackend();         // no-cors — wakes dyno regardless of CORS state
-    pingBackendHealth();   // regular CORS GET — updates backendWarmRef if it succeeds
+    wakeBackend();         // no-cors, wakes dyno regardless of CORS state
+    pingBackendHealth();   // regular CORS GET, updates backendWarmRef if it succeeds
     const id = setInterval(pingBackendHealth, 240_000);
     return () => clearInterval(id);
   }, []);
 
-  // ── Load job info — retries on network failure (Render free-tier cold-start) ──
+  // ── Load job info, retries on network failure (Render free-tier cold-start) ──
   useEffect(() => {
     let cancelled = false;
 
@@ -1015,7 +1014,7 @@ export default function ApplicationPage() {
           setScreen("error");
         }
         // If a session was restored and the backend is dead, the user can still
-        // see their conversation — they just won't be able to send new messages yet.
+        // see their conversation, they just won't be able to send new messages yet.
       }
     };
 
@@ -1028,7 +1027,7 @@ export default function ApplicationPage() {
   useEffect(() => {
     if (!applicationId || messages.length === 0) return;
     try {
-      // Strip animate flags before persisting — restored messages must not
+      // Strip animate flags before persisting, restored messages must not
       // re-type after a refresh.
       const toSave = messages
         .filter((m) => !m.isTyping)
@@ -1066,7 +1065,7 @@ export default function ApplicationPage() {
     setUploadQueue([]);
   }, [pendingAction]);
 
-  // ── Start application — no auth screen, anonymous session ────────────────
+  // ── Start application, no auth screen, anonymous session ────────────────
   // Generates a unique anonymous email so the backend can create/resume a session.
   // The AI collects the candidate's real name and email conversationally.
   const handleStartApplication = useCallback(async () => {
@@ -1542,14 +1541,14 @@ export default function ApplicationPage() {
         try {
           await interviewAPI.submitInterview(applicationId, editedTranscript as never);
         } catch (saveErr) {
-          // Don't block submission on save failure — the interview already has
+          // Don't block submission on save failure, the interview already has
           // the original transcript saved server-side. Just log it.
           console.warn("Failed to persist transcript edits:", saveErr);
         }
       }
 
       await interviewAPI.confirmSubmission(applicationId);
-      // Clear saved session — application is done
+      // Clear saved session, application is done
       try { localStorage.removeItem(`hireiq_apply_${token}`); } catch { /* ignore */ }
       setScreen("complete");
     } catch (e) {
@@ -1597,7 +1596,7 @@ export default function ApplicationPage() {
       },
       paused: {
         heading: "Applications for this position are temporarily paused.",
-        body: "The hiring team has paused new applications. Please check back later — this link will become active again once applications reopen.",
+        body: "The hiring team has paused new applications. Please check back later, this link will become active again once applications reopen.",
         icon: (
           <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5"
             strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 mx-auto text-muted">
@@ -1697,7 +1696,7 @@ export default function ApplicationPage() {
     );
   }
 
-  // "auth" screen removed — candidates go directly from welcome to conversation
+  // "auth" screen removed, candidates go directly from welcome to conversation
 
   // ── Review screen ──────────────────────────────────────────────────────────
   if (screen === "review") {
@@ -1750,7 +1749,7 @@ export default function ApplicationPage() {
             </p>
           </div>
 
-          {/* Structured fields — show clean extracted values, edit inline */}
+          {/* Structured fields, show clean extracted values, edit inline */}
           {structuredFields.length > 0 && (
             <div className="bg-white border border-border rounded-[4px] overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
@@ -1780,7 +1779,7 @@ export default function ApplicationPage() {
                             className={inputClass}
                             style={{ textAlign: "left" }}
                           >
-                            <option value="">—</option>
+                            <option value="">, </option>
                             <option value="Yes">Yes</option>
                             <option value="No">No</option>
                           </select>
@@ -1856,7 +1855,7 @@ export default function ApplicationPage() {
             </div>
           )}
 
-          {/* Open-ended answers — full original text, fully editable */}
+          {/* Open-ended answers, full original text, fully editable */}
           {openAnswers.length > 0 && (
             <div className="bg-white border border-border rounded-[4px] overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-[var(--bg)]">
@@ -1898,7 +1897,7 @@ export default function ApplicationPage() {
             </div>
           )}
 
-          {/* Block summary — shown when validation needs attention */}
+          {/* Block summary, shown when validation needs attention */}
           {blockingCount > 0 && (
             <div className="flex items-start gap-2 rounded-[6px] border border-border bg-white/80 px-3 py-2.5 text-[13px] text-sub">
               <span className="mt-[5px] inline-block h-1.5 w-1.5 rounded-full bg-muted shrink-0" />
@@ -1970,7 +1969,7 @@ export default function ApplicationPage() {
               Our team will be in touch if you&apos;re selected to move forward.
             </p>
             <p>We wish you the very best.</p>
-            <p className="text-ink">— The {company} Team</p>
+            <p className="text-ink">, The {company} Team</p>
           </div>
           <div className="pt-2">
             <button

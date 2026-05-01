@@ -75,7 +75,7 @@ def _check_knockout(
 
     msg = candidate_message.lower().strip()
 
-    # Last 4 AI messages — knock-out questions could have been asked recently
+    # Last 4 AI messages, knock-out questions could have been asked recently
     recent_ai_texts = [
         m.get("content", "").lower()
         for m in reversed(conversation)
@@ -136,7 +136,7 @@ def _check_knockout(
     return False, ""
 
 
-# ── Public endpoints (no company auth — for candidates via interview link) ─────
+# ── Public endpoints (no company auth, for candidates via interview link) ─────
 
 @router.get("/public/job/{link_token}", response_model=JobPublicInfo)
 async def get_job_by_link_token(link_token: str) -> JobPublicInfo:
@@ -470,7 +470,7 @@ async def _run_scoring_in_background(interview_id: str, interview: dict) -> None
     """
     Run the (slow, 20-40s) Groq scoring call after the HTTP response has
     already been returned to the candidate. Writes the assessment back to the
-    interviews row when done. Any failure is logged but never raised — the
+    interviews row when done. Any failure is logged but never raised, the
     candidate already saw their submission confirmed.
     """
     try:
@@ -544,7 +544,7 @@ async def confirm_candidate_submission(
     interview = iv_result.data[0]
     current_status = interview.get("status", "")
 
-    # Idempotent — already confirmed
+    # Idempotent, already confirmed
     if current_status in ("completed", "scored", "shortlisted", "rejected", "accepted"):
         return {"confirmed": True}
 
@@ -572,10 +572,10 @@ async def confirm_candidate_submission(
 @router.post("/public/message")
 async def send_interview_message(request: SendMessageRequest) -> dict:
     """
-    Conversational interview driver — the new primary interview endpoint.
+    Conversational interview driver, the new primary interview endpoint.
 
     On first call (empty candidate_message, no conversation yet):
-      Returns the hardcoded greeting — never AI-generated.
+      Returns the hardcoded greeting, never AI-generated.
     On resume (empty candidate_message, conversation exists):
       Returns the last AI message so the candidate can continue.
     Otherwise:
@@ -633,7 +633,7 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
         }).eq("id", str(request.interview_id)).execute()
         return first_msg
 
-    # ── Resume: no new message — return the last AI message ──────────────────
+    # ── Resume: no new message, return the last AI message ──────────────────
     candidate_msg = request.candidate_message.strip()
     if not candidate_msg:
         last_ai = next((m for m in reversed(conversation) if m.get("role") == "ai"), None)
@@ -644,7 +644,7 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
                 "requirement_id":    last_ai.get("requirement_id"),
                 "requirement_label": last_ai.get("requirement_label"),
             }
-        # Shouldn't happen — return first message as fallback
+        # Shouldn't happen, return first message as fallback
         first_msg = get_first_interview_message(
             candidate_name,
             company_name,
@@ -746,7 +746,7 @@ async def send_interview_message(request: SendMessageRequest) -> dict:
     final_conv = updated_conv + [ai_entry]
 
     if ai_response["action"] == "complete":
-        # Mark as pending_review — candidate reviews before we score.
+        # Mark as pending_review, candidate reviews before we score.
         # Scoring happens only after the candidate explicitly confirms via /public/confirm/{id}.
         supabase.table("interviews").update({
             "transcript":    final_conv,
@@ -858,7 +858,7 @@ async def stream_interview_message(request: SendMessageRequest):
     )
     candidate_context = interview.get("candidate_context") or None
 
-    # Knockout check (cheap, sync) — short-circuits without ever hitting Groq.
+    # Knockout check (cheap, sync), short-circuits without ever hitting Groq.
     job_questions = job.get("questions") or []
     knocked_out, ko_reason = _check_knockout(
         candidate_message=candidate_msg,
@@ -1163,7 +1163,7 @@ async def list_candidates(
     """
     Return all candidates for the authenticated company.
 
-    By default we exclude `in_progress` and `pending_review` interviews — these
+    By default we exclude `in_progress` and `pending_review` interviews, these
     are drafts where the candidate has not yet clicked "Submit Application" on
     the review screen. Employers must never see, score, or act on drafts.
     Pass `status_filter` to opt-in to a specific draft state if needed.
@@ -1295,10 +1295,10 @@ async def delete_candidate(
                 supabase.storage.from_("interview-documents").remove(paths)
                 logger.info("Deleted candidate files from storage", extra={"count": len(paths)})
             except Exception as exc:
-                # Log but never block record deletion — orphaned files are acceptable
+                # Log but never block record deletion, orphaned files are acceptable
                 logger.warning("Failed to delete some files from storage", extra={"error": str(exc)})
 
-    # Delete the interview record (all JSON columns — transcript, scores — go with it)
+    # Delete the interview record (all JSON columns, transcript, scores, go with it)
     supabase.table("interviews").delete().eq("id", interview_id).execute()
     logger.info("Candidate deleted", extra={"interview_id": interview_id, "company_id": company_id})
 
@@ -1311,7 +1311,7 @@ async def update_candidate_status(
     request: UpdateCandidateStatusRequest,
     company_id: str = Depends(get_authenticated_company_id),
 ) -> dict:
-    """Update a candidate's status — shortlist, reject, etc."""
+    """Update a candidate's status, shortlist, reject, etc."""
     result = (
         supabase.table("interviews")
         .select("company_id")

@@ -299,7 +299,7 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
             ))}
           </div>
 
-          {/* Edit / Preview toggle — only shown when a draft exists */}
+          {/* Edit / Preview toggle, only shown when a draft exists */}
           {hasDraft && (
             <div className="flex items-center rounded-[4px] border border-border bg-[var(--bg)] p-0.5 shrink-0">
               <button
@@ -360,7 +360,7 @@ function EmailPanel({ interviewId, candidateName, candidateEmail, emailStatus, o
                 </div>
                 <div className="grid grid-cols-[44px_1fr] gap-2 items-baseline">
                   <span className="text-[11px] text-muted font-medium uppercase tracking-wide">Subject</span>
-                  <span className="text-ink font-semibold">{subject || "—"}</span>
+                  <span className="text-ink font-semibold">{subject || ", "}</span>
                 </div>
               </div>
               {/* Body rendered */}
@@ -502,7 +502,7 @@ function DeleteConfirmModal({
             <p className="text-[13px] text-sub mt-1 leading-relaxed">
               This will permanently remove{" "}
               <strong>{candidateName}</strong> and everything associated with
-              them — their application, transcript, AI score report, and all
+              them, their application, transcript, AI score report, and all
               uploaded documents.{" "}
               <strong className="text-ink">This cannot be undone.</strong>
             </p>
@@ -582,7 +582,7 @@ export default function CandidateReportPage() {
     try {
       await candidatesAPI.downloadPdfReport(interview.id, interview.candidate_name);
     } catch {
-      // swallow — user can retry
+      // swallow, user can retry
     } finally {
       setPdfDownloading(false);
     }
@@ -717,7 +717,7 @@ export default function CandidateReportPage() {
             </Button>
           )}
 
-          {/* Separator — visually isolates the destructive action */}
+          {/* Separator, visually isolates the destructive action */}
           <div className="w-px h-6 bg-border mx-1 shrink-0" />
 
           <button
@@ -730,7 +730,7 @@ export default function CandidateReportPage() {
         </div>
       </div>
 
-      {/* Email panel — appears immediately after status change */}
+      {/* Email panel, appears immediately after status change */}
       {emailPanel && (
         <EmailPanel
           interviewId={interview.id}
@@ -741,7 +741,7 @@ export default function CandidateReportPage() {
         />
       )}
 
-      {/* Auto-rejected — knockout banner */}
+      {/* Auto-rejected, knockout banner */}
       {interview.status === "auto_rejected" && (
         <div className="bg-red-50 border border-danger/30 rounded-[4px] p-5 space-y-1.5">
           <div className="flex items-center gap-2.5">

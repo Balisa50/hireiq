@@ -39,7 +39,7 @@ function DeleteCandidatesModal({
   const handleDelete = async () => {
     setIsDeleting(true); setError("");
     try {
-      // No bulk delete API yet — inform user to contact support
+      // No bulk delete API yet, inform user to contact support
       await new Promise((r) => setTimeout(r, 800));
       setDone(true);
     } catch (e) {
@@ -178,7 +178,7 @@ export default function DangerZonePage() {
           loadingText="Requesting…"
         >
           {exportDone ? (
-            "Export requested — check your email"
+            "Export requested, check your email"
           ) : (
             <><Download className="w-3.5 h-3.5" /> Export My Data</>
           )}
@@ -200,7 +200,7 @@ export default function DangerZonePage() {
 
       <DangerSection
         title="Delete account"
-        description="Permanently delete your HireIQ account and all associated data. This removes everything — jobs, candidates, reports, and your company profile. This cannot be undone."
+        description="Permanently delete your HireIQ account and all associated data. This removes everything, jobs, candidates, reports, and your company profile. This cannot be undone."
       >
         <Button
           variant="danger"

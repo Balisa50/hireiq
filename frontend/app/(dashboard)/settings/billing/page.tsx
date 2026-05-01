@@ -47,7 +47,7 @@ export default function BillingSettingsPage() {
 
   const memberSince = company?.created_at
     ? new Date(company.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-    : "—";
+    : ", ";
 
   return (
     <div className="space-y-6 pb-12">
@@ -109,14 +109,14 @@ export default function BillingSettingsPage() {
           <div className="bg-[var(--bg)] rounded-[4px] border border-border p-4">
             <p className="text-[12px] text-muted uppercase tracking-wider font-semibold">Total interviews</p>
             <p className="text-2xl font-bold text-ink mt-1 tabular-nums">
-              {stats !== null ? stats.total_interviews : "—"}
+              {stats !== null ? stats.total_interviews : ", "}
             </p>
             <p className="text-[12px] text-muted mt-1">All time</p>
           </div>
           <div className="bg-[var(--bg)] rounded-[4px] border border-border p-4">
             <p className="text-[12px] text-muted uppercase tracking-wider font-semibold">Active jobs</p>
             <p className="text-2xl font-bold text-ink mt-1 tabular-nums">
-              {stats !== null ? stats.active_jobs : "—"}
+              {stats !== null ? stats.active_jobs : ", "}
             </p>
             <p className="text-[12px] text-muted mt-1">Currently live</p>
           </div>
@@ -147,7 +147,7 @@ export default function BillingSettingsPage() {
           onClick={handleUpgrade}
           className="flex items-center gap-1.5 px-4 py-2.5 bg-white text-ink text-sm font-semibold rounded-[4px] hover:bg-white/90 transition-colors"
         >
-          <ArrowUpRight className="w-4 h-4" /> Get Growth — Contact Us
+          <ArrowUpRight className="w-4 h-4" /> Get Growth, Contact Us
         </button>
       </section>
 
@@ -156,7 +156,7 @@ export default function BillingSettingsPage() {
         <h2 className="text-[11px] font-semibold text-muted uppercase tracking-widest">Payment method</h2>
         <div className="flex items-center gap-3 py-2">
           <CreditCard className="w-5 h-5 text-muted shrink-0" />
-          <p className="text-sm text-sub">No payment method on file — you&apos;re on the free Starter plan.</p>
+          <p className="text-sm text-sub">No payment method on file, you&apos;re on the free Starter plan.</p>
         </div>
       </section>
 

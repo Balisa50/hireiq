@@ -38,9 +38,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
       return;
     }
-    // Retry up to 3 times — Render cold-starts can take a few seconds.
+    // Retry up to 3 times, Render cold-starts can take a few seconds.
     // Only a 401 should log the user out (apiFetch handles that already).
-    // Never clear the token here — network errors must not kill the session.
+    // Never clear the token here, network errors must not kill the session.
     let lastErr: unknown;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       } catch (err) {
         lastErr = err;
-        // apiFetch already redirected + cleared token on 401 — stop retrying.
+        // apiFetch already redirected + cleared token on 401, stop retrying.
         if (!authAPI.isAuthenticated()) {
           setIsLoading(false);
           return;
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (attempt < 3) await new Promise((r) => setTimeout(r, 1500));
       }
     }
-    // All retries failed but token still exists — keep user logged in visually,
+    // All retries failed but token still exists, keep user logged in visually,
     // just leave company null. Dashboard will show an empty state rather than
     // bouncing to /login for a transient server error.
     console.warn("Profile load failed after 3 attempts:", lastErr);

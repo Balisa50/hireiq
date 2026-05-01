@@ -1,6 +1,6 @@
 """
 Unit tests for the Groq service layer.
-All Groq API calls are mocked — no real network traffic.
+All Groq API calls are mocked, no real network traffic.
 """
 
 import json

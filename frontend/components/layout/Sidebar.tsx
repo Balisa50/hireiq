@@ -163,7 +163,7 @@ function SidebarContent({ onNav }: { onNav?: () => void }) {
   );
 }
 
-// ── Main export — handles desktop + mobile ────────────────────────────────────
+// ── Main export, handles desktop + mobile ────────────────────────────────────
 
 export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);

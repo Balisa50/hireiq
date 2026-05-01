@@ -117,7 +117,7 @@ export const DEFAULT_ELIGIBILITY: EligibilityCriteria = {
 // ── Candidate info to collect (JSONB) ────────────────────────────────────────
 
 export interface CandidateInfoConfig {
-  // 6A — Personal
+  // 6A, Personal
   collect_phone: boolean;
   collect_date_of_birth: boolean;
   collect_gender: boolean;
@@ -125,7 +125,7 @@ export interface CandidateInfoConfig {
   collect_country_of_residence: boolean;
   collect_current_location: boolean;
   collect_full_address: boolean;
-  // 6B — Professional
+  // 6B, Professional
   collect_current_job_title: boolean;
   collect_current_employer: boolean;
   collect_total_years_exp: boolean;
@@ -134,7 +134,7 @@ export interface CandidateInfoConfig {
   collect_employment_history: boolean;
   collect_education_history: boolean;
   collect_willing_to_relocate: boolean;
-  // 6C — References
+  // 6C, References
   collect_references: boolean;
   references_count: number;
 }

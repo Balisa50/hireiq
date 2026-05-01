@@ -128,7 +128,7 @@ async def get_dashboard_statistics(
             if r.get("started_at", "") >= week_ago
         )
 
-        # Recent activity feed — last 10 completed interviews
+        # Recent activity feed, last 10 completed interviews
         completed = [
             r for r in all_interviews
             if r.get("status") in ("completed", "scored", "shortlisted", "rejected")

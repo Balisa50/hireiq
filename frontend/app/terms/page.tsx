@@ -4,13 +4,13 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Terms of Service | HireIQ",
-  description: "HireIQ terms of service — your rights and obligations when using the platform.",
+  description: "HireIQ terms of service, your rights and obligations when using the platform.",
 };
 
 const EFFECTIVE_DATE  = "1 May 2025";
 const CONTACT_EMAIL   = "legal@hireiq.app";
 const COMPANY_NAME    = "HireIQ Ltd";
-const COMPANY_ADDRESS = "71–75 Shelton Street, Covent Garden, London, WC2H 9JQ, United Kingdom";
+const COMPANY_ADDRESS = "71, 75 Shelton Street, Covent Garden, London, WC2H 9JQ, United Kingdom";
 
 function Section({ id, title, children }: {
   id: string;
@@ -132,7 +132,7 @@ export default function TermsPage() {
             <Li>
               <strong className="text-ink">Legal compliance:</strong> Ensuring your use of HireIQ
               complies with all applicable employment, anti-discrimination, data protection, and AI
-              governance laws in your jurisdiction — including but not limited to the UK Equality Act
+              governance laws in your jurisdiction, including but not limited to the UK Equality Act
               2010, US EEO laws (Title VII, ADA, ADEA), EU Equal Treatment Directives, UK GDPR, GDPR,
               and the EU AI Act where applicable to high-risk AI in employment decisions.
             </Li>
@@ -339,8 +339,8 @@ export default function TermsPage() {
           <p>
             To the maximum extent permitted by applicable law, HireIQ shall not be liable for any
             indirect, incidental, special, consequential, or punitive damages arising from your use
-            of the Service — including but not limited to lost profits, lost data, reputational harm,
-            business interruption, or hiring outcomes — even if HireIQ has been advised of the
+            of the Service, including but not limited to lost profits, lost data, reputational harm,
+            business interruption, or hiring outcomes, even if HireIQ has been advised of the
             possibility of such damages.
           </p>
           <p>

@@ -72,7 +72,7 @@ const LANGUAGE_PROFICIENCIES: Array<{ value: LanguageRequirement["proficiency"];
 const JOB_VISIBILITY_OPTIONS: Array<{ value: JobVisibility; label: string; desc: string; icon: React.ReactNode }> = [
   { value: "public",   label: "Public",         desc: "Listed on your public job board",        icon: <Globe className="w-4 h-4" /> },
   { value: "internal", label: "Internal Only",  desc: "Visible to employees with the link",     icon: <Lock className="w-4 h-4" /> },
-  { value: "unlisted", label: "Unlisted",        desc: "Link-only — not on public board",        icon: <EyeOff className="w-4 h-4" /> },
+  { value: "unlisted", label: "Unlisted",        desc: "Link-only, not on public board",        icon: <EyeOff className="w-4 h-4" /> },
 ];
 
 // ── Reusable UI bits ──────────────────────────────────────────────────────────
@@ -385,7 +385,7 @@ export default function NewJobPage() {
   const [deterrentEnabled, setDeterrentEnabled]     = useState(true);
   const [deterrentPlacement, setDeterrentPlacement] = useState("before_questions");
   const [deterrentMessage, setDeterrentMessage]     = useState(
-    "This application uses AI to assist in evaluation. We can detect AI-generated responses — please answer genuinely and in your own words."
+    "This application uses AI to assist in evaluation. We can detect AI-generated responses, please answer genuinely and in your own words."
   );
 
   // ── App settings ──────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ export default function NewJobPage() {
         setMinExpYears(e.min_experience_years ?? 0);
         setRequiredCerts(e.required_certifications ?? []);
         setWorkAuthRequired(e.work_auth_required ?? false);
-        // AI returns languages as string[] — convert to LanguageRequirement[]
+        // AI returns languages as string[], convert to LanguageRequirement[]
         if (e.languages?.length) {
           setLanguages(
             (e.languages as string[]).map((l) => ({
@@ -572,7 +572,7 @@ export default function NewJobPage() {
     if (!department.trim()) e.dept     = "Department is required.";
     if (!location.trim())   e.location = "Location is required.";
     if (wc < 50)            e.desc     = `Please write at least 50 words. You have ${wc}.`;
-    if (openings < 1 || openings > 99) e.openings = "Openings must be 1–99.";
+    if (openings < 1 || openings > 99) e.openings = "Openings must be 1, 99.";
     if (salaryDisclosed) {
       const mn = parseInt(salaryMin, 10); const mx = parseInt(salaryMax, 10);
       if (salaryMin && isNaN(mn)) e.salary = "Min salary must be a number.";
@@ -581,7 +581,7 @@ export default function NewJobPage() {
     }
     if (minGPA) {
       const g = parseFloat(minGPA);
-      if (isNaN(g) || g < 0 || g > 4) e.gpa = "GPA must be 0.0–4.0.";
+      if (isNaN(g) || g < 0 || g > 4) e.gpa = "GPA must be 0.0, 4.0.";
     }
     setErrors(e);
     return !Object.keys(e).length;
@@ -709,7 +709,7 @@ export default function NewJobPage() {
     );
   }
 
-  // ── INTRO — Title + Department ────────────────────────────────────────────
+  // ── INTRO, Title + Department ────────────────────────────────────────────
   if (phase === "intro") {
     return (
       <div className="max-w-xl mx-auto py-12">
@@ -765,7 +765,7 @@ export default function NewJobPage() {
     );
   }
 
-  // ── FORM — Full 9-section form ────────────────────────────────────────────
+  // ── FORM, Full 9-section form ────────────────────────────────────────────
   return (
     <div className="max-w-2xl mx-auto space-y-5 pb-12">
       {/* Header */}
@@ -995,7 +995,7 @@ export default function NewJobPage() {
             </div>
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-ink">
-                Min GPA <span className="text-muted font-normal text-[12px]">optional, 0.0–4.0</span>
+                Min GPA <span className="text-muted font-normal text-[12px]">optional, 0.0, 4.0</span>
               </label>
               <input type="number" min={0} max={4} step={0.1} value={minGPA}
                 onChange={(e) => setMinGPA(e.target.value)}
@@ -1006,7 +1006,7 @@ export default function NewJobPage() {
           </div>
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-ink">
-              Experience Context <span className="text-muted font-normal text-[12px]">optional — specify industry or type</span>
+              Experience Context <span className="text-muted font-normal text-[12px]">optional, specify industry or type</span>
             </label>
             <input
               value={experienceContext}
@@ -1107,7 +1107,7 @@ export default function NewJobPage() {
                                 <span className="text-[13px] text-sub">{label}:</span>
                                 <input type="number" value={(q[key] as string) ?? ""}
                                   onChange={(e) => updateKnockoutQ(q.id, { [key]: e.target.value })}
-                                  placeholder="—"
+                                  placeholder=", "
                                   className="w-24 bg-white border border-border rounded-[4px] px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-ink transition-colors text-center" />
                               </div>
                             );
@@ -1138,9 +1138,9 @@ export default function NewJobPage() {
       {/* ── 6. Candidate Information to Collect ──────────────────────────────── */}
       <Card title="6. Candidate Information to Collect" subtitle="Name and email are always collected. Configure what else to ask.">
 
-        {/* 6A — Personal */}
+        {/* 6A, Personal */}
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6A — Personal Details</p>
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6A, Personal Details</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {([
               { label: "Phone number",           state: collectPhone,              set: setCollectPhone },
@@ -1162,9 +1162,9 @@ export default function NewJobPage() {
           </div>
         </div>
 
-        {/* 6B — Professional */}
+        {/* 6B, Professional */}
         <div className="space-y-2 pt-2 border-t border-border">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6B — Professional Background</p>
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6B, Professional Background</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {([
               { label: "Current job title",          state: collectCurrentJobTitle,   set: setCollectCurrentJobTitle },
@@ -1187,9 +1187,9 @@ export default function NewJobPage() {
           </div>
         </div>
 
-        {/* 6C — References */}
+        {/* 6C, References */}
         <div className="space-y-3 pt-2 border-t border-border">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6C — References</p>
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6C, References</p>
           <Toggle on={collectRefs} onChange={setCollectRefs} label="Collect professional references" />
           {collectRefs && (
             <div className="space-y-2 pl-1">
@@ -1213,7 +1213,7 @@ export default function NewJobPage() {
 
         {/* Documents */}
         <div className="space-y-3 pt-2 border-t border-border">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6D — Documents & Links</p>
+          <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">6D, Documents & Links</p>
           <div className="space-y-2">
             {PRESET_REQUIREMENTS.map((preset) => {
               const active = activeDocPresets.has(preset.id);

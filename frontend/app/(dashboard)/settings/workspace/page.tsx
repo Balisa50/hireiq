@@ -137,7 +137,7 @@ export default function WorkspaceSettingsPage() {
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-ink">Email address</label>
           <div className="w-full bg-[var(--bg)] border border-border rounded-[4px] px-3 py-2 text-sm text-sub cursor-not-allowed select-none">
-            {company?.email ?? "—"}
+            {company?.email ?? ", "}
           </div>
           <p className="text-[12px] text-muted">Contact support to change your email address.</p>
         </div>
@@ -173,10 +173,10 @@ export default function WorkspaceSettingsPage() {
               className="w-full bg-white border border-border rounded-[4px] px-3 py-2 text-sm text-ink outline-none focus:border-ink transition-colors appearance-none cursor-pointer"
             >
               <option value="">Select size</option>
-              <option value="1-10">1–10 employees</option>
-              <option value="11-50">11–50 employees</option>
-              <option value="51-200">51–200 employees</option>
-              <option value="201-1000">201–1,000 employees</option>
+              <option value="1-10">1, 10 employees</option>
+              <option value="11-50">11, 50 employees</option>
+              <option value="51-200">51, 200 employees</option>
+              <option value="201-1000">201, 1,000 employees</option>
               <option value="1000+">1,000+ employees</option>
             </select>
           </div>

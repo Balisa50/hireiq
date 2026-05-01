@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Legacy route — redirects to the new /apply/[token] URL.
+ * Legacy route, redirects to the new /apply/[token] URL.
  * Keeps old shared links working.
  */
 
