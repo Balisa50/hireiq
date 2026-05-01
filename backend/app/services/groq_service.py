@@ -39,6 +39,72 @@ def _chat_model() -> str:
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
+# ── Structured field tagging ─────────────────────────────────────────────────
+# The conversation driver returns a `collected_fields` array on every turn so
+# the frontend can build the review screen from explicit field/value pairs
+# instead of regex-parsing AI prose. The IDs below are the contract: anything
+# the AI emits that isn't in this set is dropped before the response leaves
+# the backend.
+
+COLLECTED_FIELD_IDS: set[str] = {
+    "full_name",
+    "email",
+    "phone_number",
+    "current_city",
+    "country_of_residence",
+    "postal_address",
+    "date_of_birth",
+    "nationality",
+    "current_job_title",
+    "current_employer",
+    "years_of_experience",
+    "employment_history",
+    "education_history",
+    "notice_period",
+    "expected_salary",
+    "willing_to_relocate",
+    "work_authorisation",
+    "highest_education",
+    "language_proficiency",
+}
+
+
+def _validate_collected_fields(raw: object) -> list[dict]:
+    """
+    Coerce whatever the model returned into a clean list of
+    ``[{"id": <whitelisted>, "value": <non-empty trimmed string>}, ...]``.
+    Anything malformed is silently dropped so a sloppy turn never poisons
+    the review screen.
+    """
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        fid = item.get("id")
+        val = item.get("value")
+        if not isinstance(fid, str) or not isinstance(val, (str, int, float, bool)):
+            continue
+        fid = fid.strip().lower()
+        if fid not in COLLECTED_FIELD_IDS:
+            continue
+        sval = str(val).strip()
+        if not sval:
+            continue
+        if fid in seen:
+            # Latest value wins — replace prior entry.
+            for existing in out:
+                if existing["id"] == fid:
+                    existing["value"] = sval
+                    break
+            continue
+        seen.add(fid)
+        out.append({"id": fid, "value": sval})
+    return out
+
+
 # ── Shared helpers ──────────────────────────────────────────────────────────
 
 def _extract_json_from_text(text: str) -> str:
@@ -1475,7 +1541,25 @@ async def generate_conversation_response(
         "OUTPUT FORMAT\n"
         "Valid JSON only. No markdown. No preamble. No explanation outside the JSON.\n"
         '{"message": "...", "action": "continue | request_file | request_link | complete", '
-        '"requirement_id": null, "requirement_label": null}'
+        '"requirement_id": null, "requirement_label": null, '
+        '"collected_fields": [{"id": "<field_id>", "value": "<cleaned value>"}]}\n\n'
+
+        "FIELD TAGGING, MANDATORY\n"
+        "Every turn, populate `collected_fields` with one entry for EACH "
+        "structured field the candidate just confirmed in their most recent "
+        "message. This is the ONLY way data reaches the review screen. Use "
+        "the CLEANED value, not the raw user text. If the candidate said "
+        "\"Knust\" for country and you corrected to Ghana, emit "
+        "{\"id\": \"country_of_residence\", \"value\": \"Ghana\"}. If a field "
+        "is still ambiguous or pending, do NOT emit it yet. Empty array is "
+        "fine on follow-up turns. Never invent ids.\n"
+        "FIELD ID WHITELIST (only valid ids):\n"
+        "  full_name, email, phone_number, current_city, "
+        "country_of_residence, postal_address, date_of_birth, nationality, "
+        "current_job_title, current_employer, years_of_experience, "
+        "employment_history, education_history, notice_period, "
+        "expected_salary, willing_to_relocate, work_authorisation, "
+        "highest_education, language_proficiency\n"
     )
 
     # Build OpenAI-format messages from conversation history.
@@ -1521,6 +1605,7 @@ async def generate_conversation_response(
         "action":            action,
         "requirement_id":    parsed.get("requirement_id"),
         "requirement_label": parsed.get("requirement_label"),
+        "collected_fields":  _validate_collected_fields(parsed.get("collected_fields")),
     }
 
 
@@ -1669,23 +1754,25 @@ async def stream_conversation_response(
         action = parsed.get("action", "continue")
         req_id = parsed.get("requirement_id")
         req_label = parsed.get("requirement_label")
-        
+        collected_fields = _validate_collected_fields(parsed.get("collected_fields"))
+
         valid_actions = {"continue", "complete", "request_file", "request_link"}
         if action not in valid_actions:
             action = "continue"
-        
+
         # Stream the message character by character for a typewriter effect
         for i, char in enumerate(message):
             yield {"type": "token", "text": char}
             if i % 5 == 0:  # Small delay for realism
                 await asyncio.sleep(0.01)
-        
+
         yield {
             "type": "done",
             "message": _sanitise_ai_message(message),
             "action": action,
             "requirement_id": req_id,
             "requirement_label": req_label,
+            "collected_fields": collected_fields,
         }
         
     except Exception as err:
@@ -1726,7 +1813,32 @@ def _build_conversation_system_prompt(
         "OUTPUT FORMAT\n"
         "Valid JSON only. No markdown. No preamble. No explanation outside the JSON.\n"
         '{"message": "...", "action": "continue | request_file | request_link | complete", '
-        '"requirement_id": null, "requirement_label": null}'
+        '"requirement_id": null, "requirement_label": null, '
+        '"collected_fields": [{"id": "<field_id>", "value": "<cleaned value>"}]}\n\n'
+
+        "FIELD TAGGING, MANDATORY\n"
+        "Every turn, populate `collected_fields` with one entry for EACH "
+        "structured field the candidate just confirmed in their most recent "
+        "message. This is the ONLY way data reaches the review screen, "
+        "so missing entries means missing data. Rules:\n"
+        "  - Use the exact id from the whitelist below. Never invent ids.\n"
+        "  - Use the CLEANED value, not the raw user text. If the candidate "
+        "said \"Knust\" for country and you corrected to Ghana, emit "
+        "{\"id\": \"country_of_residence\", \"value\": \"Ghana\"}.\n"
+        "  - If the candidate did not give a usable value yet (skipped, "
+        "redirect needed, still ambiguous), DO NOT emit that field. Wait "
+        "until you have a confirmed value.\n"
+        "  - Empty array is fine on turns where no field was completed "
+        "(e.g. you're still asking a follow-up).\n"
+        "  - Never tag a field with the candidate's wrong-field answer "
+        "(e.g. don't tag country with \"Knust\").\n\n"
+        "FIELD ID WHITELIST (these are the only valid ids):\n"
+        "  full_name, email, phone_number, current_city, "
+        "country_of_residence, postal_address, date_of_birth, nationality, "
+        "current_job_title, current_employer, years_of_experience, "
+        "employment_history, education_history, notice_period, "
+        "expected_salary, willing_to_relocate, work_authorisation, "
+        "highest_education, language_proficiency\n"
     )
 
     return (

@@ -118,6 +118,75 @@ const STRUCTURED_PATTERNS: Array<{
 const PERSONAL_RE = /\b(your name|full name|email address|phone number|phone|location|where are you|currently based|currently employed|employment status|working at|confirm your|date of birth|nationality|country|address|notice|salary|relocate|work authoris|highest education|years of (professional )?experience|current (job title|employer|role|position))\b/i;
 
 /**
+ * The contract between the AI's `collected_fields` payload and the review
+ * screen. Backend whitelists exactly these ids — anything else is dropped
+ * before it reaches the browser, so the keys here are guaranteed clean.
+ */
+const FIELD_ID_TABLE: Array<{
+  id: string;
+  label: string;
+  type: FieldType;
+  required: boolean;
+}> = [
+  { id: "full_name",            label: "Full name",                 type: "text",     required: true  },
+  { id: "email",                label: "Email",                     type: "email",    required: true  },
+  { id: "phone_number",         label: "Phone number",              type: "phone",    required: true  },
+  { id: "current_city",         label: "Current city / location",   type: "text",     required: true  },
+  { id: "country_of_residence", label: "Country of residence",      type: "text",     required: true  },
+  { id: "postal_address",       label: "Full postal address",       type: "text",     required: false },
+  { id: "date_of_birth",        label: "Date of birth",             type: "date",     required: true  },
+  { id: "nationality",          label: "Nationality",               type: "text",     required: true  },
+  { id: "current_job_title",    label: "Current job title",         type: "text",     required: true  },
+  { id: "current_employer",     label: "Current employer",          type: "text",     required: true  },
+  { id: "years_of_experience",  label: "Years of experience",       type: "number",   required: true  },
+  { id: "employment_history",   label: "Employment history",        type: "text",     required: false },
+  { id: "education_history",    label: "Education history",         type: "text",     required: false },
+  { id: "notice_period",        label: "Notice period",             type: "text",     required: false },
+  { id: "expected_salary",      label: "Expected salary",           type: "currency", required: false },
+  { id: "willing_to_relocate",  label: "Willing to relocate",       type: "yes_no",   required: false },
+  { id: "work_authorisation",   label: "Work authorisation",        type: "yes_no",   required: false },
+  { id: "highest_education",    label: "Highest education",         type: "text",     required: false },
+  { id: "language_proficiency", label: "Language proficiency",      type: "text",     required: false },
+];
+
+/**
+ * Build the review-screen field list from the AI-tagged `collectedFields`
+ * map. This is the rigid path: the AI told us field X = value Y, we just
+ * render it. No regex, no question-pairing.
+ *
+ * Pre-seeded name/email from auth always win if collectedFields hasn't
+ * tagged them yet. Order follows FIELD_ID_TABLE so the review screen has
+ * a stable layout regardless of collection order.
+ */
+function buildStructuredFieldsFromTags(
+  collectedFields: Record<string, string>,
+  candidateName: string,
+  candidateEmail: string,
+): StructuredField[] {
+  const out: StructuredField[] = [];
+  const trimmedName  = candidateName.trim();
+  const trimmedEmail = candidateEmail.trim();
+
+  for (const meta of FIELD_ID_TABLE) {
+    const tagged = collectedFields[meta.id];
+    let value = tagged?.trim() ?? "";
+    // Auth presets fill name/email if the AI hasn't tagged them yet.
+    if (!value && meta.id === "full_name"  && trimmedName)  value = trimmedName;
+    if (!value && meta.id === "email"      && trimmedEmail) value = trimmedEmail;
+    if (!value) continue;
+    out.push({
+      id:          `tagged:${meta.id}`,
+      label:       meta.label,
+      type:        meta.type,
+      value,
+      required:    meta.required,
+      sourceIndex: null,
+    });
+  }
+  return out;
+}
+
+/**
  * Validate a structured field value against its type. Returns an error
  * string for the user, or empty string if valid.
  */
@@ -739,6 +808,34 @@ export default function ApplicationPage() {
   // Application session
   const [applicationId, setApplicationId]       = useState("");
   const [messages, setMessages]                 = useState<ConversationMessage[]>([]);
+  // Rigid field collection: AI emits {id, value} on every turn, we merge here.
+  // This is the SOURCE OF TRUTH for the review screen, no regex, no guessing.
+  const [collectedFields, setCollectedFields]   = useState<Record<string, string>>({});
+
+  /**
+   * Merge a `done` SSE event's `collected_fields` array into our state map.
+   * Backend already validates against a whitelist + drops empty values, so
+   * we just trust the payload and let the latest value win.
+   */
+  const mergeCollectedFields = useCallback((ev: unknown) => {
+    const arr = (ev as { collected_fields?: Array<{ id?: string; value?: string }> })
+      ?.collected_fields;
+    if (!Array.isArray(arr) || arr.length === 0) return;
+    setCollectedFields((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const entry of arr) {
+        if (!entry || typeof entry.id !== "string") continue;
+        const value = typeof entry.value === "string" ? entry.value.trim() : "";
+        if (!value) continue;
+        if (next[entry.id] !== value) {
+          next[entry.id] = value;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
   const [inputValue, setInputValue]             = useState("");
   const [isWaitingForAI, setIsWaitingForAI]     = useState(false);
   const [aiError, setAiError]                   = useState("");
@@ -878,6 +975,10 @@ export default function ApplicationPage() {
           setCandidateName(parsed.candidateName ?? "");
           setCandidateEmail(parsed.candidateEmail ?? "");
           setMessages(parsed.messages);
+          const savedFields = (parsed as { collectedFields?: Record<string, string> }).collectedFields;
+          if (savedFields && typeof savedFields === "object") {
+            setCollectedFields(savedFields);
+          }
           setScreen("conversation");
           restoredFromStorage = true;
         }
@@ -943,9 +1044,10 @@ export default function ApplicationPage() {
         candidateName,
         candidateEmail,
         jobInfo,
+        collectedFields,
       }));
     } catch { /* ignore */ }
-  }, [messages, applicationId, token, candidateName, candidateEmail, jobInfo, SESSION_KEY]);
+  }, [messages, applicationId, token, candidateName, candidateEmail, jobInfo, collectedFields, SESSION_KEY]);
 
   // ── Progress ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1075,6 +1177,7 @@ export default function ApplicationPage() {
         return;
       }
       if (ev.type === "done") {
+        mergeCollectedFields(ev);
         setMessages((prev) => prev.map((m) => {
           if (m.id !== aiMsgId) return m;
           return {
@@ -1172,6 +1275,7 @@ export default function ApplicationPage() {
             ));
           }
         } else if (ev.type === "done") {
+          mergeCollectedFields(ev);
           setMessages((prev) => prev.map((m) => {
             if (m.id !== aiMsgId) return m;
             return {
@@ -1265,6 +1369,7 @@ export default function ApplicationPage() {
             ));
           }
         } else if (ev.type === "done") {
+          mergeCollectedFields(ev);
           setMessages((prev) => prev.map((m) => {
             if (m.id !== aiMsgId) return m;
             return {
@@ -1596,9 +1701,16 @@ export default function ApplicationPage() {
 
   // ── Review screen ──────────────────────────────────────────────────────────
   if (screen === "review") {
-    const { fields: rawFields, openAnswers } = extractReviewSections(
+    // Prefer the rigid AI-tagged fields. Fall back to regex extraction only
+    // if the conversation produced no tags (legacy sessions, or the model
+    // ignored the field-tagging contract).
+    const hasTags = Object.keys(collectedFields).length > 0;
+    const { fields: regexFields, openAnswers } = extractReviewSections(
       messages, candidateName, candidateEmail,
     );
+    const rawFields = hasTags
+      ? buildStructuredFieldsFromTags(collectedFields, candidateName, candidateEmail)
+      : regexFields;
 
     // Apply edits + compute live validation errors per field.
     const structuredFields = rawFields.map((f) => {
