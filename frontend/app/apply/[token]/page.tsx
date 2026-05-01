@@ -97,21 +97,21 @@ const STRUCTURED_PATTERNS: Array<{
   required: boolean;
   re: RegExp;
 }> = [
-  { label: "Email",                   type: "email",    required: true,  re: /\b(email\s*address|email)\b/i },
-  { label: "Phone number",            type: "phone",    required: true,  re: /\bphone(\s*number)?\b/i },
-  { label: "Date of birth",           type: "date",     required: true,  re: /\b(date\s*of\s*birth|d\.?o\.?b)\b/i },
-  { label: "Nationality",             type: "text",     required: true,  re: /\bnationality|citizenship\b/i },
-  { label: "Country of residence",    type: "text",     required: true,  re: /\bcountry\s+(of|you\s+(live|reside)|currently\s+live)|country\s+of\s+residence\b/i },
-  { label: "Current city / location", type: "text",     required: true,  re: /\bcurrent\s+(city|location)|where\s+(are\s+you\s+based|do\s+you\s+live|are\s+you\s+located)|current\s+location\b/i },
-  { label: "Full postal address",     type: "text",     required: false, re: /\b(full\s+postal\s+address|full\s+address|postal\s+address|home\s+address|street\s+address)\b/i },
-  { label: "Current job title",       type: "text",     required: true,  re: /\b(current\s+job\s+title|current\s+(role|position)|job\s+title|what\s+is\s+your\s+(current\s+)?(role|position|title))\b/i },
-  { label: "Current employer",        type: "text",     required: true,  re: /\b(current\s+(employer|company)|where\s+do\s+you\s+(currently\s+)?work|who\s+do\s+you\s+(currently\s+)?work\s+for|most\s+recent\s+employer)\b/i },
-  { label: "Years of experience",     type: "number",   required: true,  re: /\b(years?\s+of\s+(professional\s+)?experience|how\s+many\s+years|total\s+(years?\s+of\s+)?experience)\b/i },
-  { label: "Notice period",           type: "text",     required: false, re: /\b(notice\s+period|earliest\s+(start|available)|when\s+(can|could)\s+you\s+start|earliest\s+start\s+date)\b/i },
-  { label: "Expected salary",         type: "currency", required: false, re: /\b(expected\s+salary|salary\s+expectation|salary\s+range|how\s+much\s+(do\s+you\s+expect|are\s+you\s+looking))\b/i },
-  { label: "Willing to relocate",     type: "yes_no",   required: false, re: /\b(willing\s+to\s+relocate|open\s+to\s+relocat|relocation)\b/i },
-  { label: "Work authorisation",      type: "yes_no",   required: false, re: /\b(work\s+authorisation|work\s+authorization|right\s+to\s+work|authorised\s+to\s+work|authorized\s+to\s+work|work\s+permit|visa)\b/i },
-  { label: "Highest education",       type: "text",     required: false, re: /\b(highest\s+(education|qualification|degree)|education(\s+level)?\s+(attained|completed)|highest\s+level\s+of\s+education)\b/i },
+  { label: "Email",                   type: "email",    required: true,  re: /\b(email\s*address|your\s+email|email)\b/i },
+  { label: "Phone number",            type: "phone",    required: true,  re: /\b(phone(\s*number)?|mobile(\s*number)?|contact\s+number)\b/i },
+  { label: "Date of birth",           type: "date",     required: true,  re: /\b(date\s*of\s*birth|d\.?o\.?b|when\s+were\s+you\s+born|birth\s*date)\b/i },
+  { label: "Nationality",             type: "text",     required: true,  re: /\b(your\s+nationality|what\s+is\s+your\s+nationality|citizenship)\b/i },
+  { label: "Country of residence",    type: "text",     required: true,  re: /\b(country\s+of\s+residence|country\s+(do\s+you\s+(live|reside)|you\s+(live|reside)|currently\s+live)|which\s+country|what\s+country)\b/i },
+  { label: "Current city / location", type: "text",     required: true,  re: /\b(current\s+(city|location)|city\s+(of\s+residence|or\s+location|you\s+(live|reside))|where\s+(are\s+you\s+(based|located)|do\s+you\s+(live|reside)))\b/i },
+  { label: "Full postal address",     type: "text",     required: false, re: /\b(full\s+postal\s+address|postal\s+address|home\s+address|street\s+address|residential\s+address|full\s+address)\b/i },
+  { label: "Current job title",       type: "text",     required: true,  re: /\b(current\s+job\s+title|current\s+(role|position)|job\s+title|what(\s+is|'s)\s+your\s+(current\s+)?(role|position|title|job\s+title))\b/i },
+  { label: "Current employer",        type: "text",     required: true,  re: /\b(current\s+(employer|company)|where\s+do\s+you\s+(currently\s+)?work|who\s+do\s+you\s+(currently\s+)?work\s+for|most\s+recent\s+employer|current\s+company)\b/i },
+  { label: "Years of experience",     type: "number",   required: true,  re: /\b(years?\s+of\s+(professional\s+)?experience|how\s+many\s+years|total\s+(years?\s+of\s+)?experience|experience\s+years)\b/i },
+  { label: "Notice period",           type: "text",     required: false, re: /\b(notice\s+period|earliest\s+(start|available)|when\s+(can|could)\s+you\s+start|earliest\s+start\s+date|start\s+date)\b/i },
+  { label: "Expected salary",         type: "currency", required: false, re: /\b(expected\s+salary|salary\s+(expectation|range|expectations)|how\s+much\s+(do\s+you\s+expect|are\s+you\s+looking))\b/i },
+  { label: "Willing to relocate",     type: "yes_no",   required: false, re: /\b(willing\s+to\s+relocate|open\s+to\s+relocat|relocation|willing\s+to\s+move)\b/i },
+  { label: "Work authorisation",      type: "yes_no",   required: false, re: /\b(work\s+authoris(ation)?|work\s+authoriz(ation)?|right\s+to\s+work|authoris(ed|ation)\s+to\s+work|authoriz(ed|ation)\s+to\s+work|work\s+permit|work\s+visa)\b/i },
+  { label: "Highest education",       type: "text",     required: false, re: /\b(highest\s+(education|qualification|degree|level\s+of\s+education)|education(\s+level)?\s+(attained|completed)|education\s+level)\b/i },
   { label: "Full name",               type: "text",     required: true,  re: /\b(full\s+name|your\s+full\s+name|confirm\s+your\s+(full\s+)?name)\b/i },
 ];
 
@@ -174,6 +174,124 @@ function validateField(value: string, type: FieldType, required: boolean): strin
 }
 
 /**
+ * Pull the actual question sentence out of an AI message. AI messages
+ * frequently look like "Gambian nationality. What is your current job
+ * title?" — confirming the previous field, then asking the next. We only
+ * want to match field patterns against the trailing question.
+ */
+function extractQuestionSentence(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed) return "";
+  // Split on sentence boundaries (., !, ?) followed by whitespace.
+  const sentences = trimmed.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+  if (sentences.length === 0) return trimmed;
+  // Prefer the last sentence ending with '?'.
+  for (let i = sentences.length - 1; i >= 0; i--) {
+    if (sentences[i].includes("?")) return sentences[i];
+  }
+  // Otherwise, the last non-trivial sentence.
+  return sentences[sentences.length - 1];
+}
+
+/**
+ * Decide whether an AI message is actually asking a question. Confirmations
+ * ("Got it.", "Noted."), single-word echoes ("Abdoulie Balisa.") and pure
+ * acknowledgments must not be paired with the candidate's next answer.
+ */
+function isQuestionMessage(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  // Single token / echo (e.g. "Abdoulie Balisa." or "Ghana.").
+  if (/^[\w\s,'-]{1,40}\.$/.test(trimmed) && !/\?/.test(trimmed)) return false;
+  // Pure acknowledgment openers with no actual question downstream.
+  if (/^(got it|noted|okay|ok|i see|understood|i('ve)? noted|thanks|moving on|alright)[.!]?$/i.test(trimmed)) {
+    return false;
+  }
+  // Has a question mark, OR contains an interrogative.
+  if (trimmed.includes("?")) return true;
+  return /\b(what|where|when|why|how|which|could|would|can|please share|tell me|confirm)\b/i.test(trimmed);
+}
+
+/**
+ * Scan AI messages for confirmation phrases that supply a corrected value
+ * for a structured field. Returns a map keyed by the canonical field label.
+ *
+ *   "Ghana is your country of residence."          -> Country of residence: Ghana
+ *   "I've noted that your nationality is Gambian." -> Nationality: Gambian
+ *   "So your phone number is +220 314 8206."       -> Phone number: +220 314 8206
+ */
+function extractConfirmedFields(messages: ConversationMessage[]): Record<string, string> {
+  const FIELD_ALIASES: Record<string, string> = {
+    "country":                   "Country of residence",
+    "country of residence":      "Country of residence",
+    "nationality":               "Nationality",
+    "citizenship":               "Nationality",
+    "city":                      "Current city / location",
+    "location":                  "Current city / location",
+    "current city":              "Current city / location",
+    "current location":          "Current city / location",
+    "current city or location":  "Current city / location",
+    "current city / location":   "Current city / location",
+    "email":                     "Email",
+    "email address":             "Email",
+    "phone":                     "Phone number",
+    "phone number":              "Phone number",
+    "date of birth":             "Date of birth",
+    "address":                   "Full postal address",
+    "postal address":            "Full postal address",
+    "full postal address":       "Full postal address",
+    "job title":                 "Current job title",
+    "current job title":         "Current job title",
+    "employer":                  "Current employer",
+    "current employer":          "Current employer",
+    "company":                   "Current employer",
+    "years of experience":       "Years of experience",
+    "experience":                "Years of experience",
+    "notice period":             "Notice period",
+    "expected salary":           "Expected salary",
+    "salary":                    "Expected salary",
+    "salary range":              "Expected salary",
+    "highest education":         "Highest education",
+    "education level":           "Highest education",
+    "education":                 "Highest education",
+    "work authorisation":        "Work authorisation",
+    "work authorization":        "Work authorisation",
+  };
+
+  const confirmed: Record<string, string> = {};
+  // Patterns that capture (value, field) or (field, value).
+  const patterns: Array<{ re: RegExp; valueIdx: number; fieldIdx: number }> = [
+    // "Ghana is your country of residence."
+    { re: /\b([A-Z][\w'.+\- /@]{0,80}?)\s+is\s+your\s+([a-z][\w \-/]{2,40}?)[.!]/g, valueIdx: 1, fieldIdx: 2 },
+    // "Your country of residence is Ghana."
+    { re: /\byour\s+([a-z][\w \-/]{2,40}?)\s+is\s+([A-Z0-9+@][\w'.+\- /@]{0,80}?)[.!]/gi, valueIdx: 2, fieldIdx: 1 },
+    // "I've noted your nationality as Gambian." / "I've noted that your nationality is Gambian."
+    { re: /i['']?ve\s+noted\s+(?:that\s+)?your\s+([a-z][\w \-/]{2,40}?)\s+(?:as|is)\s+([A-Z0-9+@][\w'.+\- /@]{0,80}?)[.!]/gi, valueIdx: 2, fieldIdx: 1 },
+    // "So/that means your country is Ghana."
+    { re: /(?:so|that\s+means)\s+your\s+([a-z][\w \-/]{2,40}?)\s+is\s+([A-Z0-9+@][\w'.+\- /@]{0,80}?)[.!]/gi, valueIdx: 2, fieldIdx: 1 },
+  ];
+
+  for (const m of messages) {
+    if (m.role !== "ai" || !m.content) continue;
+    for (const { re, valueIdx, fieldIdx } of patterns) {
+      re.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(m.content)) !== null) {
+        const rawField = match[fieldIdx]?.trim().toLowerCase().replace(/\s+/g, " ");
+        const rawValue = match[valueIdx]?.trim();
+        if (!rawField || !rawValue) continue;
+        const canonical = FIELD_ALIASES[rawField];
+        if (!canonical) continue;
+        // Skip degenerate values like single letters or pure punctuation.
+        if (rawValue.length < 2) continue;
+        confirmed[canonical] = rawValue;
+      }
+    }
+  }
+  return confirmed;
+}
+
+/**
  * Walk the conversation and extract:
  *   - structured fields (one row per known label, latest answer wins)
  *   - open-ended Q/A (everything else with a substantive answer)
@@ -209,25 +327,39 @@ function extractReviewSections(
     });
   }
 
+  // Pull AI-confirmed corrections up-front so we can override raw candidate
+  // input when the AI clearly cleaned it up later in the dialogue.
+  const confirmedFields = extractConfirmedFields(messages);
+
   const sourceMessageIds = new Set<string>();
 
   for (let i = 0; i < messages.length; i++) {
     const ai = messages[i];
     if (ai.role !== "ai" || !ai.content) continue;
-    if (ai.content.length > 250) continue; // avoid catching long open questions
+    if (ai.content.length > 400) continue; // avoid catching long open questions
+    if (!isQuestionMessage(ai.content)) continue;
 
     const next = messages[i + 1];
     if (!next || next.role !== "candidate" || !next.content?.trim()) continue;
 
+    // CRITICAL: only test field patterns against the *question sentence* —
+    // the trailing question, not the leading confirmation. Otherwise an AI
+    // message like "Gambian nationality. What is your current job title?"
+    // mis-matches "nationality" and pairs the next answer to the wrong slot.
+    const questionPart = extractQuestionSentence(ai.content);
+
     for (const pat of STRUCTURED_PATTERNS) {
-      if (!pat.re.test(ai.content)) continue;
-      // Latest answer wins — replace any existing entry for this label.
+      if (!pat.re.test(questionPart)) continue;
       const existingIdx = fields.findIndex((f) => f.label === pat.label);
+      // Prefer the AI-confirmed corrected value when one exists for this
+      // field; otherwise fall back to the candidate's raw answer.
+      const correctedValue = confirmedFields[pat.label];
+      const finalValue = (correctedValue ?? next.content).trim();
       const entry: StructuredField = {
         id:          next.id,
         label:       pat.label,
         type:        pat.type,
-        value:       next.content.trim(),
+        value:       finalValue,
         required:    pat.required,
         sourceIndex: i + 1,
       };
@@ -239,6 +371,22 @@ function extractReviewSections(
       sourceMessageIds.add(next.id);
       break; // one pattern per AI question
     }
+  }
+
+  // Final sweep: if the AI confirmed a value for a field we never managed to
+  // pair (because the question sentence was atypical), still surface it.
+  for (const [label, value] of Object.entries(confirmedFields)) {
+    if (fields.some((f) => f.label === label)) continue;
+    const meta = STRUCTURED_PATTERNS.find((p) => p.label === label);
+    if (!meta) continue;
+    fields.push({
+      id:          `confirmed:${label}`,
+      label,
+      type:        meta.type,
+      value,
+      required:    meta.required,
+      sourceIndex: null,
+    });
   }
 
   // Open-ended answers: every substantive candidate message NOT used to
