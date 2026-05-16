@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Copy, Check, Trash2, AlertTriangle, X } from "lucide-react";
+import toast from "react-hot-toast";
 import { jobsAPI } from "@/lib/api";
 import type { JobSummary } from "@/lib/types";
 import Button from "@/components/ui/Button";
@@ -195,8 +196,9 @@ export default function JobsPage() {
       setJobs((prev) => prev.filter((j) => j.id !== jobToDelete.id));
       setJobToDelete(null);
       router.refresh(); // bust Next.js router cache so candidates page sees updated job list
+      toast.success("Job deleted");
     } catch {
-      alert("Failed to delete job. Please try again.");
+      toast.error("Couldn't delete job. Try again.");
     } finally {
       setIsDeleting(false);
     }

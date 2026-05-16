@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ConditionalAuthProvider from "@/components/ConditionalAuthProvider";
+import { Toaster } from "react-hot-toast";
 
 export const metadata: Metadata = {
   title: {
@@ -26,6 +27,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body>
         <ConditionalAuthProvider>{children}</ConditionalAuthProvider>
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: { background: "#0f172a", color: "#f1f5f9", border: "1px solid #1e293b" },
+            success: { iconTheme: { primary: "#10b981", secondary: "#0f172a" } },
+            error: { iconTheme: { primary: "#f43f5e", secondary: "#0f172a" } },
+          }}
+        />
       </body>
     </html>
   );

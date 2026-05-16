@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { AlertTriangle, Trash2, Download, X } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAuth } from "@/lib/auth-context";
 import { candidatesAPI } from "@/lib/api";
 import Button from "@/components/ui/Button";
@@ -99,8 +100,23 @@ function DeleteCandidatesModal({
 }
 
 // ── Delete account modal ──────────────────────────────────────────────────────
-function DeleteAccountModal({ onClose }: { onClose: () => void }) {
+function DeleteAccountModal({ onClose, companyEmail }: { onClose: () => void; companyEmail?: string }) {
   const [value, setValue] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  const submitRequest = () => {
+    // Privacy-by-design: account deletion requires a human review to confirm
+    // no active interviews are still being processed. The request opens an
+    // email with the user's identity pre-filled so the support side can verify.
+    const subject = encodeURIComponent("Account deletion request");
+    const body = encodeURIComponent(
+      `Hello HireIQ team,\n\nPlease delete my account and all associated data.\n\nAccount email: ${companyEmail ?? "(not signed in)"}\n\nI understand this is irreversible.\n\nThank you.`,
+    );
+    window.open(`mailto:support@hireiq.app?subject=${subject}&body=${body}`);
+    setSubmitted(true);
+    toast.success("Request opened in your email client");
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 backdrop-blur-sm px-4">
       <div className="bg-white border border-border rounded-[4px] p-8 max-w-md w-full shadow-xl">
@@ -110,25 +126,37 @@ function DeleteAccountModal({ onClose }: { onClose: () => void }) {
             <X className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-sm text-sub mb-4 leading-relaxed">
-          This will permanently delete your account, all jobs, all candidate data, and all reports.
-          This action cannot be undone.
-        </p>
-        <p className="text-sm text-sub mb-3">
-          Type <span className="font-mono font-semibold text-ink">DELETE</span> to confirm:
-        </p>
-        <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="DELETE" className="mb-4" />
-        <div className="flex gap-3">
-          <Button
-            variant="danger"
-            disabled={value !== "DELETE"}
-            className="flex-1"
-            onClick={() => alert("Account deletion is processed manually. Please email support@hireiq.app from your registered address with the subject line 'Account deletion request'.")}
-          >
-            <Trash2 className="w-3.5 h-3.5" /> Delete permanently
-          </Button>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        </div>
+        {submitted ? (
+          <>
+            <p className="text-sm text-sub leading-relaxed mb-4">
+              Your request is on its way. We&apos;ll confirm and process deletion within 48 hours so
+              we can verify no candidate interview is mid-flight on your account.
+            </p>
+            <Button variant="secondary" onClick={onClose} className="w-full">Close</Button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-sub mb-4 leading-relaxed">
+              This will permanently delete your account, all jobs, all candidate data, and all reports.
+              Deletion is processed within 48 hours so we can confirm no active interview is in progress.
+            </p>
+            <p className="text-sm text-sub mb-3">
+              Type <span className="font-mono font-semibold text-ink">DELETE</span> to confirm:
+            </p>
+            <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="DELETE" className="mb-4" />
+            <div className="flex gap-3">
+              <Button
+                variant="danger"
+                disabled={value !== "DELETE"}
+                className="flex-1"
+                onClick={submitRequest}
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Send deletion request
+              </Button>
+              <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -218,7 +246,7 @@ export default function DangerZonePage() {
         />
       )}
       {showDeleteAccount && (
-        <DeleteAccountModal onClose={() => setShowDeleteAccount(false)} />
+        <DeleteAccountModal onClose={() => setShowDeleteAccount(false)} companyEmail={company?.email} />
       )}
     </div>
   );

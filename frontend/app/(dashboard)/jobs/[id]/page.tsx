@@ -9,6 +9,7 @@ import {
   MapPin, Clock, ExternalLink, ChevronRight,
   AlertCircle, Loader2, Trash2, PauseCircle, PlayCircle,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { jobsAPI, candidatesAPI } from "@/lib/api";
 import type { Job, CandidateSummary } from "@/lib/types";
 import Button from "@/components/ui/Button";
@@ -91,7 +92,7 @@ export default function JobDetailPage() {
       await jobsAPI.updateJobControls(job.id, { is_paused: newPaused });
       setJob((prev) => prev ? { ...prev, is_paused: newPaused } : prev);
     } catch {
-      alert("Failed to update job. Please try again.");
+      toast.error("Couldn't update job. Try again in a moment.");
     } finally {
       setIsTogglingPause(false);
     }
@@ -110,9 +111,10 @@ export default function JobDetailPage() {
         application_limit: appLimit,
       } : prev);
       setControlsSaved(true);
+      toast.success("Controls saved");
       setTimeout(() => setControlsSaved(false), 2000);
     } catch {
-      alert("Failed to save controls. Please try again.");
+      toast.error("Couldn't save controls. Try again.");
     }
   }, [job, deadline, appLimit]);
 
@@ -121,9 +123,10 @@ export default function JobDetailPage() {
     setIsDeletingJob(true);
     try {
       await jobsAPI.deleteJob(job.id);
+      toast.success("Job deleted");
       router.replace("/jobs");
     } catch {
-      alert("Failed to delete job. Please try again.");
+      toast.error("Couldn't delete job. Try again.");
       setIsDeletingJob(false);
     }
   }, [job, router]);
@@ -135,8 +138,9 @@ export default function JobDetailPage() {
     try {
       await jobsAPI.updateJobStatus(job.id, newStatus);
       setJob((prev) => (prev ? { ...prev, status: newStatus } : prev));
+      toast.success(newStatus === "closed" ? "Job closed" : "Job re-opened");
     } catch {
-      alert("Failed to update job status. Please try again.");
+      toast.error("Couldn't update job status. Try again.");
     } finally {
       setIsTogglingStatus(false);
     }
