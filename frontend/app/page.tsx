@@ -375,7 +375,7 @@ const PLANS = [
   },
   {
     name: "Growth",
-    price: "$1",
+    price: "$29",
     sub: "/ month",
     features: ["Unlimited jobs", "Unlimited applications", "Branded application page", "Custom intro message", "CSV export", "Priority support"],
     cta: "Get started",
@@ -384,8 +384,8 @@ const PLANS = [
   },
   {
     name: "Enterprise",
-    price: "Custom",
-    sub: "",
+    price: "$99",
+    sub: "/ month",
     features: ["Everything in Growth", "SSO / SAML", "Dedicated account manager", "Custom data retention", "SLA", "GDPR DPA"],
     cta: "Contact sales",
     href: "mailto:sales@hireiq.app",
