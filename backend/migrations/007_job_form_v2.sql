@@ -1,4 +1,4 @@
--- Migration 007: Job Form v2 — extended fields for new frictionless job creation flow
+-- Migration 007: Job Form v2 - extended fields for new frictionless job creation flow
 -- Run in Supabase SQL editor
 
 ALTER TABLE jobs
