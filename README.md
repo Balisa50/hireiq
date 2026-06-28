@@ -1,6 +1,6 @@
 # HireIQ
 
-Replaces static job application forms with a conversational AI. Candidates apply through a real conversation instead of filling out a form. Your hiring team gets a ranked, scored shortlist — and only talks to the people worth their time.
+Replaces static job application forms with a conversational AI. Candidates apply through a real conversation instead of filling out a form. Your hiring team gets a ranked, scored shortlist - and only talks to the people worth their time.
 
 ---
 
@@ -16,16 +16,16 @@ hireiq/
 | Layer | Technology |
 |---|---|
 | Database & Auth | Supabase (PostgreSQL + Row Level Security) |
-| AI | Gemini Flash 2.0 — question generation, adaptive follow-ups, scoring |
+| AI | Gemini Flash 2.0 - question generation, adaptive follow-ups, scoring |
 | PDF reports | WeasyPrint |
 | Hosting | Vercel (frontend) + Railway (backend) |
 
 ## How it works
 
-1. Post a job — paste your description, HireIQ generates tailored questions calibrated to the role and seniority
-2. Share one link — candidates click and apply immediately, no scheduling
-3. AI talks to every applicant — follows up on weak answers, structures their responses
-4. Review the shortlist — every completed application becomes a scored report with strengths, concerns, and a hiring recommendation
+1. Post a job - paste your description, HireIQ generates tailored questions calibrated to the role and seniority
+2. Share one link - candidates click and apply immediately, no scheduling
+3. AI talks to every applicant - follows up on weak answers, structures their responses
+4. Review the shortlist - every completed application becomes a scored report with strengths, concerns, and a hiring recommendation
 
 ## Running locally
 
