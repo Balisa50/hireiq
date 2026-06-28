@@ -119,7 +119,7 @@ CREATE POLICY "jobs_public_link_lookup" ON jobs
     );
 
 -- Candidates can insert/update their own interview row using the link token
--- (server side verifies the token before inserting — the API handles auth for candidates)
+-- (server side verifies the token before inserting - the API handles auth for candidates)
 CREATE POLICY "interviews_candidate_insert" ON interviews
     FOR INSERT WITH CHECK (TRUE);
 
