@@ -16,7 +16,7 @@ hireiq/
 | Layer | Technology |
 |---|---|
 | Database & Auth | Supabase (PostgreSQL + Row Level Security) |
-| AI | Gemini Flash 2.0 - question generation, adaptive follow-ups, scoring |
+| AI | Groq (LLaMA 3.3 70B for scoring & question generation, 3.1 8B Instant for the live interview stream) |
 | PDF reports | WeasyPrint |
 | Hosting | Vercel (frontend) + Railway (backend) |
 
@@ -46,7 +46,7 @@ npm run dev
 ## Environment variables
 
 ```
-GEMINI_API_KEY=
+GROQ_API_KEY=
 SUPABASE_URL=
 SUPABASE_SERVICE_KEY=
 NEXT_PUBLIC_SUPABASE_URL=
