@@ -20,16 +20,16 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_role_key: str
 
-    # Groq
-    groq_api_key: str
+    # LLM provider: NVIDIA's free OpenAI-compatible endpoint (was Groq).
+    # Optional-with-empty-default so the app still boots if the key is not yet
+    # set (AI calls then fail cleanly with 401 instead of crash-looping).
+    nvidia_api_key: str = ""
     # Heavyweight model for one-shot tasks (scoring, question generation,
     # candidate emails). Used at most a handful of times per candidate.
-    groq_model_default: str = "llama-3.3-70b-versatile"
-    # Lightweight model for the live conversation stream, fires on EVERY
-    # turn so the system prompt re-sends quickly drain a TPD bucket. The
-    # 8B Instant model has a separate (much larger) bucket and ~3x the
-    # tokens-per-second throughput, which is what we want for streaming.
-    groq_model_chat:    str = "llama-3.1-8b-instant"
+    groq_model_default: str = "mistralai/mistral-medium-3.5-128b"
+    # Lightweight, faster model for the live conversation stream, which fires
+    # on every turn.
+    groq_model_chat:    str = "deepseek-ai/deepseek-v4-flash"
 
     # Rate limiting
     rate_limit_general: int = 100

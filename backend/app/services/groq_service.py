@@ -22,7 +22,7 @@ from app.config import get_settings
 
 logger = logging.getLogger("hireiq.groq")
 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 
 def _default_model() -> str:
@@ -164,7 +164,7 @@ async def _call_groq_with_retry(
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
-    headers = {"Authorization": f"Bearer {settings.groq_api_key}"}
+    headers = {"Authorization": f"Bearer {settings.nvidia_api_key}"}
 
     for attempt in range(1, 3):
         try:
@@ -214,7 +214,7 @@ async def _stream_groq(
         "stream":      True,
     }
     headers = {
-        "Authorization": f"Bearer {settings.groq_api_key}",
+        "Authorization": f"Bearer {settings.nvidia_api_key}",
         "Accept":        "text/event-stream",
     }
     log = logging.getLogger("hireiq.stream")
