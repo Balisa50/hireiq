@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
-os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
+os.environ.setdefault("NVIDIA_API_KEY", "test-nvidia-key")
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("FRONTEND_URL", "http://localhost:3000")
 os.environ.setdefault("SECRET_KEY", "a" * 64)
