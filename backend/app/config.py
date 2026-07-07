@@ -27,9 +27,13 @@ class Settings(BaseSettings):
     # Heavyweight model for one-shot tasks (scoring, question generation,
     # candidate emails). Used at most a handful of times per candidate.
     groq_model_default: str = "mistralai/mistral-medium-3.5-128b"
-    # Lightweight, faster model for the live conversation stream, which fires
-    # on every turn.
-    groq_model_chat:    str = "deepseek-ai/deepseek-v4-flash"
+    # Model for the live conversation stream (fires every turn). This drives a
+    # long structured checklist with strict ordering + JSON field tagging, so it
+    # needs strong instruction-following, not just speed — a light model drifts,
+    # skips fields, and mis-tags. mistral-medium is the same proven model the
+    # scoring path uses and follows JSON reliably. Override with GROQ_MODEL_CHAT
+    # (e.g. deepseek-ai/deepseek-v4-flash) if you need to trade rigor for latency.
+    groq_model_chat:    str = "mistralai/mistral-medium-3.5-128b"
 
     # Rate limiting
     rate_limit_general: int = 100

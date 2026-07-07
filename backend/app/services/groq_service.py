@@ -1154,9 +1154,10 @@ async def generate_conversation_response(
     if _is_meaningfully_empty(info_cfg):
         info_cfg = dict(_DEFAULT_CANDIDATE_INFO_CONFIG)
 
-    eligibility_block = _build_eligibility_section(eligibility_criteria or {})
-    references_block  = _build_references_section(info_cfg, refs_count)
-    dei_block         = _build_dei_section(dei_config or {})
+    # Single source of truth for A-E: honors exactly what the employer enabled.
+    structured_fields_block = _build_structured_fields_block(
+        info_cfg, eligibility_criteria or {}, dei_config or {}, refs_count,
+    )
 
     # Role questions block: knockouts first, then regular questions
     questions_list = pre_generated_questions or []
@@ -1324,37 +1325,11 @@ async def generate_conversation_response(
 
         "---\n\n"
 
-        "STRUCTURED FIELDS, COLLECT EVERY SINGLE ONE IN ORDER\n\n"
-
-        "[A. PERSONAL INFORMATION]\n"
-        "  - Full name\n"
-        "  - Email address\n"
-        "  - Phone number\n"
-        "  - Current city / location\n"
-        "  - Country of residence\n"
-        "  - Full postal address\n"
-        "  - Date of birth\n"
-        "  - Nationality\n\n"
-
-        "[B. PROFESSIONAL BACKGROUND]\n"
-        "  - Current job title (or \"student\" / \"unemployed\", accept honestly)\n"
-        "  - Current or most recent employer\n"
-        "  - Total years of professional experience\n"
-        "  - Employment history, last 2-3 roles: company, title, dates\n"
-        "  - Education history, institution, degree, field of study, graduation year\n"
-        "  - Notice period or earliest available start date\n"
-        "  - Expected salary or salary expectations\n"
-        "  - Willingness to relocate\n\n"
-
-        "[C. ELIGIBILITY CHECKS]\n"
-        f"{eligibility_block}\n\n"
-
-        "[D. REFERENCES]\n"
-        f"{references_block}\n\n"
-
-        "[E. DIVERSITY, voluntary, ask gently, explain it is optional and does not "
-        "affect the application]\n"
-        f"{dei_block}\n\n"
+        "STRUCTURED FIELDS, COLLECT EVERY SINGLE ONE IN ORDER\n"
+        "This is the exact form the employer configured for this role. Ask for "
+        "every field below, in this order, one per message. Do NOT ask for any "
+        "field not on this list. Do NOT skip any field that is on it.\n\n"
+        f"{structured_fields_block}\n\n"
 
         "FIELD SKIPPING IS NOT ALLOWED. If a field is in this list, collect it. "
         "If a candidate skips a field or gives an off-topic answer, bring them back: "
@@ -1600,12 +1575,31 @@ async def generate_conversation_response(
     if action not in valid_actions:
         action = "continue"
 
+    message   = _sanitise_ai_message(parsed.get("message", ""))
+    req_id    = parsed.get("requirement_id")
+    req_label = parsed.get("requirement_label")
+    fields    = _validate_collected_fields(parsed.get("collected_fields"))
+
+    # DETERMINISTIC COMPLETION GATE (see stream path): never close while a
+    # required document is still outstanding.
+    if action == "complete" and pending:
+        nxt = pending[0]
+        action = "request_file" if nxt.get("type") == "file" else "request_link"
+        req_id = nxt.get("id")
+        req_label = nxt.get("label")
+        kind = "upload" if nxt.get("type") == "file" else "link"
+        message = (
+            f"Before I wrap up, there's one thing still outstanding: could you "
+            f"share your {nxt.get('label', 'required document')}? A {kind} is fine."
+        )
+        fields = []
+
     return {
-        "message":           _sanitise_ai_message(parsed.get("message", "")),
+        "message":           message,
         "action":            action,
-        "requirement_id":    parsed.get("requirement_id"),
-        "requirement_label": parsed.get("requirement_label"),
-        "collected_fields":  _validate_collected_fields(parsed.get("collected_fields")),
+        "requirement_id":    req_id,
+        "requirement_label": req_label,
+        "collected_fields":  fields,
     }
 
 
@@ -1670,9 +1664,11 @@ async def stream_conversation_response(
     info_cfg = candidate_info_config or {}
     if _is_meaningfully_empty(info_cfg):
         info_cfg = dict(_DEFAULT_CANDIDATE_INFO_CONFIG)
-    eligibility_block = _build_eligibility_section(eligibility_criteria or {})
-    references_block = _build_references_section(info_cfg, refs_count)
-    dei_block = _build_dei_section(dei_config or {})
+    # Single source of truth for A-E: honors exactly what the employer enabled,
+    # so the agent never asks a disabled field and never skips an enabled one.
+    structured_fields_block = _build_structured_fields_block(
+        info_cfg, eligibility_criteria or {}, dei_config or {}, refs_count,
+    )
 
     questions_list = pre_generated_questions or []
     if questions_list:
@@ -1709,9 +1705,7 @@ async def stream_conversation_response(
         candidate_name=candidate_name,
         first_name=first_name,
         dept_text=dept_text,
-        eligibility_block=eligibility_block,
-        references_block=references_block,
-        dei_block=dei_block,
+        structured_fields_block=structured_fields_block,
         role_questions_block=role_questions_block,
         pending_lines=pending_lines,
         optional_lines=optional_lines,
@@ -1748,8 +1742,14 @@ async def stream_conversation_response(
         if not raw:
             yield {"type": "error", "message": "Failed to get response from AI"}
             return
-            
-        parsed = json.loads(raw)
+
+        # JSON guard: json_mode should already give clean JSON, but never let a
+        # single malformed reply drop the turn. Re-extract and parse once more.
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = json.loads(_extract_json_from_text(raw))
+
         message = parsed.get("message", "")
         action = parsed.get("action", "continue")
         req_id = parsed.get("requirement_id")
@@ -1759,6 +1759,23 @@ async def stream_conversation_response(
         valid_actions = {"continue", "complete", "request_file", "request_link"}
         if action not in valid_actions:
             action = "continue"
+
+        # DETERMINISTIC COMPLETION GATE. The model does not get the final say on
+        # closing the application: if it tries to complete while a REQUIRED
+        # document is still outstanding, override it into a concrete request for
+        # the first pending item. This is the one hard guarantee that a candidate
+        # can never be "submitted" with required evidence missing.
+        if action == "complete" and pending:
+            nxt = pending[0]
+            action = "request_file" if nxt.get("type") == "file" else "request_link"
+            req_id = nxt.get("id")
+            req_label = nxt.get("label")
+            kind = "upload" if nxt.get("type") == "file" else "link"
+            message = (
+                f"Before I wrap up, there's one thing still outstanding: could you "
+                f"share your {nxt.get('label', 'required document')}? A {kind} is fine."
+            )
+            collected_fields = []
 
         # Stream the message character by character for a typewriter effect
         for i, char in enumerate(message):
@@ -1795,9 +1812,7 @@ def _build_conversation_system_prompt(
     candidate_name: str,
     first_name: str,
     dept_text: str,
-    eligibility_block: str,
-    references_block: str,
-    dei_block: str,
+    structured_fields_block: str,
     role_questions_block: str,
     pending_lines: str,
     optional_lines: str,
@@ -1897,21 +1912,13 @@ def _build_conversation_system_prompt(
         "  5. Closing\n\n"
         "ONE QUESTION PER MESSAGE. Always. No exceptions. No sub-questions.\n\n"
         "---\n\n"
-        "STRUCTURED FIELDS\n\n"
-        "[A. PERSONAL INFORMATION]\n"
-        "  - Full name\n  - Email address\n  - Phone number\n  - Current city / location\n"
-        "  - Country of residence\n  - Full postal address\n  - Date of birth\n  - Nationality\n\n"
-        "[B. PROFESSIONAL BACKGROUND]\n"
-        "  - Current job title (or \"student\" / \"unemployed\")\n"
-        "  - Current or most recent employer\n"
-        "  - Total years of professional experience\n"
-        "  - Employment history, last 2-3 roles: company, title, dates\n"
-        "  - Education history: institution, degree, field, graduation year\n"
-        "  - Notice period or earliest start date\n"
-        "  - Expected salary\n  - Willingness to relocate\n\n"
-        f"[C. ELIGIBILITY CHECKS]\n{eligibility_block}\n\n"
-        f"[D. REFERENCES]\n{references_block}\n\n"
-        f"[E. DIVERSITY (voluntary, gentle, optional)]\n{dei_block}\n\n"
+        "STRUCTURED FIELDS, COLLECT EVERY SINGLE ONE IN ORDER\n"
+        "This is the exact form the employer configured for this role. Ask for "
+        "every field listed below, in this order, one per message. Do NOT ask "
+        "for any field that is not on this list. Do NOT skip any field that is "
+        "on it. If the candidate skips one, bring them back to it before moving "
+        "on.\n\n"
+        f"{structured_fields_block}\n\n"
         "---\n\n"
         "DOCUMENT COLLECTION\n"
         f"Required documents pending:\n{pending_lines}\n\n"
