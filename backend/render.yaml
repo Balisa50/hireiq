@@ -9,7 +9,12 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
-      - key: GROQ_API_KEY
+      # config.py reads nvidia_api_key -> NVIDIA_API_KEY. GROQ_API_KEY was the
+      # pre-NVIDIA name and nothing reads it, so declaring it here left a fresh
+      # deploy with no AI key at all.
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false
