@@ -4,6 +4,7 @@ Handles company signup and login via Supabase Auth.
 """
 
 import logging
+import socket
 from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.models.company import (
@@ -18,6 +19,40 @@ from app.database import supabase
 logger = logging.getLogger("hireiq.auth_router")
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 _security = HTTPBearer()
+
+# Markers for "we never reached Supabase at all" (DNS gone because the project
+# was deleted or paused, network down, connection refused) as opposed to "the
+# request reached Supabase and it said no". The two need different answers: the
+# first is our outage and is retryable, the second is the user's input.
+_UNREACHABLE_MARKERS = (
+    "name or service not known",
+    "temporary failure in name resolution",
+    "nodename nor servname",
+    "getaddrinfo",
+    "connection refused",
+    "connection reset",
+    "connection error",
+    "max retries exceeded",
+    "network is unreachable",
+    "timed out",
+)
+
+
+def _is_unreachable(error: Exception) -> bool:
+    """True when the auth/database backend could not be reached at all."""
+    if isinstance(error, (socket.gaierror, socket.timeout, ConnectionError)):
+        return True
+    text = str(error).lower()
+    return any(marker in text for marker in _UNREACHABLE_MARKERS)
+
+
+def _upstream_down() -> HTTPException:
+    """503 for an outage on our side, phrased for the person staring at the form."""
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="We can't reach our sign-in service right now. This is on our side, "
+               "not yours. Please try again in a few minutes.",
+    )
 
 
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -87,9 +122,11 @@ async def sign_up_company(request: CompanySignupRequest) -> AuthResponse:
             )
 
         logger.error("Signup error for %s***: %s", request.email[:3], str(error))
+        if _is_unreachable(error):
+            raise _upstream_down() from error
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Sign up failed: {str(error)}",
+            detail="Could not create your account. Please check your details and try again.",
         ) from error
 
     # Fresh signup, create the companies row
@@ -116,9 +153,11 @@ async def sign_up_company(request: CompanySignupRequest) -> AuthResponse:
         raise
     except Exception as error:
         logger.error("Companies insert failed for %s: %s", company_id, str(error))
+        if _is_unreachable(error):
+            raise _upstream_down() from error
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Account created but profile setup failed: {str(error)}",
+            detail="Account created but profile setup failed. Please contact support.",
         ) from error
 
 
@@ -159,11 +198,12 @@ async def log_in_company(request: CompanyLoginRequest) -> AuthResponse:
     except HTTPException:
         raise
     except Exception as error:
-        error_str = str(error)
-        logger.error("Login error for %s***: %s", request.email[:3], error_str)
+        logger.error("Login error for %s***: %s", request.email[:3], str(error))
+        if _is_unreachable(error):
+            raise _upstream_down() from error
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Login failed: {error_str}",
+            detail="Invalid email or password.",
         ) from error
 
 
