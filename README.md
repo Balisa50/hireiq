@@ -16,9 +16,9 @@ hireiq/
 | Layer | Technology |
 |---|---|
 | Database & Auth | Supabase (PostgreSQL + Row Level Security) |
-| AI | Groq (LLaMA 3.3 70B for scoring & question generation, 3.1 8B Instant for the live interview stream) |
+| AI | NVIDIA's OpenAI-compatible endpoint (`mistral-medium-3.5-128b` for both scoring/question generation and the live interview stream). The `groq_*` config names are legacy. |
 | PDF reports | WeasyPrint |
-| Hosting | Vercel (frontend) + Railway (backend) |
+| Hosting | Vercel (frontend) + Render (backend, see `backend/render.yaml`) |
 
 ## How it works
 
@@ -46,7 +46,7 @@ npm run dev
 ## Environment variables
 
 ```
-GROQ_API_KEY=
+NVIDIA_API_KEY=
 SUPABASE_URL=
 SUPABASE_SERVICE_KEY=
 NEXT_PUBLIC_SUPABASE_URL=
