@@ -232,3 +232,46 @@ async def health_check() -> dict:
         "timestamp": time_module.time(),
         "environment": settings.environment,
     }
+
+
+@app.get("/health/db", tags=["Health"])
+async def health_check_db() -> JSONResponse:
+    """
+    Liveness check that actually touches Supabase.
+
+    `/health` returns static JSON, so pinging it keeps Render awake while
+    Supabase sees no database traffic at all and pauses the project after about
+    a week of inactivity — which is exactly how this app went down once. Point
+    an external cron at THIS route (not /health) to keep both alive.
+
+    Deliberately cheap: one indexed primary-key read, one row, one column, and
+    the row need not exist. Returns 503 (not 500) when the database is
+    unreachable so an uptime monitor flags it instead of silently retrying.
+    """
+    from app.database import supabase
+
+    started = time.perf_counter()
+    try:
+        supabase.table("companies").select("id").limit(1).execute()
+    except Exception as error:
+        logger.error("DB health check failed: %s", error)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "service": "hireiq-api",
+                "database": "unreachable",
+                "timestamp": time.time(),
+            },
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "healthy",
+            "service": "hireiq-api",
+            "database": "reachable",
+            "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+            "timestamp": time.time(),
+        },
+    )
