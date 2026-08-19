@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 const EFFECTIVE_DATE   = "1 May 2025";
 const CONTACT_EMAIL    = "privacy@hireiq.app";
-const COMPANY_NAME     = "HireIQ Ltd";
+const COMPANY_NAME     = "HireIQ";
 const COMPANY_ADDRESS  = "Fajikunda, The Gambia";
 
 function Section({ id, title, children }: {
@@ -98,7 +98,7 @@ export default function PrivacyPage() {
 
         <Section id="who-we-are" title="1. Who We Are">
           <p>
-            {COMPANY_NAME} operates HireIQ, an AI-powered candidate intelligence platform that helps
+            {COMPANY_NAME} operates HireIQ, a hiring platform that helps
             employers conduct structured screening interviews, evaluate applicants, and make hiring
             decisions. The Service is used by two distinct groups: <strong className="text-ink">employers</strong>{" "}
             (companies that post jobs and review candidates) and <strong className="text-ink">candidates</strong>{" "}

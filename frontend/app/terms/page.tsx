@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 const EFFECTIVE_DATE  = "1 May 2025";
 const CONTACT_EMAIL   = "legal@hireiq.app";
-const COMPANY_NAME    = "HireIQ Ltd";
+const COMPANY_NAME    = "HireIQ";
 const COMPANY_ADDRESS = "Fajikunda, The Gambia";
 
 function Section({ id, title, children }: {
@@ -412,9 +412,9 @@ export default function TermsPage() {
 
         <Section id="governing-law" title="13. Governing Law">
           <p>
-            These Terms are governed by and construed in accordance with the laws of England and Wales.
+            These Terms are governed by and construed in accordance with the laws of The Gambia.
             Any dispute arising out of or in connection with these Terms shall be subject to the
-            exclusive jurisdiction of the courts of England and Wales, except where mandatory consumer
+            exclusive jurisdiction of the courts of The Gambia, except where mandatory consumer
             protection laws in your local jurisdiction provide otherwise.
           </p>
           <p>
