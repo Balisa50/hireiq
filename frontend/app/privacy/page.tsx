@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 const EFFECTIVE_DATE   = "1 May 2025";
 const CONTACT_EMAIL    = "privacy@hireiq.app";
 const COMPANY_NAME     = "HireIQ Ltd";
-const COMPANY_ADDRESS  = "71, 75 Shelton Street, Covent Garden, London, WC2H 9JQ, United Kingdom";
+const COMPANY_ADDRESS  = "Fajikunda, The Gambia";
 
 function Section({ id, title, children }: {
   id: string;
