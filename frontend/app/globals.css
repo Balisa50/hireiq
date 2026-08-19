@@ -101,3 +101,22 @@ input[type="range"]::-webkit-slider-runnable-track {
   transition: transform 200ms ease, box-shadow 200ms ease;
 }
 .hover-lift:hover { transform: translateY(-2px); }
+
+/* ---------- scrollbars ---------- */
+
+/* Not drawn anywhere. Scrolling itself is untouched: wheel, trackpad,
+   keyboard and touch all behave as before, only the bar is hidden. */
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*,
+*::before,
+*::after {
+  scrollbar-width: none;
+}
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
