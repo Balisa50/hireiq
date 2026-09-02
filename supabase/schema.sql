@@ -129,3 +129,21 @@ CREATE POLICY "interviews_candidate_update_own" ON interviews
 -- ── Service role bypass (for backend API) ─────────────────────────────────────
 -- The backend uses the service role key which bypasses RLS
 -- RLS above applies only to direct Supabase client (frontend) calls
+
+-- ── Storage ───────────────────────────────────────────────────────────────────
+-- The application uploads candidate CVs and supporting documents to a private
+-- bucket and serves them back through short-lived signed URLs.
+--
+-- This was missing from the schema. Restoring only the tables left a project
+-- where every table existed, the app started, and file upload failed at
+-- runtime with a missing-bucket error. Anything the app needs in order to run
+-- belongs here, not in a click path nobody wrote down.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('interview-documents', 'interview-documents', FALSE)
+ON CONFLICT (id) DO NOTHING;
+
+-- No storage policies are defined on purpose. Every read and write goes
+-- through the backend using the service role key, which bypasses RLS, and
+-- downloads are handed out as signed URLs with an expiry. Adding a permissive
+-- policy here would open a second, unauthenticated path to candidate documents
+-- that the API could not see or control.

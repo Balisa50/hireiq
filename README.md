@@ -16,7 +16,7 @@ hireiq/
 | Layer | Technology |
 |---|---|
 | Database & Auth | Supabase (PostgreSQL + Row Level Security) |
-| AI | NVIDIA's OpenAI-compatible endpoint (`mistral-medium-3.5-128b` for both scoring/question generation and the live interview stream). The `groq_*` config names are legacy. |
+| AI | NVIDIA's OpenAI-compatible endpoint. `nvidia/nemotron-3-super-120b-a12b` for scoring, question generation and the live interview stream, falling back to `nvidia/llama-3.3-nemotron-super-49b-v1.5`. The `groq_*` config names are legacy. Both paths ran on `mistral-medium-3.5-128b` until it reached end of life on 2026-08-07 and began answering 410. |
 | PDF reports | WeasyPrint |
 | Hosting | Vercel (frontend) + Render (backend, see `backend/render.yaml`) |
 
@@ -39,16 +39,31 @@ uvicorn main:app --reload
 # Frontend
 cd frontend
 npm install
-cp .env.local.example .env.local
+cp .env.example .env.local
 npm run dev
 ```
 
 ## Environment variables
 
+Both `.env.example` files are the source of truth and are kept in step with
+the code. The list below is what each side actually requires.
+
+**Backend** (`backend/.env`). The first four have no defaults, so the process
+exits on startup if any is missing.
+
 ```
-NVIDIA_API_KEY=
+SECRET_KEY=
 SUPABASE_URL=
-SUPABASE_SERVICE_KEY=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+NVIDIA_API_KEY=            # optional; AI calls fail with 401 rather than crashing
+RESEND_API_KEY=            # optional; candidate emails are skipped without it
+FRONTEND_URL=
+```
+
+**Frontend** (`frontend/.env.local`):
+
+```
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_API_URL=
