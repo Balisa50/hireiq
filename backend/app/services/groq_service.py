@@ -1,6 +1,14 @@
 """
-HireIQ AI service, pure Groq SDK.
-Model: Groq LLaMA 3.3 70B Versatile (AsyncGroq).
+HireIQ AI service.
+
+Calls NVIDIA's OpenAI-compatible endpoint over httpx directly. There is no
+vendor SDK involved: the Groq SDK was dropped in the migration and the module,
+file and setting names that still say groq_* are historical. Renaming them
+touches config keys already set in Render, so the names stay and this note
+exists instead.
+
+Requests walk a model chain rather than retrying one id, because a retired
+model answers 410 forever. See _call_groq_with_retry.
 
 Functions:
   1. generate_interview_questions  -- structured question generation
