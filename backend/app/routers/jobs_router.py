@@ -5,7 +5,7 @@ Handles job creation, AI question generation, and job management for companies.
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.auth import get_authenticated_company_id, verify_company_owns_resource
+from app.auth import get_authenticated_company_id
 from app.database import supabase
 from app.models.job import (
     AIPrefillRequest,
@@ -215,13 +215,23 @@ async def get_job_detail(
 ) -> JobResponse:
     """Return full job details including questions, requirements, and interview statistics."""
     try:
-        result = supabase.table("jobs").select("*").eq("id", job_id).execute()
+        # Ownership is scoped into the query rather than checked after the
+        # fetch. Fetching first and comparing afterwards answers 404 for a job
+        # that does not exist and 403 for one owned by another company, which
+        # confirms to a caller that an id is real. Filtering here makes both
+        # cases indistinguishable.
+        result = (
+            supabase.table("jobs")
+            .select("*")
+            .eq("id", job_id)
+            .eq("company_id", company_id)
+            .execute()
+        )
 
         if not result.data:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
 
         job = result.data[0]
-        verify_company_owns_resource(job["company_id"], company_id, "job")
 
         interviews_result = (
             supabase.table("interviews")
@@ -251,11 +261,17 @@ async def close_job(
     company_id: str = Depends(get_authenticated_company_id),
 ) -> dict:
     """Close a job so the interview link becomes inactive."""
-    result = supabase.table("jobs").select("company_id").eq("id", job_id).execute()
+    # Ownership scoped into the query: a job that does not exist and one owned
+    # by another company both answer 404, so neither confirms an id is real.
+    result = (
+        supabase.table("jobs")
+        .select("company_id")
+        .eq("id", job_id)
+        .eq("company_id", company_id)
+        .execute()
+    )
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
-
-    verify_company_owns_resource(result.data[0]["company_id"], company_id, "job")
 
     supabase.table("jobs").update({"status": "closed"}).eq("id", job_id).execute()
     return {"message": "Job closed successfully."}
@@ -270,11 +286,17 @@ async def delete_job(
     Permanently delete a job and all its associated interviews/candidates.
     Only the owning company may delete their own jobs.
     """
-    result = supabase.table("jobs").select("company_id").eq("id", job_id).execute()
+    # Ownership scoped into the query: a job that does not exist and one owned
+    # by another company both answer 404, so neither confirms an id is real.
+    result = (
+        supabase.table("jobs")
+        .select("company_id")
+        .eq("id", job_id)
+        .eq("company_id", company_id)
+        .execute()
+    )
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
-
-    verify_company_owns_resource(result.data[0]["company_id"], company_id, "job")
 
     # Cascade-delete interviews first (FK constraint)
     supabase.table("interviews").delete().eq("job_id", job_id).execute()
@@ -294,11 +316,17 @@ async def update_job_controls(
     Update job-level controls: application_deadline, application_limit, is_paused.
     Only fields included in the payload are updated.
     """
-    result = supabase.table("jobs").select("company_id").eq("id", job_id).execute()
+    # Ownership scoped into the query: a job that does not exist and one owned
+    # by another company both answer 404, so neither confirms an id is real.
+    result = (
+        supabase.table("jobs")
+        .select("company_id")
+        .eq("id", job_id)
+        .eq("company_id", company_id)
+        .execute()
+    )
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
-
-    verify_company_owns_resource(result.data[0]["company_id"], company_id, "job")
 
     allowed = {"application_deadline", "application_limit", "is_paused"}
     update_data = {k: v for k, v in payload.items() if k in allowed}
@@ -327,11 +355,17 @@ async def update_job_status(
             detail="status must be 'active' or 'closed'.",
         )
 
-    result = supabase.table("jobs").select("company_id").eq("id", job_id).execute()
+    # Ownership scoped into the query: a job that does not exist and one owned
+    # by another company both answer 404, so neither confirms an id is real.
+    result = (
+        supabase.table("jobs")
+        .select("company_id")
+        .eq("id", job_id)
+        .eq("company_id", company_id)
+        .execute()
+    )
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
-
-    verify_company_owns_resource(result.data[0]["company_id"], company_id, "job")
 
     supabase.table("jobs").update({"status": new_status}).eq("id", job_id).execute()
     return {"status": new_status, "message": f"Job is now {new_status}."}

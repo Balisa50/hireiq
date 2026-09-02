@@ -17,7 +17,7 @@ import re as _re
 from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import Response
-from app.auth import get_authenticated_company_id, verify_company_owns_resource
+from app.auth import get_authenticated_company_id
 from app.database import supabase
 from app.models.interview import (
     StartInterviewRequest,
@@ -1233,10 +1233,15 @@ async def get_interview_report(
     Return the full interview details and AI assessment for a candidate.
     Enriches submitted_files with fresh 7-day signed download URLs.
     """
+    # Ownership is scoped into the query rather than checked after the fetch.
+    # Fetching first and comparing afterwards answers 404 for a row that does
+    # not exist and 403 for one belonging to another company, which confirms
+    # to a caller that an id is real. Filtering here makes both cases identical.
     result = (
         supabase.table("interviews")
         .select("*")
         .eq("id", interview_id)
+        .eq("company_id", company_id)
         .execute()
     )
 
@@ -1244,7 +1249,6 @@ async def get_interview_report(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
 
     interview = result.data[0]
-    verify_company_owns_resource(interview["company_id"], company_id, "interview")
 
     # Block detail access for drafts. The candidate has not yet clicked
     # "Submit Application" on the review screen, so the employer must not see
@@ -1277,6 +1281,7 @@ async def delete_candidate(
         supabase.table("interviews")
         .select("company_id, job_id, submitted_files")
         .eq("id", interview_id)
+        .eq("company_id", company_id)
         .execute()
     )
 
@@ -1284,7 +1289,6 @@ async def delete_candidate(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
 
     interview = result.data[0]
-    verify_company_owns_resource(interview["company_id"], company_id, "interview")
 
     # Delete all uploaded files from Supabase Storage first
     submitted_files = interview.get("submitted_files") or []
@@ -1316,13 +1320,12 @@ async def update_candidate_status(
         supabase.table("interviews")
         .select("company_id")
         .eq("id", interview_id)
+        .eq("company_id", company_id)
         .execute()
     )
 
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
-
-    verify_company_owns_resource(result.data[0]["company_id"], company_id, "interview")
 
     supabase.table("interviews").update({"status": request.status}).eq("id", interview_id).execute()
 
@@ -1345,6 +1348,7 @@ async def generate_email_draft(
                 "key_strengths, areas_of_concern, "
                 "jobs(title, companies(company_name, contact_email, website))")
         .eq("id", interview_id)
+        .eq("company_id", company_id)
         .execute()
     )
 
@@ -1352,7 +1356,6 @@ async def generate_email_draft(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
 
     interview = result.data[0]
-    verify_company_owns_resource(interview["company_id"], company_id, "interview")
 
     job     = interview.get("jobs") or {}
     company = job.get("companies") or {}
@@ -1393,6 +1396,7 @@ async def send_candidate_email_endpoint(
         supabase.table("interviews")
         .select("company_id, candidate_name, candidate_email, jobs(companies(company_name))")
         .eq("id", interview_id)
+        .eq("company_id", company_id)
         .execute()
     )
 
@@ -1400,7 +1404,6 @@ async def send_candidate_email_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
 
     interview = result.data[0]
-    verify_company_owns_resource(interview["company_id"], company_id, "interview")
 
     job_info     = interview.get("jobs") or {}
     company_info = (job_info.get("companies") or {}) if isinstance(job_info, dict) else {}
@@ -1433,6 +1436,7 @@ async def download_candidate_report_pdf(
         supabase.table("interviews")
         .select("*, jobs(title, companies(company_name))")
         .eq("id", interview_id)
+        .eq("company_id", company_id)
         .execute()
     )
 
@@ -1440,7 +1444,6 @@ async def download_candidate_report_pdf(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found.")
 
     interview = result.data[0]
-    verify_company_owns_resource(interview["company_id"], company_id, "interview")
 
     if interview.get("status") not in ("scored", "shortlisted", "rejected", "accepted"):
         raise HTTPException(

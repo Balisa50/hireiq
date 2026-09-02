@@ -48,7 +48,18 @@ def verify_company_owns_resource(
 ) -> None:
     """
     Verify the authenticated company owns the requested resource.
-    Raises HTTP 403 if ownership doesn't match.
+
+    PREFER SCOPING OWNERSHIP INTO THE QUERY. Add `.eq("company_id", company_id)`
+    to the lookup so a row belonging to someone else is simply not returned.
+    This helper exists for the cases where a resource is reached indirectly and
+    cannot be filtered at the source.
+
+    Raises 404, not 403. Answering 403 for a row that exists but belongs to
+    another company, while answering 404 for one that does not exist, tells the
+    caller which ids are real. That is an enumeration oracle, and it is the
+    reason every router here now filters instead of comparing. The log line
+    still records the attempt, so a real probing attempt is visible to us even
+    though the caller learns nothing.
     """
     if resource_company_id != authenticated_company_id:
         logger.warning(
@@ -58,6 +69,6 @@ def verify_company_owns_resource(
             resource_company_id,
         )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You do not have permission to access this {resource_name}.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{resource_name.capitalize()} not found.",
         )
