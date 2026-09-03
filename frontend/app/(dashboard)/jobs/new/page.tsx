@@ -43,14 +43,13 @@ interface ScreeningQuestion {
   knockout_rejection_reason: string;
 }
 
-interface CustomQuestion {
-  id: string;
-  question: string;
-  type: string;
-  focus_area: string;
-  what_it_reveals: string;
-  severity: string;
-}
+// The editable form row for a question. It is GeneratedQuestion with severity
+// required rather than optional, because the editor always has a value
+// selected. Declaring it as `string` made it unassignable back to
+// GeneratedQuestion, which is what the interview payload is typed as.
+type CustomQuestion = Omit<GeneratedQuestion, "severity"> & {
+  severity: NonNullable<GeneratedQuestion["severity"]>;
+};
 
 interface CustomDoc {
   id: string;
@@ -437,7 +436,7 @@ export default function NewJobPage() {
           type: q.type ?? "behavioral",
           focus_area: q.focus_area ?? "",
           what_it_reveals: q.what_it_reveals ?? "",
-          severity: (q.severity as string) ?? "standard",
+          severity: q.severity ?? "standard",
         })));
       }
       setPhase("form");

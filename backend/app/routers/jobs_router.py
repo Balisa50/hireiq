@@ -14,7 +14,7 @@ from app.models.job import (
     JobResponse,
     JobSummary,
 )
-from app.services.groq_service import generate_interview_questions, generate_job_prefill
+from app.services.llm import generate_interview_questions, generate_job_prefill
 
 logger = logging.getLogger("hireiq.jobs_router")
 router = APIRouter(prefix="/jobs", tags=["Jobs"])

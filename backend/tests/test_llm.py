@@ -90,12 +90,12 @@ def _patch_transport(*responses):
     context.__aenter__ = AsyncMock(return_value=session)
     context.__aexit__ = AsyncMock(return_value=False)
 
-    return patch("app.services.groq_service.httpx.AsyncClient", return_value=context), post
+    return patch("app.services.llm.client.httpx.AsyncClient", return_value=context), post
 
 
 @pytest.mark.asyncio
 async def test_generate_interview_questions():
-    from app.services.groq_service import generate_interview_questions
+    from app.services.llm import generate_interview_questions
 
     transport, post = _patch_transport(_ok(SAMPLE_QUESTIONS_RESPONSE))
     with transport:
@@ -115,7 +115,7 @@ async def test_generate_interview_questions():
 
 @pytest.mark.asyncio
 async def test_score_candidate():
-    from app.services.groq_service import score_candidate
+    from app.services.llm import score_candidate
 
     transcript = [
         {
@@ -142,14 +142,14 @@ async def test_score_candidate():
 @pytest.mark.asyncio
 async def test_retries_once_before_succeeding():
     """A transient failure is retried on the same model rather than given up on."""
-    from app.services.groq_service import generate_interview_questions
+    from app.services.llm import generate_interview_questions
 
     transport, post = _patch_transport(
         _error(500),                      # first attempt fails transiently
         _ok(SAMPLE_QUESTIONS_RESPONSE),   # retry succeeds
     )
     with transport:
-        with patch("app.services.groq_service.asyncio.sleep", new_callable=AsyncMock):
+        with patch("app.services.llm.client.asyncio.sleep", new_callable=AsyncMock):
             result = await generate_interview_questions(
                 job_title="Engineer",
                 job_description="Build things. " * 25,
@@ -171,14 +171,14 @@ async def test_retired_model_falls_through_to_the_fallback():
     old code retried the dead id and returned None, and every AI feature went
     quiet without an error anyone saw.
     """
-    from app.services.groq_service import generate_interview_questions
+    from app.services.llm import generate_interview_questions
 
     transport, post = _patch_transport(
         _error(410),                      # primary model is retired
         _ok(SAMPLE_QUESTIONS_RESPONSE),   # fallback model answers
     )
     with transport:
-        with patch("app.services.groq_service.asyncio.sleep", new_callable=AsyncMock):
+        with patch("app.services.llm.client.asyncio.sleep", new_callable=AsyncMock):
             result = await generate_interview_questions(
                 job_title="Engineer",
                 job_description="Build things. " * 25,

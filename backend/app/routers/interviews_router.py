@@ -33,7 +33,7 @@ from app.models.interview import (
     CandidateSummary,
     JobPublicInfo,
 )
-from app.services.groq_service import (
+from app.services.llm import (
     generate_adaptive_next_question,
     generate_conversation_response,
     stream_conversation_response,
