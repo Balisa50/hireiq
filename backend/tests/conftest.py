@@ -7,10 +7,23 @@ import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
-# Set test environment variables before importing app modules
+# Set test environment variables before importing app modules.
+#
+# app/database.py builds the Supabase client at module import time, so these
+# have to be in place before anything imports the app, and the keys have to be
+# shaped like real ones: supabase-py parses them as JWTs while constructing the
+# client and raises "Invalid API key" on anything else. The tokens below are
+# well-formed and signed with nothing. No call ever leaves the process, because
+# the client is a MagicMock by the time any test runs.
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
-os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
-os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
+os.environ.setdefault(
+    "SUPABASE_ANON_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3QiLCJyb2xlIjoiYW5vbiIsImlhdCI6MSwiZXhwIjo5OTk5OTk5OTk5fQ.not-a-real-signature-this-token-is-for-tests-only",
+)
+os.environ.setdefault(
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3QiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxLCJleHAiOjk5OTk5OTk5OTl9.not-a-real-signature-this-token-is-for-tests-only",
+)
 os.environ.setdefault("NVIDIA_API_KEY", "test-nvidia-key")
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("FRONTEND_URL", "http://localhost:3000")
